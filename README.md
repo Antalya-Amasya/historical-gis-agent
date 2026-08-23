@@ -2,9 +2,9 @@
 
 An incremental research and demonstration project for explaining historical military movements with explicitly separated historical evidence, geographic tools, agent reasoning, and map visualization.
 
-## Phase 0 status
+## Phase 1 status
 
-Phase 0 defines stable API models and provides a no-key Mock Agent demonstration. It includes a FastAPI backend, an independently runnable Geography MCP-compatible HTTP service, a React frontend shell, RAG/session abstractions, and automated tests. Route inference, vector retrieval, and map rendering begin in later phases.
+Phase 1 keeps the no-key Mock Agent and adds the audited HistoricalPlace → Backend API → MapLibre GL JS marker chain. The FastAPI backend, independently runnable Geography MCP-compatible HTTP service, and React frontend share a small local Pleiades-backed demo repository. The map renders markers and source-rich popups, but does not draw or infer a historical route.
 
 ## Prerequisites
 
@@ -33,7 +33,7 @@ pnpm install
 pnpm run dev
 ```
 
-Open `http://127.0.0.1:5173`. With the default environment it returns a deterministic Mock Agent response for Hannibal's Alpine crossing and has no external API dependency.
+Open `http://127.0.0.1:5173`. With the default environment it returns a deterministic Mock Agent response for Hannibal's Alpine crossing and renders the returned HistoricalPlace markers using MapLibre. The base map is the keyless MapLibre demo style; the demo does not use geocoding for ancient places.
 
 ## Test
 
@@ -47,4 +47,5 @@ pytest backend\tests geography_mcp\tests -q
 - `POST /api/v1/agent/chat` is ordinary HTTP; SSE is intentionally deferred.
 - The Geography MCP server is independently runnable over stdio. The parallel HTTP adapter (`uvicorn geography_mcp.server:app --port 8001`) exists only for local API and integration testing.
 - The mock agent does not claim a historical route. It only returns a bounded event/place result and uncertainty notice.
-- ChromaDB, live Pleiades queries, real LLM providers, route construction, and MapLibre map layers are out of scope for Phase 0.
+- The two Phase 1 demo places are hand-curated local records, with coordinates copied from their Pleiades representative points: Carthago ([314921](https://pleiades.stoa.org/places/314921)) and Carthago Nova ([265849](https://pleiades.stoa.org/places/265849)). Each API record carries `source`, `source_id`, `source_url`, `confidence`, and `uncertain`; no LLM or geocoder supplies coordinates.
+- ChromaDB, live Pleiades queries, real LLM providers, route construction, candidate routes, route scoring, and environmental analysis remain out of scope.

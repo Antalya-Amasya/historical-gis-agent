@@ -20,6 +20,8 @@ class HistoricalPlace(BaseModel):
     longitude: float
     period: str | None = None
     source: str
+    source_id: str | None = None
+    source_url: str | None = None
     confidence: float = Field(ge=0, le=1)
     uncertain: bool = False
     alternatives: list["HistoricalPlace"] = Field(default_factory=list)
@@ -100,4 +102,3 @@ class ChatResponse(BaseModel):
     session_id: str
     reply: str
     state: AgentState
-
