@@ -8,6 +8,7 @@ from backend.app.core.config import settings
 from backend.app.memory.store import InMemorySessionStore
 from backend.app.rag.retriever import ChromaHistoricalRetriever
 from backend.app.rag.store import ChromaEvidenceStore
+from backend.app.rag.embeddings.provider import SentenceTransformerEmbeddingProvider
 from pathlib import Path
 from backend.app.models import AgentState, ChatRequest, ChatResponse, RagSearchRequest, RagSearchResponse
 
@@ -42,5 +43,6 @@ def chat(request: ChatRequest) -> ChatResponse:
 
 @app.post("/api/v1/rag/search", response_model=RagSearchResponse)
 def rag_search(request: RagSearchRequest) -> RagSearchResponse:
-    retriever = ChromaHistoricalRetriever(ChromaEvidenceStore(Path(settings.rag_chroma_path)))
+    provider = SentenceTransformerEmbeddingProvider(settings.rag_embedding_model, settings.rag_embedding_device, settings.rag_embedding_batch_size)
+    retriever = ChromaHistoricalRetriever(ChromaEvidenceStore(Path("data/chroma_semantic"), "historical_primary_sources_semantic", provider))
     return RagSearchResponse(query=request.query, evidence=retriever.retrieve(request.query, request.top_k, request.filters))
