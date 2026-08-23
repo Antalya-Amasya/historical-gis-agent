@@ -36,6 +36,16 @@ class Evidence(BaseModel):
     period: str | None = None
     topic: str | None = None
     reliability_note: str | None = None
+    text: str | None = None
+    book: str | None = None
+    chapter: str | None = None
+    section: str | None = None
+    page_start: int | None = None
+    page_end: int | None = None
+    source_file: str | None = None
+    source_type: str | None = None
+    score: float | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class HistoricalEvent(BaseModel):
@@ -102,3 +112,14 @@ class ChatResponse(BaseModel):
     session_id: str
     reply: str
     state: AgentState
+
+
+class RagSearchRequest(BaseModel):
+    query: str = Field(min_length=1)
+    top_k: int = Field(default=5, ge=1, le=20)
+    filters: dict[str, str] = Field(default_factory=dict)
+
+
+class RagSearchResponse(BaseModel):
+    query: str
+    evidence: list[Evidence]

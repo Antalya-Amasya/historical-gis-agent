@@ -6,7 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.agent.mock_agent import MockAgent
 from backend.app.core.config import settings
 from backend.app.memory.store import InMemorySessionStore
-from backend.app.models import AgentState, ChatRequest, ChatResponse
+from backend.app.rag.retriever import ChromaHistoricalRetriever
+from backend.app.rag.store import ChromaEvidenceStore
+from pathlib import Path
+from backend.app.models import AgentState, ChatRequest, ChatResponse, RagSearchRequest, RagSearchResponse
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -35,3 +38,9 @@ def chat(request: ChatRequest) -> ChatResponse:
     store.save(state)
     return ChatResponse(session_id=request.session_id, reply=reply, state=state)
 
+
+
+@app.post("/api/v1/rag/search", response_model=RagSearchResponse)
+def rag_search(request: RagSearchRequest) -> RagSearchResponse:
+    retriever = ChromaHistoricalRetriever(ChromaEvidenceStore(Path(settings.rag_chroma_path)))
+    return RagSearchResponse(query=request.query, evidence=retriever.retrieve(request.query, request.top_k, request.filters))

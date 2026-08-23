@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     llm_provider: str = "mock"
     geography_mcp_url: str = "http://127.0.0.1:8001"
     backend_cors_origins: str = "http://127.0.0.1:5173"
+    rag_chroma_path: str = "data/chroma"
 
 
 settings = Settings()
