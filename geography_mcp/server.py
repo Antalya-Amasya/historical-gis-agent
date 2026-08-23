@@ -1,24 +1,21 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-
-from backend.app.models import HistoricalPlace
-from geography_mcp.tools import resolve_demo_place
-
-app = FastAPI(title="Historical Military GIS Geography MCP", version="0.1.0")
-
-class PlaceRequest(BaseModel):
-    name: str
-    period: str | None = None
-
-
+from geography_mcp.service import GeographyService, GeoPoint
+app=FastAPI(title="Historical Military GIS Geography MCP",version="0.3.0")
+service=GeographyService()
+class PlaceRequest(BaseModel): name:str; period:str|None=None
+class DistanceRequest(BaseModel): point_a:GeoPoint; point_b:GeoPoint
+class ProfileRequest(BaseModel): points:list[GeoPoint]
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "service": "geography-mcp-demo"}
-
-
-@app.post("/tools/resolve_ancient_place", response_model=HistoricalPlace)
-def resolve_ancient_place(request: PlaceRequest) -> HistoricalPlace:
-    place = resolve_demo_place(request.name)
-    if place is None:
-        raise HTTPException(status_code=404, detail="Place is not in the Phase 0 demo repository")
-    return place
+def health(): return {"status":"ok","service":"geography-mcp"}
+@app.post("/tools/resolve_ancient_place")
+def resolve(request:PlaceRequest):
+ p=service.resolve_ancient_place(request.name,request.period)
+ if not p: raise HTTPException(404,"Unknown ancient place")
+ return p
+@app.post("/tools/calculate_distance")
+def distance(request:DistanceRequest): return service.calculate_distance(request.point_a,request.point_b)
+@app.post("/tools/get_elevation")
+def elevation(point:GeoPoint): return service.get_elevation(point)
+@app.post("/tools/get_elevation_profile")
+def profile(request:ProfileRequest): return service.get_elevation_profile(request.points)

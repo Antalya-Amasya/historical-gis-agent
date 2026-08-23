@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     mock_agent: bool = True
     llm_provider: str = "mock"
     geography_mcp_url: str = "http://127.0.0.1:8001"
+    geoapify_api_key: str | None = None
+    opentopography_api_key: str | None = None
+    geography_provider_mode: str = "mock"
     backend_cors_origins: str = "http://127.0.0.1:5173"
     rag_chroma_path: str = "data/chroma"
     rag_embedding_provider: str = "semantic"
