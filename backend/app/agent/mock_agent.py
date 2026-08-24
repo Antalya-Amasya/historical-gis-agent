@@ -15,7 +15,12 @@ class MockAgent:
         if any(token in message.lower() for token in ("hannibal", "汉尼拔", "alps", "阿尔卑斯")):
             evidence = self.evidence_retriever.retrieve(message, top_k=10)
             state.historical_evidence = evidence
-            route = self.route_extractor.extract_hannibal_218(evidence)
+            route = self.route_extractor.build(
+                evidence,
+                event_id="hannibal-alps-218-bc",
+                name="Hannibal, 218 BCE: evidence-supported stages",
+                period="218 BCE",
+            )
             if route:
                 places = [point.historical_place for point in route.ordered_points]
                 state.historical_route = route

@@ -24,6 +24,7 @@ class HistoricalPlace(BaseModel):
     source_url: str | None = None
     confidence: float = Field(ge=0, le=1)
     uncertain: bool = False
+    coordinate_role: str = "exact_site"
     alternatives: list["HistoricalPlace"] = Field(default_factory=list)
 
 
@@ -63,6 +64,17 @@ class GeoJsonLineString(BaseModel):
     coordinates: list[tuple[float, float]] = Field(default_factory=list)
 
 
+class ExtractedHistoricalPlaceMention(BaseModel):
+    raw_name: str
+    normalized_name: str
+    sequence_hint: int
+    date_or_period: str | None = None
+    evidence_refs: list[str] = Field(default_factory=list)
+    context_excerpt: str
+    confidence: float = Field(ge=0, le=1)
+    unresolved_reason: str | None = None
+
+
 class HistoricalRoutePoint(BaseModel):
     sequence: int = Field(ge=1)
     historical_place: HistoricalPlace
@@ -70,6 +82,8 @@ class HistoricalRoutePoint(BaseModel):
     date_or_period: str | None = None
     evidence_refs: list[str] = Field(default_factory=list)
     confidence: float = Field(ge=0, le=1)
+    coordinate_role: str = "exact_site"
+    source_support: list[str] = Field(default_factory=list)
 
 
 class HistoricalRoute(BaseModel):
@@ -83,6 +97,8 @@ class HistoricalRoute(BaseModel):
     assumptions: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     historical_confidence: float = Field(ge=0, le=1)
+    unresolved_mentions: list[ExtractedHistoricalPlaceMention] = Field(default_factory=list)
+    source_disagreements: list[str] = Field(default_factory=list)
 
 
 class RouteMetrics(BaseModel):

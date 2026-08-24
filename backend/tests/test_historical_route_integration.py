@@ -13,7 +13,7 @@ class FakeMcpClient:
         assert tool == "resolve_ancient_place"
         values = {"Carthago Nova": (37.6, -0.98, "265849"), "Rhodanus": (43.33, 4.85, "148168"), "Padus": (44.95, 12.43, "393469")}
         latitude, longitude, source_id = values[arguments["name"]]
-        return {"found": True, "id": f"pleiades-{source_id}", "canonical_name": arguments["name"], "latitude": latitude, "longitude": longitude, "source": "Pleiades: A Gazetteer of Past Places", "source_id": source_id, "source_url": f"https://pleiades.stoa.org/places/{source_id}", "confidence": 0.9, "uncertain": False}
+        return {"found": True, "id": f"pleiades-{source_id}", "canonical_name": arguments["name"], "latitude": latitude, "longitude": longitude, "source": "Pleiades: A Gazetteer of Past Places", "source_id": source_id, "source_url": f"https://pleiades.stoa.org/places/{source_id}", "confidence": 0.9, "uncertain": False, "coordinate_role": "exact_site"}
 
 
 def test_mock_agent_uses_retrieved_evidence_then_mcp_to_build_route() -> None:
