@@ -58,6 +58,33 @@ class HistoricalEvent(BaseModel):
     uncertainty_note: str | None = None
 
 
+class GeoJsonLineString(BaseModel):
+    type: str = "LineString"
+    coordinates: list[tuple[float, float]] = Field(default_factory=list)
+
+
+class HistoricalRoutePoint(BaseModel):
+    sequence: int = Field(ge=1)
+    historical_place: HistoricalPlace
+    event_summary: str
+    date_or_period: str | None = None
+    evidence_refs: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0, le=1)
+
+
+class HistoricalRoute(BaseModel):
+    id: str
+    event_id: str
+    name: str
+    period: str
+    ordered_points: list[HistoricalRoutePoint] = Field(default_factory=list)
+    geometry: GeoJsonLineString
+    evidence_refs: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    historical_confidence: float = Field(ge=0, le=1)
+
+
 class RouteMetrics(BaseModel):
     distance_km: float | None = Field(default=None, ge=0)
     elevation_gain_m: float | None = Field(default=None, ge=0)
@@ -93,6 +120,7 @@ class AgentState(BaseModel):
     session_id: str
     messages: list[dict[str, str]] = Field(default_factory=list)
     current_event: HistoricalEvent | None = None
+    historical_route: HistoricalRoute | None = None
     historical_period: str | None = None
     selected_route: str | None = None
     candidate_routes: list[RouteCandidate] = Field(default_factory=list)

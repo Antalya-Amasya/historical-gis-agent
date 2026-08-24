@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,24 +7,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.agent.mock_agent import MockAgent
 from backend.app.core.config import settings
 from backend.app.memory.store import InMemorySessionStore
+from backend.app.models import AgentState, ChatRequest, ChatResponse, RagSearchRequest, RagSearchResponse
+from backend.app.rag.embeddings.provider import SentenceTransformerEmbeddingProvider
 from backend.app.rag.retriever import ChromaHistoricalRetriever
 from backend.app.rag.store import ChromaEvidenceStore
-from backend.app.rag.embeddings.provider import SentenceTransformerEmbeddingProvider
-from pathlib import Path
-from backend.app.models import AgentState, ChatRequest, ChatResponse, RagSearchRequest, RagSearchResponse
+from backend.app.routes.evidence import SemanticRouteEvidenceRetriever
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Historical Military GIS Agent", version="0.1.0")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[origin.strip() for origin in settings.backend_cors_origins.split(",")],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI(title="Historical Military GIS Agent", version="0.4.0")
+app.add_middleware(CORSMiddleware, allow_origins=[origin.strip() for origin in settings.backend_cors_origins.split(",")], allow_methods=["*"], allow_headers=["*"])
 store = InMemorySessionStore()
-agent = MockAgent()
+agent = MockAgent(evidence_retriever=SemanticRouteEvidenceRetriever())
 
 
 @app.get("/health")
@@ -38,7 +34,6 @@ def chat(request: ChatRequest) -> ChatResponse:
     reply, state = agent.respond(request.message, state)
     store.save(state)
     return ChatResponse(session_id=request.session_id, reply=reply, state=state)
-
 
 
 @app.post("/api/v1/rag/search", response_model=RagSearchResponse)

@@ -10,7 +10,7 @@ def fixed_window(text: str, metadata: dict[str, object], size: int = 4000, overl
     for start in range(0, len(text), step):
         part = text[start : start + size].strip()
         if part:
-            chunk_id = hashlib.sha256(f"{metadata["source_file"]}:{start}:{part}".encode()).hexdigest()[:24]
+            chunk_id = hashlib.sha256(f"{metadata['source_file']}:{start}:{part}".encode()).hexdigest()[:24]
             chunks.append(TextChunk(chunk_id, part, metadata | {"chunk_strategy": strategy}))
     return chunks
 
