@@ -1,26 +1,25 @@
+import pytest
 from fastapi.testclient import TestClient
+import backend.app.main as main
+from backend.app.agent.agent import HistoricalGisAgent
+from backend.app.agent.llm.fake import RuleBasedFakeLLMProvider
+from backend.app.rag.retriever import EmptyHistoricalRetriever
 
-from backend.app.main import app
+@pytest.fixture(autouse=True)
+def fake_agent(monkeypatch):
+    monkeypatch.setattr(main, "agent", HistoricalGisAgent(RuleBasedFakeLLMProvider(), EmptyHistoricalRetriever(), max_steps=4, max_tool_executions=10))
 
-
-def test_mock_agent_returns_auditable_historical_places_without_key() -> None:
-    response = TestClient(app).post("/api/v1/agent/chat", json={"session_id": "demo", "message": "Hannibal Alps"})
+def test_bounded_agent_api_returns_auditable_tool_state_without_key() -> None:
+    response = TestClient(main.app).post("/api/v1/agent/chat", json={"session_id": "demo", "message": "How did Polybius describe the Alpine crossing?"})
     assert response.status_code == 200
-    body = response.json()
-    event = body["state"]["current_event"]
-    assert event["id"] == "hannibal-alps-218-bc"
-    assert len(event["places"]) >= 2
-    for place in event["places"]:
-        assert place["source"] == "Pleiades: A Gazetteer of Past Places"
-        assert place["source_id"]
-        assert place["source_url"].startswith("https://pleiades.stoa.org/places/")
-        assert isinstance(place["latitude"], float)
-        assert isinstance(place["longitude"], float)
-    assert body["reply"]
-
+    state = response.json()["state"]
+    assert state["status"] == "completed"
+    assert state["tool_history"][0]["tool_name"] == "search_historical_evidence"
+    assert state["tool_history"][0]["success"]
+    assert state["historical_route"] is None
 
 def test_session_state_persists() -> None:
-    client = TestClient(app)
+    client = TestClient(main.app)
     client.post("/api/v1/agent/chat", json={"session_id": "memory", "message": "Hannibal Alps"})
     response = client.post("/api/v1/agent/chat", json={"session_id": "memory", "message": "continue"})
     assert len(response.json()["state"]["messages"]) == 4

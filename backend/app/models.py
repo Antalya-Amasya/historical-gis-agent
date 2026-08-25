@@ -132,6 +132,30 @@ class RouteCandidate(BaseModel):
     geographic_cost: float = Field(ge=0)
 
 
+class AgentToolCall(BaseModel):
+    id: str
+    name: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentModelResponse(BaseModel):
+    content: str | None = None
+    tool_calls: list[AgentToolCall] = Field(default_factory=list)
+    finish_reason: str = "stop"
+    usage: dict[str, int] = Field(default_factory=dict)
+    http_status: int | None = None
+
+
+class AgentToolHistoryEntry(BaseModel):
+    tool_name: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    success: bool
+    result_summary: str
+    duration_ms: int = Field(ge=0)
+    outcome: str = "success"
+    budget_source: str = "general"
+
+
 class AgentState(BaseModel):
     session_id: str
     messages: list[dict[str, str]] = Field(default_factory=list)
@@ -145,6 +169,38 @@ class AgentState(BaseModel):
     historical_evidence: list[Evidence] = Field(default_factory=list)
     tool_results: dict[str, Any] = Field(default_factory=dict)
     map_state: dict[str, Any] = Field(default_factory=dict)
+    user_query: str | None = None
+    intent: str | None = None
+    requested_output: str = "answer"
+    selected_model_tier: str | None = None
+    selected_model_id: str | None = None
+    model_policy: str | None = None
+    quality_mode: str | None = None
+    evidence_support_status: str | None = None
+    relevant_evidence_count: int = 0
+    total_evidence_count: int = 0
+    matched_subject_terms: list[str] = Field(default_factory=list)
+    missing_subject_terms: list[str] = Field(default_factory=list)
+    grounding_corrections: int = 0
+    detected_phrase_count: int = 0
+    detected_entity_count: int = 0
+    evidence_grounded_entity_count: int = 0
+    query_context_entity_count: int = 0
+    detected_work_titles: list[str] = Field(default_factory=list)
+    evidence_grounded_claim_count: int = 0
+    unverified_suggestion_count: int = 0
+    unverified_suggestion_terms: list[str] = Field(default_factory=list)
+    unsupported_fact_claim_count: int = 0
+    unsupported_fact_terms: list[str] = Field(default_factory=list)
+    ignored_non_entity_terms: list[str] = Field(default_factory=list)
+    final_grounding_status: str | None = None
+    resolved_places: list[HistoricalPlace] = Field(default_factory=list)
+    tool_history: list[AgentToolHistoryEntry] = Field(default_factory=list)
+    step_count: int = Field(default=0, ge=0)
+    status: str = "idle"
+    warnings: list[str] = Field(default_factory=list)
+    final_answer: str | None = None
+    tool_execution_stats: dict[str, int] = Field(default_factory=dict)
 
 
 class ChatRequest(BaseModel):

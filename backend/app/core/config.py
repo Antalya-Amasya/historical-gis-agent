@@ -4,8 +4,26 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    mock_agent: bool = True
-    llm_provider: str = "mock"
+    mock_agent: bool = True  # legacy fallback flag
+    agent_mode: str = "llm"
+    llm_provider: str = "fake"
+    agent_llm_provider: str = "fake"
+    deepseek_api_key: str | None = None
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str | None = None
+    deepseek_model_flash: str | None = None
+    deepseek_model_pro: str | None = None
+    agent_model_policy: str = "flash_first"
+    deepseek_connect_timeout_s: float = 10
+    deepseek_read_timeout_s: float = 30
+    llm_api_key: str | None = None
+    llm_model: str | None = None
+    agent_max_steps: int = 8
+    agent_max_tool_executions: int = 10
+    agent_max_rag_search_executions: int = 4
+    agent_max_completion_corrections: int = 1
+    agent_max_completion_tool_executions: int = 1
+    agent_max_grounding_corrections: int = 1
     geography_mcp_url: str = "http://127.0.0.1:8001"
     geoapify_api_key: str | None = None
     opentopography_api_key: str | None = None
