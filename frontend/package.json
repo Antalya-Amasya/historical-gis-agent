@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc -b && vite build"
+    "build": "tsc -b && vite build",
+    "test": "vitest run"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
+    "leaflet": "^1.9.4",
     "maplibre-gl": "^6.5.0",
     "react": "latest",
     "react-dom": "latest",
@@ -16,7 +18,9 @@
     "vite": "latest"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.22",
     "@types/react": "latest",
-    "@types/react-dom": "latest"
+    "@types/react-dom": "latest",
+    "vitest": "^4.1.11"
   }
 }

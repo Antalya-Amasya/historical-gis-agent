@@ -23,3 +23,28 @@ def test_session_state_persists() -> None:
     client.post("/api/v1/agent/chat", json={"session_id": "memory", "message": "Hannibal Alps"})
     response = client.post("/api/v1/agent/chat", json={"session_id": "memory", "message": "continue"})
     assert len(response.json()["state"]["messages"]) == 4
+
+
+def test_historical_route_presentation_endpoint_returns_geojson_and_panels() -> None:
+    response = TestClient(main.app).get("/api/v1/historical-routes/phase10-demo-route/presentation")
+    body = response.json()
+    assert response.status_code == 200
+    assert body["geojson"]["type"] == "FeatureCollection"
+    assert body["geojson"]["features"][0]["geometry"]["type"] == "LineString"
+    assert body["knowledge_panels"][0]["evidence_refs"] == ["polybius_iii"]
+    unresolved = next(feature for feature in body["geojson"]["features"] if feature["properties"].get("waypoint_id") == "unresolved")
+    assert unresolved["geometry"] is None
+
+
+def test_historical_route_presentation_missing_route_is_404() -> None:
+    response = TestClient(main.app).get("/api/v1/historical-routes/missing/presentation")
+    assert response.status_code == 404
+
+
+def test_historical_route_presentation_contract_error_is_422(monkeypatch) -> None:
+    def invalid(_route_id):
+        raise main.PresentationContractError("invalid")
+
+    monkeypatch.setattr(main.historical_route_presentation_service, "get_presentation", invalid)
+    response = TestClient(main.app).get("/api/v1/historical-routes/phase10-demo-route/presentation")
+    assert response.status_code == 422

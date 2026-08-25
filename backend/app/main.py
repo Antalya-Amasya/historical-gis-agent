@@ -16,6 +16,11 @@ from backend.app.rag.embeddings.provider import SentenceTransformerEmbeddingProv
 from backend.app.rag.retriever import ChromaHistoricalRetriever
 from backend.app.rag.store import ChromaEvidenceStore
 from backend.app.routes.evidence import SemanticRouteEvidenceRetriever
+from backend.app.candidate_routes.presentation import HistoricalRouteResponse
+from backend.app.historical_route_presentation_service import (
+    HistoricalRoutePresentationReadService, PresentationContractError, PresentationNotFoundError,
+)
+from fastapi import HTTPException
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -31,6 +36,7 @@ def build_agent():
     def provider_factory(model_id: str): return DeepSeekLLMProvider(settings.deepseek_api_key, settings.deepseek_base_url, model_id, timeout_s=settings.deepseek_read_timeout_s, connect_timeout_s=settings.deepseek_connect_timeout_s)
     return HistoricalGisAgent(None, SemanticRouteEvidenceRetriever(), model_router=router, provider_factory=provider_factory, **kwargs)
 agent = build_agent()
+historical_route_presentation_service = HistoricalRoutePresentationReadService()
 
 
 @app.get("/health")
@@ -45,6 +51,16 @@ def chat(request: ChatRequest) -> ChatResponse:
     reply, state = agent.respond(request.message, state)
     store.save(state)
     return ChatResponse(session_id=request.session_id, reply=reply, state=state)
+
+
+@app.get("/api/v1/historical-routes/{route_id}/presentation", response_model=HistoricalRouteResponse)
+def historical_route_presentation(route_id: str) -> HistoricalRouteResponse:
+    try:
+        return historical_route_presentation_service.get_presentation(route_id)
+    except PresentationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Historical route presentation not found") from exc
+    except PresentationContractError as exc:
+        raise HTTPException(status_code=422, detail="Historical route presentation contract is invalid") from exc
 
 
 @app.post("/api/v1/rag/search", response_model=RagSearchResponse)

@@ -1,0 +1,12 @@
+.phase10 { max-width: 1180px; margin: 2rem auto; padding: 0 1rem; color: #1d2a24; font-family: Inter, system-ui, sans-serif; }
+.phase10-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 1rem; }
+.phase10 section, .knowledge-panel { background: #fff; border: 1px solid #ddd4c4; border-radius: 10px; padding: 1rem; }
+.phase10-map { height: 540px; background: #e6edf0; border-radius: 6px; overflow: hidden; }
+.phase10-map .leaflet-container { background: #e6edf0; }
+.phase10-note { color: #52645a; font-size: .9rem; }
+.phase10-popup { max-width: 260px; font-size: .85rem; }
+.phase10-popup h3, .phase10-popup p { margin: .35rem 0; }
+.phase10-popup button { margin-top: .5rem; padding: .4rem .6rem; border: 0; border-radius: 4px; background: #375a43; color: #fff; cursor: pointer; }
+.knowledge-panel p { overflow-wrap: anywhere; }
+.knowledge-panel ul { padding-left: 1.2rem; }
+@media (max-width: 800px) { .phase10-layout { grid-template-columns: 1fr; } .phase10-map { height: 420px; } }
