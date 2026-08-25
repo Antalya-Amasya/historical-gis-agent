@@ -40,11 +40,11 @@ Open `http://127.0.0.1:5173/`. The root page is the sole presentation entry; leg
 
 ```text
 LLM / bounded Agent
-  → interprets a permitted request and selects a structured route intent
+  → interprets a permitted request; the reviewed campaign ontology selects a structured entity, route type, and route context
 RAG
   → returns primary-source Evidence only
 Registry
-  → holds manually reviewed campaign/event configuration and presentation metadata
+  → holds manually reviewed campaign/event configuration, ontology metadata, and presentation metadata
 Geography MCP
   → resolves audited geographic data; it is the coordinate boundary for HistoricalRoute extraction
 A* + terrain/cost model
@@ -70,6 +70,7 @@ The frontend never geocodes a waypoint, invents a location, builds a route, or g
 ```text
 User question
   → Agent intent detection
+  → Historical campaign ontology (reviewed entity, type, period, and parent context)
   → Historical Evidence retrieval
   → Evidence validation
   → Campaign registry / reviewed anchors

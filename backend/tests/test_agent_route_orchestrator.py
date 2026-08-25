@@ -49,7 +49,12 @@ def test_hannibal_route_request_returns_terrain_reconstruction_presentation_from
 
     assert state.status == "completed"
     assert state.route_intent is not None
-    assert state.route_intent.model_dump() == {"intent": "historical_route", "campaign_id": "hannibal_italy_campaign"}
+    assert state.route_intent.model_dump() == {
+        "intent": "historical_route",
+        "campaign_id": "hannibal_italy_campaign",
+        "entity": "hannibal_alpine_crossing",
+        "route_type": "movement",
+    }
     assert state.historical_route is not None
     presentation = state.historical_route_presentation
     assert presentation is not None
@@ -63,8 +68,8 @@ def test_hannibal_route_request_returns_terrain_reconstruction_presentation_from
     summary = presentation["presentation_summary"]
     assert summary["campaign_id"] == "second_punic_war"
     assert summary["campaign"] == "Second Punic War"
-    assert summary["operation_id"] == "hannibal_invasion_italy"
-    assert summary["operation"] == "Hannibal's invasion of Italy (218 BCE)"
+    assert summary["operation_id"] == "hannibal_alpine_crossing"
+    assert summary["operation"] == "Hannibal's Alpine Crossing"
     assert summary["route_method"] == "terrain_constrained_reconstruction"
     assert summary["evidence_basis"] == summary["sources"]
     assert summary["geographic_constraints"] and summary["uncertainty_notes"]
@@ -121,7 +126,7 @@ def test_hannibal_orchestrator_calls_terrain_reconstructor_and_emits_display_saf
     assert reconstructor.called is True
     assert state.historical_route_presentation is not None
     summary = state.historical_route_presentation["presentation_summary"]
-    assert summary["title"] == "Hannibal's invasion of Italy (218 BCE)"
+    assert summary["title"] == "Hannibal's invasion of Italy"
     assert "Internal-looking" not in summary["historical_context"]
     assert all("#" not in value for value in summary.values() if isinstance(value, str))
 

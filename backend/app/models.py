@@ -147,10 +147,12 @@ class AgentModelResponse(BaseModel):
 
 
 class HistoricalRouteIntent(BaseModel):
-    """Structured campaign selection; it contains no coordinates or inferred places."""
+    """Ontology-selected historical entity; it contains no coordinates or inferred places."""
 
     intent: str = "historical_route"
     campaign_id: str
+    entity: str | None = None
+    route_type: str | None = None
 
 
 class AgentToolHistoryEntry(BaseModel):

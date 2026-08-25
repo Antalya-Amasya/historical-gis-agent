@@ -1,0 +1,194 @@
+{
+  "schema_version": "1.0",
+  "entities": [
+    {
+      "id": "second_punic_war",
+      "title": "Second Punic War",
+      "type": "war",
+      "period": "218-201 BCE",
+      "parent_campaign": null,
+      "description": "Reviewed top-level conflict context for the Hannibal operations represented in this prototype.",
+      "source_references": [
+        "Polybius, Histories, Book III",
+        "Livy, Ab Urbe Condita, Book XXI"
+      ],
+      "aliases": [
+        "second punic war",
+        "第二次布匿战争"
+      ],
+      "match_terms": [
+        "punic",
+        "war"
+      ],
+      "route_type": "war_context",
+      "route_context_id": "hannibal_italy_campaign",
+      "evidence_available": true
+    },
+    {
+      "id": "hannibal_italy_campaign",
+      "title": "Hannibal's invasion of Italy",
+      "type": "campaign",
+      "period": "218 BCE",
+      "parent_campaign": "second_punic_war",
+      "description": "Reviewed campaign-level context for Hannibal's entry into Italy.",
+      "source_references": [
+        "Polybius, Histories, Book III",
+        "Livy, Ab Urbe Condita, Book XXI"
+      ],
+      "aliases": [
+        "hannibal italy campaign",
+        "hannibal italian campaign",
+        "汉尼拔意大利战役",
+        "汉尼拔进入意大利"
+      ],
+      "match_terms": [
+        "汉尼拔",
+        "意大利",
+        "战役"
+      ],
+      "route_type": "campaign_sequence",
+      "route_context_id": "hannibal_italy_campaign",
+      "evidence_available": true
+    },
+    {
+      "id": "hannibal_alpine_crossing",
+      "title": "Hannibal's Alpine Crossing",
+      "type": "movement",
+      "period": "218 BCE",
+      "parent_campaign": "hannibal_italy_campaign",
+      "description": "Reviewed movement operation from the western approach to Italy; the exact pass remains uncertain.",
+      "source_references": [
+        "Polybius, Histories, Book III",
+        "Livy, Ab Urbe Condita, Book XXI"
+      ],
+      "aliases": [
+        "hannibal alpine crossing",
+        "hannibal crossing alps",
+        "汉尼拔翻越阿尔卑斯",
+        "汉尼拔阿尔卑斯路线"
+      ],
+      "match_terms": [
+        "汉尼拔",
+        "阿尔卑斯"
+      ],
+      "route_type": "movement",
+      "route_context_id": "hannibal_italy_campaign",
+      "evidence_available": true
+    },
+    {
+      "id": "battle_of_ticinus",
+      "title": "Battle of Ticinus",
+      "type": "battle",
+      "period": "218 BCE",
+      "parent_campaign": "hannibal_italy_campaign",
+      "description": "Reviewed battle entity; route reconstruction is not supplied by this ontology alone.",
+      "source_references": [
+        "Polybius, Histories, Book III"
+      ],
+      "aliases": [
+        "battle of ticinus",
+        "提契努斯会战"
+      ],
+      "match_terms": [
+        "提契努斯",
+        "会战"
+      ],
+      "route_type": "battle",
+      "route_context_id": "hannibal_italy_campaign",
+      "evidence_available": true
+    },
+    {
+      "id": "battle_of_trebia",
+      "title": "Battle of Trebia",
+      "type": "battle",
+      "period": "218 BCE",
+      "parent_campaign": "hannibal_italy_campaign",
+      "description": "Reviewed battle entity; route reconstruction is not supplied by this ontology alone.",
+      "source_references": [
+        "Polybius, Histories, Book III"
+      ],
+      "aliases": [
+        "battle of trebia",
+        "特雷比亚会战"
+      ],
+      "match_terms": [
+        "特雷比亚",
+        "会战"
+      ],
+      "route_type": "battle",
+      "route_context_id": "hannibal_italy_campaign",
+      "evidence_available": true
+    },
+    {
+      "id": "lake_trasimene_campaign",
+      "title": "Lake Trasimene Campaign",
+      "type": "campaign",
+      "period": "217 BCE",
+      "parent_campaign": "second_punic_war",
+      "description": "Reviewed campaign entity.",
+      "source_references": [
+        "Polybius, Histories, Book III"
+      ],
+      "aliases": [
+        "lake trasimene",
+        "特拉西梅诺湖"
+      ],
+      "match_terms": [
+        "特拉西梅诺",
+        "湖"
+      ],
+      "route_type": "campaign_sequence",
+      "route_context_id": "lake_trasimene_campaign",
+      "evidence_available": true
+    },
+    {
+      "id": "battle_of_cannae",
+      "title": "Battle of Cannae",
+      "type": "battle",
+      "period": "216 BCE",
+      "parent_campaign": "second_punic_war",
+      "description": "Reviewed battle entity.",
+      "source_references": [
+        "Polybius, Histories, Book III",
+        "Livy, Ab Urbe Condita, Book XXII"
+      ],
+      "aliases": [
+        "battle of cannae",
+        "cannae",
+        "坎尼会战",
+        "坎尼战役"
+      ],
+      "match_terms": [
+        "坎尼",
+        "会战"
+      ],
+      "route_type": "battle",
+      "route_context_id": "battle_of_cannae",
+      "evidence_available": true
+    },
+    {
+      "id": "caesar_gallic_war",
+      "title": "Caesar's Gallic War",
+      "type": "war",
+      "period": "58-51 BCE",
+      "parent_campaign": null,
+      "description": "Reviewed corpus-level context for the Caesar presentation.",
+      "source_references": [
+        "Julius Caesar, De Bello Gallico, Books I-VII"
+      ],
+      "aliases": [
+        "caesar conquest of gaul",
+        "caesar gallic war",
+        "凯撒征服高卢",
+        "高卢战争"
+      ],
+      "match_terms": [
+        "凯撒",
+        "高卢"
+      ],
+      "route_type": "campaign_sequence",
+      "route_context_id": "caesar_gallic_war",
+      "evidence_available": true
+    }
+  ]
+}

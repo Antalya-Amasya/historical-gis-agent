@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable
-from typing import Iterable
 
 from backend.app.candidate_routes.evaluation import evaluate_route
 from backend.app.candidate_routes.historical_reconstruction import (
@@ -28,18 +27,13 @@ from backend.app.candidate_routes.waypoint_graph import (
     HistoricalWaypointSegment,
 )
 from backend.app.models import Evidence, HistoricalRoute, HistoricalRouteIntent
+from backend.app.rag.campaign_ontology import HistoricalCampaignOntology
 from backend.app.candidate_routes.grid import GridPoint
 from backend.app.candidate_routes.terrain import TerrainOverride
 
 
 class RouteOrchestrationError(ValueError):
     """The supplied evidence-grounded route cannot be reconstructed safely."""
-
-
-@dataclass(frozen=True)
-class CampaignIntentDefinition:
-    campaign_id: str
-    aliases: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -78,35 +72,28 @@ _HANNIBAL_CORRIDOR = HistoricalRouteCorridor(
 
 
 class HistoricalCampaignIntentRegistry:
-    """Data-only natural-language aliases; it supplies neither facts nor coordinates."""
+    """Ontology-backed deterministic matcher; it never supplies facts or coordinates."""
 
-    def __init__(self, definitions: Iterable[CampaignIntentDefinition] | None = None) -> None:
-        self.definitions = tuple(definitions or (
-            CampaignIntentDefinition(
-                campaign_id="hannibal_italy_campaign",
-                aliases=("hannibal", "汉尼拔", "alps", "阿尔卑斯"),
-            ),
-        ))
+    def __init__(self, ontology: HistoricalCampaignOntology | None = None) -> None:
+        self.ontology = ontology or HistoricalCampaignOntology.default()
 
     def resolve(self, message: str) -> HistoricalRouteIntent | None:
-        normalized = message.lower()
-        for definition in self.definitions:
-            if any(alias.lower() in normalized for alias in definition.aliases):
-                return HistoricalRouteIntent(intent="historical_route", campaign_id=definition.campaign_id)
-        return None
+        entity = self.ontology.match(message)
+        if entity is None:
+            return None
+        return HistoricalRouteIntent(
+            intent="historical_route",
+            campaign_id=entity.route_context_id,
+            entity=entity.id,
+            route_type=entity.route_type,
+        )
 
 
 class PresentationSummaryBuilder:
     """Builds display-safe text from reviewed route/evidence metadata, never model prose."""
 
-    _CAMPAIGNS = {
-        "hannibal_italy_campaign": {
-            "campaign_id": "second_punic_war",
-            "campaign": "Second Punic War",
-            "operation_id": "hannibal_invasion_italy",
-            "operation": "Hannibal's invasion of Italy (218 BCE)",
-        },
-    }
+    def __init__(self, ontology: HistoricalCampaignOntology | None = None) -> None:
+        self.ontology = ontology or HistoricalCampaignOntology.default()
 
     def build(
         self,
@@ -116,7 +103,11 @@ class PresentationSummaryBuilder:
         *,
         terrain_source: str,
     ) -> PresentationSummary:
-        labels = self._CAMPAIGNS.get(intent.campaign_id, {})
+        entity = self.ontology.get(intent.entity)
+        parent = self.ontology.get(entity.parent_campaign) if entity else None
+        root = parent
+        while root and root.parent_campaign:
+            root = self.ontology.get(root.parent_campaign)
         selected_refs = set(historical_route.evidence_refs)
         sources = list(dict.fromkeys(
             self._source_label(item)
@@ -124,11 +115,11 @@ class PresentationSummaryBuilder:
             if item.id in selected_refs
         ))
         return PresentationSummary(
-            title=labels.get("operation", historical_route.name),
-            campaign_id=labels.get("campaign_id"),
-            campaign=labels.get("campaign"),
-            operation_id=labels.get("operation_id"),
-            operation=labels.get("operation"),
+            title=entity.title if entity else historical_route.name,
+            campaign_id=root.id if root else intent.campaign_id,
+            campaign=root.title if root else None,
+            operation_id=entity.id if entity else None,
+            operation=entity.title if entity else historical_route.name,
             date=historical_route.period,
             historical_context="The campaign and its anchors come from reviewed historical evidence metadata.",
             route_method="terrain_constrained_reconstruction",
