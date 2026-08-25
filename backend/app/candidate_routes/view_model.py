@@ -23,6 +23,9 @@ class HistoricalWaypointViewModel(BaseModel):
     location_notes: str | None = None
     evidence_refs: list[str] = Field(default_factory=list)
     source_references: list[str] = Field(default_factory=list)
+    source_book: str | None = None
+    source_chapter: str | None = None
+    historical_confidence: float | None = Field(default=None, ge=0, le=1)
     external_references: list[HistoricalExternalReference] = Field(default_factory=list)
 
 
@@ -34,11 +37,19 @@ def to_waypoint_view_model(waypoint: "HistoricalWaypoint") -> HistoricalWaypoint
         name=waypoint.canonical_name,
         annotation_title=annotation.title if annotation else None,
         event_type=annotation.event_type if annotation else None,
-        period=annotation.period if annotation else None,
-        description=annotation.description if annotation else None,
+        period=annotation.period if annotation else waypoint.period,
+        description=annotation.description if annotation else waypoint.description,
         location_confidence=waypoint.location_confidence,
         location_notes=waypoint.location_notes,
         evidence_refs=list(waypoint.evidence_refs),
-        source_references=list(annotation.source_refs) if annotation else [],
+        # Internal evidence IDs remain in evidence_refs for programmatic provenance,
+        # but the user-facing source labels expose only reviewed human-readable locators.
+        source_references=[
+            *( [f"Book {waypoint.source_book}"] if waypoint.source_book else []),
+            *( [f"Chapter {waypoint.source_chapter}"] if waypoint.source_chapter else []),
+        ],
+        source_book=waypoint.source_book,
+        source_chapter=waypoint.source_chapter,
+        historical_confidence=waypoint.historical_confidence,
         external_references=list(annotation.external_references) if annotation else [],
     )

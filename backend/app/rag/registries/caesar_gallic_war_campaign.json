@@ -1,0 +1,8 @@
+{
+  "chain_id": "caesar_gallic_campaign",
+  "title": "Caesar conquest of Gaul",
+  "corpus_id": "caesar_gallic_war",
+  "period": "58-51 BCE",
+  "description": "Manually reviewed campaign-chain configuration; event order is explicitly supplied.",
+  "events": ["helvetii-migration", "battle-of-bibracte", "alesia-siege", "britain-expedition"]
+}

@@ -146,6 +146,13 @@ class AgentModelResponse(BaseModel):
     http_status: int | None = None
 
 
+class HistoricalRouteIntent(BaseModel):
+    """Structured campaign selection; it contains no coordinates or inferred places."""
+
+    intent: str = "historical_route"
+    campaign_id: str
+
+
 class AgentToolHistoryEntry(BaseModel):
     tool_name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
@@ -171,6 +178,8 @@ class AgentState(BaseModel):
     map_state: dict[str, Any] = Field(default_factory=dict)
     user_query: str | None = None
     intent: str | None = None
+    route_intent: HistoricalRouteIntent | None = None
+    historical_route_presentation: dict[str, Any] | None = None
     requested_output: str = "answer"
     selected_model_tier: str | None = None
     selected_model_id: str | None = None

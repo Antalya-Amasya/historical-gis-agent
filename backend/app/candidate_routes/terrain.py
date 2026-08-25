@@ -37,6 +37,14 @@ class TerrainProvider(ABC):
         raise NotImplementedError
 
 
+class RealTerrainProvider(TerrainProvider):
+    """Offline DEM contract. Dataset metadata describes terrain data, never historical facts."""
+
+    dataset_id: str
+    coordinate_reference: str = "EPSG:4326"
+    resolution_m: float | None = None
+
+
 class SyntheticTerrainProvider(TerrainProvider):
     """Offline deterministic terrain for tests and no-DEM environments."""
 
@@ -75,6 +83,12 @@ class SyntheticTerrainProvider(TerrainProvider):
                     cell_size_m=bounds.cell_size_m,
                 )
         return grid
+
+
+class OfflineMockTerrainProvider(SyntheticTerrainProvider):
+    """Named deterministic terrain provider retained for offline reconstruction tests."""
+
+    source = "offline_mock_terrain"
 
 
 @dataclass(frozen=True)
@@ -134,13 +148,18 @@ class HgtRaster:
         return float(elevation)
 
 
-class DEMTerrainProvider(TerrainProvider):
+class DEMTerrainProvider(RealTerrainProvider):
     """Optional, offline-only SRTM HGT terrain provider; it never downloads DEM data."""
 
     source = "offline_srtm_hgt"
+    coordinate_reference = "EPSG:4326"
 
-    def __init__(self, raster: HgtRaster):
+    def __init__(self, raster: HgtRaster, *, dataset_id: str = "local_srtm_hgt"):
         self.raster = raster
+        self.dataset_id = dataset_id
+        # One-degree HGT samples have an approximate latitude-dependent ground spacing;
+        # this simple declaration is metadata, not a resampling operation.
+        self.resolution_m = 111_320.0 / (raster.size - 1)
 
     @classmethod
     def from_hgt(cls, path: str | Path) -> "DEMTerrainProvider":

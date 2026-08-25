@@ -40,11 +40,54 @@ class HistoricalRoutePresentation(BaseModel):
     waypoints: list[HistoricalWaypointViewModel] = Field(default_factory=list)
     segments: list[HistoricalWaypointSegmentView] = Field(default_factory=list)
     geojson: dict[str, object]
+    route_geojson: dict[str, object] = Field(default_factory=dict)
     summary: str
     confidence: float = Field(ge=0, le=1)
     score: RouteScore
     explanations: HistoricalRouteExplanations
     location_warnings: list[str] = Field(default_factory=list)
+
+
+class HistoricalDataSource(BaseModel):
+    """Auditable metadata for a presentation input; never a claim of historical fact."""
+
+    source_type: str
+    dataset_name: str
+    version: str | None = None
+    license: str | None = None
+    confidence: float = Field(ge=0, le=1)
+
+
+class PresentationTimelineStep(BaseModel):
+    """Display-only ordering copied from reviewed HistoricalRoute points."""
+
+    order: int = Field(ge=1)
+    title: str
+    description: str | None = None
+    period: str | None = None
+    evidence_count: int = Field(ge=0)
+    confidence: float = Field(ge=0, le=1)
+
+
+class PresentationSummary(BaseModel):
+    """Structured, display-safe route text assembled only from reviewed presentation inputs."""
+
+    title: str
+    campaign_id: str | None = None
+    campaign: str | None = None
+    operation_id: str | None = None
+    operation: str | None = None
+    date: str | None = None
+    historical_context: str
+    route_method: str
+    evidence_basis: list[str] = Field(default_factory=list)
+    route_interpretation: str
+    route_stages: list[str] = Field(default_factory=list)
+    sources: list[str] = Field(default_factory=list)
+    geographic_constraints: list[str] = Field(default_factory=list)
+    uncertainty_notes: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    timeline: list[PresentationTimelineStep] = Field(default_factory=list)
 
 
 class HistoricalRouteResponse(BaseModel):
@@ -53,9 +96,11 @@ class HistoricalRouteResponse(BaseModel):
     route: HistoricalRoutePresentation
     waypoints: list[HistoricalWaypointViewModel] = Field(default_factory=list)
     geojson: dict[str, object]
+    route_geojson: dict[str, object] = Field(default_factory=dict)
     explanations: HistoricalRouteExplanations
     location_warnings: list[str] = Field(default_factory=list)
     knowledge_panels: list[HistoricalKnowledgePanel] = Field(default_factory=list)
+    presentation_summary: PresentationSummary | None = None
 
 
 class HistoricalRoutePresentationService:
@@ -82,7 +127,8 @@ class HistoricalRoutePresentationService:
             for segment in waypoint_graph.segments
         ]
         explanations = self._explanations(waypoint_graph, evaluation)
-        geojson = self._geojson(candidate_route, waypoints, evaluation.score)
+        route_geojson = self._route_geojson(candidate_route, evaluation.score)
+        geojson = self._geojson(route_geojson, waypoints)
         return HistoricalRoutePresentation(
             route_id=candidate_route.id,
             route_name=route_name,
@@ -90,6 +136,7 @@ class HistoricalRoutePresentationService:
             waypoints=waypoints,
             segments=segments,
             geojson=geojson,
+            route_geojson=route_geojson,
             summary=f"Route connects {len(waypoints)} supplied historical waypoint(s).",
             confidence=candidate_route.confidence,
             score=evaluation.score,
@@ -102,6 +149,7 @@ class HistoricalRoutePresentationService:
             route=presentation,
             waypoints=presentation.waypoints,
             geojson=presentation.geojson,
+            route_geojson=presentation.route_geojson,
             explanations=presentation.explanations,
         )
 
@@ -120,20 +168,24 @@ class HistoricalRoutePresentationService:
         )
 
     @staticmethod
-    def _geojson(
-        route: CandidateRoute,
-        waypoints: list[HistoricalWaypointViewModel],
-        score: RouteScore,
-    ) -> dict[str, object]:
-        route_feature = {
+    def _route_geojson(route: CandidateRoute, score: RouteScore) -> dict[str, object]:
+        return {
             "type": "Feature",
             "geometry": route.geometry.model_dump(mode="json"),
             "properties": {
                 "route_id": route.id,
+                "route_type": "schematic_historical_route",
                 "confidence": route.confidence,
                 "total_cost": score.total_cost,
+                "explanation": "Line connects historically attested locations and does not represent an exact marching path.",
             },
         }
+
+    @staticmethod
+    def _geojson(
+        route_feature: dict[str, object],
+        waypoints: list[HistoricalWaypointViewModel],
+    ) -> dict[str, object]:
         waypoint_features = [
             {
                 "type": "Feature",
@@ -189,7 +241,20 @@ class LocationAwarePresentationService(HistoricalRoutePresentationService):
         geojson = dict(base.geojson)
         geojson["features"] = [base.geojson["features"][0], *waypoint_features]
         warnings = [view.warning for view in coordinate_views if view.warning]
-        return base.model_copy(update={"geojson": geojson, "location_warnings": warnings})
+        coordinate_by_id = {view.waypoint_id: view for view in coordinate_views}
+        resolved_waypoints = [
+            waypoint.model_copy(update={
+                "location_confidence": coordinate_by_id[waypoint.id].location_confidence,
+                "location_notes": coordinate_by_id[waypoint.id].location_notes,
+            })
+            for waypoint in base.waypoints
+        ]
+        return base.model_copy(update={
+            "waypoints": resolved_waypoints,
+            "geojson": geojson,
+            "route_geojson": base.route_geojson,
+            "location_warnings": warnings,
+        })
 
     @staticmethod
     def _coordinate_view(waypoint, resolver: RouteCoordinateResolver, allow_disputed_locations: bool) -> CoordinateAwareWaypointView:

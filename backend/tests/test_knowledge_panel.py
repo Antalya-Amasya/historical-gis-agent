@@ -40,7 +40,8 @@ def test_annotation_builds_panel_preserving_evidence_sources_and_external_refere
     assert panel.waypoint_id == "siege" and panel.title == "Siege event"
     assert panel.event_type is HistoricalEventType.SIEGE
     assert panel.summary == "Explicit supplied summary"
-    assert panel.evidence_refs == ["e-siege"] and panel.source_references == ["e-siege"]
+    assert panel.evidence_refs == ["e-siege"]
+    assert panel.source_references == []  # internal evidence IDs are not user-facing source labels
     assert panel.external_references[0].id == "paper"
 
 

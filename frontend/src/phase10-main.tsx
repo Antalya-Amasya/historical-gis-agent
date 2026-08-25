@@ -10,6 +10,7 @@ import {
   markerFeatures,
   panelForFeature,
   routeFeature,
+  toLeafletLineCoordinates,
   waypointPopupMetadata,
 } from "./phase10-contract";
 
@@ -19,7 +20,7 @@ function popupElement(metadata: ReturnType<typeof waypointPopupMetadata>, onDeta
   const title = document.createElement("h3");
   title.textContent = metadata.name;
   element.append(title);
-  for (const [label, value] of [["Event type", metadata.eventType], ["Period", metadata.period], ["Description", metadata.description], ["Confidence", metadata.confidence], ["Evidence refs", String(metadata.evidenceCount)], ["Knowledge panel", metadata.knowledgePanelId]] as Array<[string, string | null]>) {
+  for (const [label, value] of [["Event type", metadata.eventType], ["Period", metadata.period], ["Description", metadata.description], ["Source book", metadata.sourceBook], ["Source chapter", metadata.sourceChapter], ["Confidence", metadata.confidence], ["Reviewed evidence", `${metadata.evidenceCount} record(s)`], ["External references", String(metadata.externalReferenceCount)]] as Array<[string, string | null]>) {
     const row = document.createElement("p");
     row.textContent = `${label}: ${value ?? "Not supplied"}`;
     element.append(row);
@@ -36,7 +37,7 @@ function popupElement(metadata: ReturnType<typeof waypointPopupMetadata>, onDeta
 
 function KnowledgePanel({ panel }: { panel: HistoricalKnowledgePanel | null }) {
   if (!panel) return <aside className="knowledge-panel"><h2>Knowledge panel</h2><p>Select a mapped waypoint and choose “View details”.</p></aside>;
-  return <aside className="knowledge-panel"><h2>{panel.title}</h2><p><strong>Summary:</strong> {panel.summary ?? "No supplied summary."}</p><p><strong>Evidence refs:</strong> {panel.evidence_refs.join(", ") || "None"}</p><p><strong>Source references:</strong> {panel.source_references.join(", ") || "None"}</p><h3>External references</h3>{panel.external_references.length ? <ul>{panel.external_references.map((reference) => <li key={reference.id}><a href={reference.url} target="_blank" rel="noreferrer">{reference.title}</a> <small>({reference.reference_type})</small></li>)}</ul> : <p>None supplied.</p>}</aside>;
+  return <aside className="knowledge-panel"><h2>{panel.title}</h2><p><strong>Summary:</strong> {panel.summary ?? "No supplied summary."}</p><p><strong>Reviewed evidence:</strong> {panel.evidence_refs.length} record(s)</p><p><strong>Source references:</strong> {panel.source_references.join(", ") || "Not supplied"}</p><h3>External references</h3>{panel.external_references.length ? <ul>{panel.external_references.map((reference) => <li key={reference.id}><a href={reference.url} target="_blank" rel="noreferrer">{reference.title}</a> <small>({reference.reference_type})</small></li>)}</ul> : <p>None supplied.</p>}</aside>;
 }
 
 function HistoricalRouteMap({ payload, onSelectPanel }: { payload: HistoricalRoutePresentationPayload; onSelectPanel: (panel: HistoricalKnowledgePanel | null) => void }) {
@@ -56,8 +57,9 @@ function HistoricalRouteMap({ payload, onSelectPanel }: { payload: HistoricalRou
     layer.current.clearLayers();
     const bounds = L.latLngBounds([]);
     const line = routeFeature(payload);
-    if (line?.geometry?.type === "LineString") {
-      const lineLayer = L.geoJSON(line as GeoJSON.Feature<GeoJSON.LineString>, { style: { color: "#2f6f9f", weight: 4, dashArray: "8 6" } });
+    const lineCoordinates = toLeafletLineCoordinates(line);
+    if (lineCoordinates.length >= 2) {
+      const lineLayer = L.polyline(lineCoordinates, { color: "#163d63", weight: 5, opacity: 0.9, dashArray: "10 7" });
       lineLayer.addTo(layer.current);
       bounds.extend(lineLayer.getBounds());
     }
@@ -81,7 +83,7 @@ function App() {
   const [selectedPanel, setSelectedPanel] = useState<HistoricalKnowledgePanel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const selectPanel = useCallback((panel: HistoricalKnowledgePanel | null) => setSelectedPanel(panel), []);
-  useEffect(() => { fetchHistoricalRoutePresentation("phase10-demo-route").then(setPayload).catch((cause: Error) => setError(cause.message)); }, []);
+  useEffect(() => { fetchHistoricalRoutePresentation("caesar-gallic-campaign").then(setPayload).catch((cause: Error) => setError(cause.message)); }, []);
   return <main className="phase10"><header><h1>Historical Route Presentation</h1><p>Leaflet consumes the read-only backend presentation API; no coordinates are inferred.</p></header>{error ? <p role="alert">{error}</p> : !payload ? <p>Loading historical route presentation…</p> : <div className="phase10-layout"><section><h2>{payload.route.route_name ?? payload.route.route_id}</h2><HistoricalRouteMap payload={payload} onSelectPanel={selectPanel} /><p className="phase10-note">Historical reconstruction / schematic connection. Waypoints without supplied Point geometry are deliberately not drawn.</p></section><KnowledgePanel panel={selectedPanel} /></div>}</main>;
 }
 

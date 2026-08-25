@@ -48,3 +48,15 @@ def test_historical_route_presentation_contract_error_is_422(monkeypatch) -> Non
     monkeypatch.setattr(main.historical_route_presentation_service, "get_presentation", invalid)
     response = TestClient(main.app).get("/api/v1/historical-routes/phase10-demo-route/presentation")
     assert response.status_code == 422
+
+
+def test_caesar_campaign_presentation_endpoint_is_read_only_and_evidence_backed() -> None:
+    response = TestClient(main.app).get("/api/v1/historical-routes/caesar-gallic-campaign/presentation")
+    body = response.json()
+    assert response.status_code == 200
+    assert body["route"]["route_id"] == "caesar-gallic-campaign-candidate"
+    assert body["geojson"]["features"][0]["geometry"]["type"] == "LineString"
+    assert len([feature for feature in body["geojson"]["features"] if feature["geometry"] and feature["geometry"]["type"] == "Point"]) == 4
+    alesia = next(waypoint for waypoint in body["waypoints"] if waypoint["id"] == "alesia-siege")
+    assert alesia["source_book"] == "7" and alesia["source_chapter"] == "LXVIII"
+    assert alesia["evidence_refs"]

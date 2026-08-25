@@ -5,6 +5,11 @@ from time import perf_counter
 from backend.app.models import AgentState, HistoricalEvent, HistoricalPlace
 from backend.app.rag.retriever import HistoricalRetriever
 from backend.app.routes.extractor import HistoricalRouteExtractor
+from backend.app.route_orchestrator import (
+    HistoricalCampaignIntentRegistry,
+    HistoricalRouteOrchestrator,
+    RouteOrchestrationError,
+)
 
 TOOL_SCHEMAS = [
  {"name":"search_historical_evidence","description":"Search the frozen semantic primary-source retriever. Use it before historical claims or routes. Returns Evidence only; it does not prove an unsupported event.","input_schema":{"type":"object","properties":{"query":{"type":"string"},"top_k":{"type":"integer","minimum":1,"maximum":20},"author":{"type":"string"},"book":{"type":"string"}},"required":["query"]}},
@@ -16,9 +21,15 @@ TOOL_SCHEMAS = [
 ]
 
 class AgentToolRegistry:
-    def __init__(self, retriever: HistoricalRetriever, geography_client):
+    def __init__(self, retriever: HistoricalRetriever, geography_client, *, route_orchestrator=None, campaign_registry=None):
         self.retriever, self.geography_client = retriever, geography_client
         self.route_extractor = HistoricalRouteExtractor(geography_client)
+        self.route_orchestrator = route_orchestrator or HistoricalRouteOrchestrator()
+        self.campaign_registry = campaign_registry or HistoricalCampaignIntentRegistry()
+
+    def resolve_route_intent(self, message: str):
+        return self.campaign_registry.resolve(message)
+
     @property
     def schemas(self): return TOOL_SCHEMAS
     def execute(self, name: str, arguments: dict, state: AgentState) -> tuple[dict, str]:
@@ -55,5 +66,14 @@ class AgentToolRegistry:
                 return {"route": None}, "build_historical_route route_points=0 (insufficient evidence or resolved anchors)"
             state.historical_route = route
             state.current_event = HistoricalEvent(id=arguments["event_id"], name=arguments["name"], period=arguments["period"], summary="Evidence-supported schematic reconstruction.", places=[p.historical_place for p in route.ordered_points], evidence=state.historical_evidence, uncertainty_note="Historical reconstruction only; not an exact march track.")
+            if state.route_intent is not None:
+                try:
+                    presentation = self.route_orchestrator.present(
+                        state.route_intent, route, state.historical_evidence,
+                    )
+                except RouteOrchestrationError as exc:
+                    return {"route": route.model_dump(mode="json"), "presentation": None}, f"build_historical_route route_points={len(route.ordered_points)} terrain_presentation_unavailable={type(exc).__name__}"
+                state.historical_route_presentation = presentation.model_dump(mode="json")
+                return {"route": route.model_dump(mode="json"), "presentation": state.historical_route_presentation}, f"build_historical_route route_points={len(route.ordered_points)} terrain_presentation=ready"
             return {"route": route.model_dump(mode="json")}, f"build_historical_route route_points={len(route.ordered_points)}"
         raise ValueError(f"Unknown agent tool: {name}")

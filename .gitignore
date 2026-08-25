@@ -30,6 +30,15 @@ frontend/vite.config.d.ts
 
 # Local source corpora, processed artifacts, and vector indexes
 data/
+!data/
+data/*
+!data/historical_sources/
+data/historical_sources/*
+!data/historical_sources/raw/
+data/historical_sources/raw/*
+!data/historical_sources/raw/caesar/
+data/historical_sources/raw/caesar/*
+!data/historical_sources/raw/caesar/corpus.json
 
 # General local logs
 *.log

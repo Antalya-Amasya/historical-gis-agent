@@ -1,0 +1,146 @@
+{
+  "coordinates": [
+    {
+      "event_id": "helvetii-migration",
+      "grid_point": [
+        0,
+        0
+      ],
+      "longitude": 6.15,
+      "latitude": 46.2,
+      "confidence": "APPROXIMATE",
+      "notes": "Explicitly configured representative display coordinate for this reviewed campaign event; it is not a reconstructed march location."
+    },
+    {
+      "event_id": "battle-of-bibracte",
+      "grid_point": [
+        1,
+        0
+      ],
+      "longitude": 4.04,
+      "latitude": 46.92,
+      "confidence": "APPROXIMATE",
+      "notes": "Explicitly configured representative display coordinate for this reviewed campaign event; it is not a reconstructed march location."
+    },
+    {
+      "event_id": "alesia-siege",
+      "grid_point": [
+        2,
+        0
+      ],
+      "longitude": 4.5,
+      "latitude": 47.54,
+      "confidence": "APPROXIMATE",
+      "notes": "Explicitly configured representative display coordinate for this reviewed campaign event; it is not a reconstructed march location."
+    },
+    {
+      "event_id": "britain-expedition",
+      "grid_point": [
+        3,
+        0
+      ],
+      "longitude": 1.4,
+      "latitude": 51.23,
+      "confidence": "APPROXIMATE",
+      "notes": "Explicitly configured representative display coordinate for this reviewed campaign event; it is not a reconstructed march location."
+    }
+  ],
+  "annotations": [
+    {
+      "id": "helvetii-migration",
+      "title": "Helvetii migration",
+      "event_type": "CAMPAIGN",
+      "period": "58 BCE",
+      "description": "Manually reviewed event annotation; see cited Caesar Book I evidence.",
+      "source_refs": [
+        "23b1a1b75ed803100cd6d261"
+      ],
+      "external_references": [
+        {
+          "id": "wikipedia",
+          "reference_type": "WIKIPEDIA",
+          "title": "Helvetii",
+          "url": "https://en.wikipedia.org/wiki/Helvetii"
+        },
+        {
+          "id": "modern-map",
+          "reference_type": "GOOGLE_MAPS",
+          "title": "Location map",
+          "url": "https://www.google.com/maps?q=46.20,6.15"
+        }
+      ]
+    },
+    {
+      "id": "battle-of-bibracte",
+      "title": "Battle of Bibracte",
+      "event_type": "BATTLE",
+      "period": "58 BCE",
+      "description": "Manually reviewed event annotation; see cited Caesar Book I evidence.",
+      "source_refs": [
+        "1831d3a632ddf861fc61b52a"
+      ],
+      "external_references": [
+        {
+          "id": "wikipedia",
+          "reference_type": "WIKIPEDIA",
+          "title": "Bibracte",
+          "url": "https://en.wikipedia.org/wiki/Bibracte"
+        },
+        {
+          "id": "modern-map",
+          "reference_type": "GOOGLE_MAPS",
+          "title": "Location map",
+          "url": "https://www.google.com/maps?q=46.92,4.04"
+        }
+      ]
+    },
+    {
+      "id": "alesia-siege",
+      "title": "Siege of Alesia",
+      "event_type": "SIEGE",
+      "period": "52 BCE",
+      "description": "Manually reviewed event annotation; see cited Caesar Book VII evidence.",
+      "source_refs": [
+        "57e655906518d79285ba973f"
+      ],
+      "external_references": [
+        {
+          "id": "wikipedia",
+          "reference_type": "WIKIPEDIA",
+          "title": "Battle of Alesia",
+          "url": "https://en.wikipedia.org/wiki/Battle_of_Alesia"
+        },
+        {
+          "id": "modern-map",
+          "reference_type": "GOOGLE_MAPS",
+          "title": "Location map",
+          "url": "https://www.google.com/maps?q=47.54,4.50"
+        }
+      ]
+    },
+    {
+      "id": "britain-expedition",
+      "title": "Britain expedition",
+      "event_type": "CAMPAIGN",
+      "period": "55 BCE",
+      "description": "Manually reviewed event annotation; see cited Caesar Book IV evidence.",
+      "source_refs": [
+        "beffb13021ee717f85f81557"
+      ],
+      "external_references": [
+        {
+          "id": "wikipedia",
+          "reference_type": "WIKIPEDIA",
+          "title": "Caesar's invasions of Britain",
+          "url": "https://en.wikipedia.org/wiki/Caesar%27s_invasions_of_Britain"
+        },
+        {
+          "id": "modern-map",
+          "reference_type": "GOOGLE_MAPS",
+          "title": "Location map",
+          "url": "https://www.google.com/maps?q=51.23,1.40"
+        }
+      ]
+    }
+  ]
+}

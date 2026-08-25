@@ -1,0 +1,229 @@
+{
+  "corpus_id": "caesar_gallic_war",
+  "top_k": 5,
+  "cases": [
+    {
+      "query": "凯撒在高卢战争第一年如何阻止赫尔维蒂人迁移？",
+      "expected_books": [
+        "1"
+      ],
+      "retrieved": [
+        {
+          "id": "4385de25d4258fb0c3071653",
+          "corpus_id": "caesar_gallic_war",
+          "book": "1",
+          "chapter": "XII",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        },
+        {
+          "id": "025475d0ade6a9b898dd9710",
+          "corpus_id": "caesar_gallic_war",
+          "book": "7",
+          "chapter": "8",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        },
+        {
+          "id": "c585d86e5345ca84832fcfe3",
+          "corpus_id": "caesar_gallic_war",
+          "book": "1",
+          "chapter": "XIV",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        },
+        {
+          "id": "f118a1f9556a13b62b871057",
+          "corpus_id": "caesar_gallic_war",
+          "book": "1",
+          "chapter": "2",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        },
+        {
+          "id": "4dafb0b144ea191a054a0248",
+          "corpus_id": "caesar_gallic_war",
+          "book": "7",
+          "chapter": "LXV",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        }
+      ],
+      "hit": true
+    },
+    {
+      "query": "阿莱西亚战役发生在哪里？",
+      "expected_books": [
+        "7"
+      ],
+      "retrieved": [
+        {
+          "id": "57e655906518d79285ba973f",
+          "corpus_id": "caesar_gallic_war",
+          "book": "7",
+          "chapter": "LXVIII",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        },
+        {
+          "id": "70815a9b590282aa121ed0d9",
+          "corpus_id": "caesar_gallic_war",
+          "book": "7",
+          "chapter": "LXXIX",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        },
+        {
+          "id": "619346b8df705828939d4c24",
+          "corpus_id": "caesar_gallic_war",
+          "book": "3",
+          "chapter": "7",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        },
+        {
+          "id": "34e85d76104db3485a8789d8",
+          "corpus_id": "caesar_gallic_war",
+          "book": "7",
+          "chapter": "LVIII",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        },
+        {
+          "id": "8d3a98f7b08232b6a00f9467",
+          "corpus_id": "caesar_gallic_war",
+          "book": "3",
+          "chapter": "6",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        }
+      ],
+      "hit": true
+    },
+    {
+      "query": "凯撒如何描述高卢地区的划分？",
+      "expected_books": [
+        "1"
+      ],
+      "retrieved": [
+        {
+          "id": "4385de25d4258fb0c3071653",
+          "corpus_id": "caesar_gallic_war",
+          "book": "1",
+          "chapter": "XII",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        },
+        {
+          "id": "f118a1f9556a13b62b871057",
+          "corpus_id": "caesar_gallic_war",
+          "book": "1",
+          "chapter": "2",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        },
+        {
+          "id": "025475d0ade6a9b898dd9710",
+          "corpus_id": "caesar_gallic_war",
+          "book": "7",
+          "chapter": "8",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        },
+        {
+          "id": "0e8e4c58ba67f462c02944e9",
+          "corpus_id": "caesar_gallic_war",
+          "book": "6",
+          "chapter": "XLIII",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        },
+        {
+          "id": "4f5097bb244b9c9e80d2486f",
+          "corpus_id": "caesar_gallic_war",
+          "book": "3",
+          "chapter": "XII",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        }
+      ],
+      "hit": true
+    },
+    {
+      "query": "凯撒在不列颠进行了哪些军事行动？",
+      "expected_books": [
+        "4",
+        "5"
+      ],
+      "retrieved": [
+        {
+          "id": "4dafb0b144ea191a054a0248",
+          "corpus_id": "caesar_gallic_war",
+          "book": "7",
+          "chapter": "LXV",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        },
+        {
+          "id": "51d5c88681adb84481069ede",
+          "corpus_id": "caesar_gallic_war",
+          "book": "7",
+          "chapter": "LVI",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        },
+        {
+          "id": "d15f62380fc70ce37606a6b0",
+          "corpus_id": "caesar_gallic_war",
+          "book": "7",
+          "chapter": "LXX",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        },
+        {
+          "id": "d6ead4df16fb352f74c5bbfb",
+          "corpus_id": "caesar_gallic_war",
+          "book": "7",
+          "chapter": "XLIX",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        },
+        {
+          "id": "cc87a3546613eb999b71eed7",
+          "corpus_id": "caesar_gallic_war",
+          "book": "5",
+          "chapter": "XI",
+          "author": "Julius Caesar",
+          "work": "De Bello Gallico"
+        }
+      ],
+      "hit": true
+    }
+  ],
+  "collection": {
+    "name": "caesar_de_bello_gallico_semantic",
+    "count": 349,
+    "metadata": {
+      "corpus_id": "caesar_gallic_war",
+      "chunk_strategy": "structure_aware",
+      "embedding_model": "intfloat/multilingual-e5-small",
+      "embedding_provider": "sentence_transformers",
+      "source_fingerprint": "4840578daed0627bffcaad09feedd6322e22f41f3e7465040854f7f88ef97e77",
+      "embedding_dimension": 384,
+      "provenance": "manifest_declared_epub"
+    },
+    "build_seconds": 19.279
+  },
+  "ingestion": {
+    "chunks_created": 349,
+    "books": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7"
+    ]
+  }
+}

@@ -40,7 +40,14 @@ from .waypoint_graph import (
     HistoricalWaypointEvidenceError, HistoricalWaypointGraph, HistoricalWaypointRole,
     HistoricalWaypointSegment, WaypointBuilder, WaypointGraphPlanningAdapter,
 )
-from .terrain import DEMTerrainProvider, HgtRaster, SyntheticTerrainProvider, TerrainDataUnavailableError, TerrainProvider, UnsupportedDemError
+from .terrain import (
+    DEMTerrainProvider, HgtRaster, OfflineMockTerrainProvider, RealTerrainProvider,
+    SyntheticTerrainProvider, TerrainDataUnavailableError, TerrainProvider, UnsupportedDemError,
+)
+from .historical_reconstruction import (
+    HistoricalRouteReconstructor, OfflineMockTerrainGraphProvider, RealTerrainGraphProvider,
+    ReconstructedHistoricalRoute, ReviewedHistoricalWaypoint, TerrainGraph,
+)
 
 __all__ = [
     "HistoricalCorpus", "ArmyProfile", "CandidateRoute", "CandidateRouteAnchor", "CandidateRouteConstraints", "CandidateRouteEngine",
@@ -58,8 +65,11 @@ __all__ = [
     "GeographicCandidateRouteService", "GeographicGridSpec", "GridTooLargeError",
     "LocalProjection", "NoPathError", "PointOutsideGridError", "RouteCostBreakdown",
     "RouteMetrics", "RouteScore", "SyntheticGeographicTerrainProvider", "TerrainGrid",
-    "DEMTerrainProvider", "HgtRaster", "SyntheticTerrainProvider", "TerrainDataUnavailableError",
-    "TerrainProvider", "UnsupportedDemError", "HistoricalEventChain", "HistoricalEventStep",
+    "DEMTerrainProvider", "HgtRaster", "OfflineMockTerrainProvider", "RealTerrainProvider",
+    "SyntheticTerrainProvider", "TerrainDataUnavailableError", "TerrainProvider", "UnsupportedDemError",
+    "HistoricalRouteReconstructor", "OfflineMockTerrainGraphProvider", "RealTerrainGraphProvider",
+    "ReconstructedHistoricalRoute", "ReviewedHistoricalWaypoint", "TerrainGraph",
+    "HistoricalEventChain", "HistoricalEventStep",
     "HistoricalWaypoint", "HistoricalWaypointBuilder", "HistoricalWaypointEvidenceError",
     "HistoricalWaypointGraph", "HistoricalWaypointRole", "HistoricalWaypointSegment", "WaypointBuilder",
     "WaypointGraphPlanningAdapter", "LocationConfidence", "ResolvedCoordinate",

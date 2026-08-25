@@ -1,0 +1,8 @@
+{
+  "events": [
+    {"event_id": "helvetii-migration", "title": "Helvetii migration", "corpus_id": "caesar_gallic_war", "period": "58 BCE", "description": "Manually reviewed event record supported by the cited Book I chunk.", "involved_places": ["Helvetii"], "evidence_refs": ["23b1a1b75ed803100cd6d261"], "source_book": "1", "source_chapter": "1", "confidence": 0.8},
+    {"event_id": "battle-of-bibracte", "title": "Battle of Bibracte", "corpus_id": "caesar_gallic_war", "period": "58 BCE", "description": "Manually reviewed event record supported by the cited Book I chunk.", "involved_places": ["Bibracte"], "evidence_refs": ["1831d3a632ddf861fc61b52a"], "source_book": "1", "source_chapter": "XXIII", "confidence": 0.8},
+    {"event_id": "alesia-siege", "title": "Siege of Alesia", "corpus_id": "caesar_gallic_war", "period": "52 BCE", "description": "Manually reviewed event record supported by the cited Book VII chunk.", "involved_places": ["Alesia"], "evidence_refs": ["57e655906518d79285ba973f"], "source_book": "7", "source_chapter": "LXVIII", "confidence": 0.85},
+    {"event_id": "britain-expedition", "title": "Britain expedition", "corpus_id": "caesar_gallic_war", "period": "55 BCE", "description": "Manually reviewed event record supported by the cited Book IV chunk.", "involved_places": ["Britain"], "evidence_refs": ["beffb13021ee717f85f81557"], "source_book": "4", "source_chapter": "20", "confidence": 0.75}
+  ]
+}

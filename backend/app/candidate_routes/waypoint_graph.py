@@ -51,6 +51,13 @@ class HistoricalWaypoint(BaseModel):
     location_confidence: LocationConfidence = LocationConfidence.UNKNOWN
     location_notes: str | None = None
     annotation: HistoricalAnnotation | None = None
+    # Campaign adapters copy these review-supplied fields verbatim. They are presentation provenance, never routing inputs.
+    involved_places: list[str] = Field(default_factory=list)
+    period: str | None = None
+    description: str | None = None
+    source_book: str | None = None
+    source_chapter: str | None = None
+    historical_confidence: float | None = Field(default=None, ge=0, le=1)
 
 
 class HistoricalWaypointSegment(BaseModel):

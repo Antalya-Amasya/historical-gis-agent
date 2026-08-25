@@ -97,7 +97,12 @@ class BoundedAgentLoop:
         state.user_query, state.status, state.final_answer = user_message, "running", None
         state.grounding_corrections, state.detected_phrase_count, state.detected_entity_count, state.evidence_grounded_entity_count, state.query_context_entity_count, state.detected_work_titles, state.evidence_grounded_claim_count, state.unverified_suggestion_count, state.unverified_suggestion_terms, state.unsupported_fact_claim_count, state.unsupported_fact_terms, state.ignored_non_entity_terms, state.final_grounding_status = 0, 0, 0, 0, 0, [], 0, 0, [], 0, [], [], None
         state.requested_output = infer_requested_output(user_message)
-        state.intent = state.requested_output
+        state.route_intent = (
+            self.tools.resolve_route_intent(user_message)
+            if state.requested_output == "historical_route" else None
+        )
+        state.historical_route_presentation = None
+        state.intent = state.route_intent.intent if state.route_intent else state.requested_output
         state.messages.append({"role": "user", "content": user_message})
         state.tool_execution_stats = {
             "llm_api_calls": 0, "tool_requests": 0, "actual_tool_executions": 0,

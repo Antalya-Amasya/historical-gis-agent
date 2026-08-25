@@ -1,156 +1,165 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import * as maplibregl from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
-import "./styles.css";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import "./phase17.css";
+import { DEMO_CAMPAIGNS, DEMO_EVALUATION, type DemoCampaign } from "./demo-fixtures";
+import {
+  type HistoricalKnowledgePanel,
+  type HistoricalRoutePresentationPayload,
+  fetchAgentHistoricalRoutePresentation,
+  fetchHistoricalRoutePresentation,
+  markerFeatures,
+  uncertaintyCorridorFeatures,
+  routeDirectionArrows,
+  timelineWaypoint,
+  visibleMapLayers,
+  panelForFeature,
+  routeFeature,
+  toLeafletLineCoordinates,
+  waypointPopupMetadata,
+} from "./phase10-contract";
 
-const API = "http://127.0.0.1:8000/api/v1/agent/chat";
-const ISOLATION_BASEMAP = import.meta.env.DEV && new URLSearchParams(window.location.search).get("basemap") === "diagnostic";
-const DIAGNOSTIC_STYLE: maplibregl.StyleSpecification = {
-  version: 8,
-  sources: { diagnostic_raster: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256, maxzoom: 19, attribution: "© OpenStreetMap contributors" } },
-  layers: [{ id: "diagnostic-background", type: "background", paint: { "background-color": "#d8f2ff" } }, { id: "diagnostic-raster", type: "raster", source: "diagnostic_raster" }],
-};
-// This browser-exposed tile key is intentionally injected from the ignored root .env at build/dev time.
-const GEOAPIFY_MAP_KEY = import.meta.env.VITE_GEOAPIFY_API_KEY;
-const GEOAPIFY_RASTER_STYLE: maplibregl.StyleSpecification = {
-  version: 8,
-  sources: {
-    geoapify_raster: {
-      type: "raster",
-      tiles: GEOAPIFY_MAP_KEY ? [`https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}.png?apiKey=${encodeURIComponent(GEOAPIFY_MAP_KEY)}`] : [],
-      tileSize: 256,
-      maxzoom: 20,
-      attribution: "© OpenStreetMap contributors, © Geoapify",
-    },
-  },
-  layers: [
-    { id: "background", type: "background", paint: { "background-color": "#d8f2ff" } },
-    { id: "geoapify-raster", type: "raster", source: "geoapify_raster" },
-  ],
-};
-const BASEMAP_STYLE = GEOAPIFY_MAP_KEY ? GEOAPIFY_RASTER_STYLE : DIAGNOSTIC_STYLE;
-const ROUTE_SOURCE = "historical-route";
-const ROUTE_LAYER = "historical-route-line";
-
-declare global {
-  interface Window { __historicalMap?: maplibregl.Map; }
+function sourceText(panel: HistoricalKnowledgePanel) {
+  return panel.source_references.length ? panel.source_references.join(" · ") : "Reviewed evidence metadata";
 }
 
-function safeMapDiagnostic(value: string | undefined) {
-  return value?.replace(/apiKey=[^&\s]+/gi, "apiKey=[redacted]");
-}
-
-function mapDebug(message: string, details?: Record<string, unknown>) {
-  if (import.meta.env.DEV) console.debug("[HistoricalMap]", message, details ?? {});
-}
-
-type HistoricalPlace = { id: string; canonical_name: string; modern_name?: string | null; latitude: number; longitude: number; period?: string | null; source: string; source_id?: string | null; source_url?: string | null; confidence: number; uncertain: boolean; coordinate_role?: string; };
-type Evidence = { id: string; author: string; work: string; locator: string; excerpt: string; source_file?: string | null; };
-type HistoricalEvent = { id: string; name: string; period: string; summary: string; places: HistoricalPlace[]; evidence: Evidence[]; uncertainty_note?: string | null; };
-type HistoricalRoutePoint = { sequence: number; historical_place: HistoricalPlace; event_summary: string; date_or_period?: string | null; evidence_refs: string[]; confidence: number; coordinate_role?: string; source_support?: string[]; };
-type HistoricalRoute = { id: string; name: string; period: string; ordered_points: HistoricalRoutePoint[]; geometry: { type: "LineString"; coordinates: [number, number][] }; evidence_refs: string[]; assumptions: string[]; limitations: string[]; historical_confidence: number; };
-type ChatResponse = { reply: string; state: { current_event?: HistoricalEvent | null; historical_route?: HistoricalRoute | null }; };
-
-function placePopup(place: HistoricalPlace, event: HistoricalEvent, routePoint?: HistoricalRoutePoint) {
+function popupElement(payload: HistoricalRoutePresentationPayload, feature: ReturnType<typeof markerFeatures>[number], onDetails: () => void) {
+  const metadata = waypointPopupMetadata(payload, feature);
+  const panel = panelForFeature(payload, feature);
   const element = document.createElement("section");
-  element.className = "place-popup";
-  const source = place.source_url ? `<a href="${place.source_url}" target="_blank" rel="noreferrer">${place.source}</a>` : place.source;
-  const evidence = routePoint?.evidence_refs.length ? `<p><strong>史料节点：</strong>${routePoint.evidence_refs.join(", ")}</p>` : "";
-  const coordinateRole = routePoint?.coordinate_role ?? place.coordinate_role;
-  const coordinateNote = coordinateRole && coordinateRole !== "exact_site" ? `<p><strong>坐标说明：</strong>${coordinateRole === "regional_centroid" ? "区域代表点，不代表具体山口或行军通道。" : "代表性参考点，不代表精确经过位置。"}</p>` : "";
-  element.innerHTML = `<h3>${place.canonical_name}</h3><p><strong>现代名称：</strong>${place.modern_name ?? "未提供"}</p><p><strong>时间/时期：</strong>${routePoint?.date_or_period ?? place.period ?? event.period}</p><p><strong>事件：</strong>${routePoint?.event_summary ?? event.summary}</p>${evidence}${coordinateNote}<p><strong>坐标来源：</strong>${source}${place.source_id ? `（${place.source_id}）` : ""}</p><p><strong>置信度：</strong>${Math.round((routePoint?.confidence ?? place.confidence) * 100)}%${place.uncertain ? "；代表点存在不确定性" : ""}</p>`;
+  element.className = "route-popup";
+  const rows: Array<[string, string | null]> = [
+    ["时间", metadata.period],
+    ["事件类型", metadata.eventType],
+    ["事件描述", metadata.description],
+    ["史料来源", panel ? sourceText(panel) : metadata.sourceBook ? `Book ${metadata.sourceBook}` : null],
+    ["证据记录", `${metadata.evidenceCount}`],
+    ["置信度", metadata.confidence],
+  ];
+  element.innerHTML = `<h3>${metadata.name}</h3>`;
+  for (const [label, value] of rows) {
+    if (!value) continue;
+    const row = document.createElement("p");
+    row.textContent = `${label}：${value}`;
+    element.append(row);
+  }
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = "查看资料";
+  button.addEventListener("click", onDetails);
+  element.append(button);
   return element;
 }
 
-function App() {
-  const [message, setMessage] = useState("根据史料展示汉尼拔公元前218年进入意大利前的行动路线。");
-  const [reply, setReply] = useState("等待提问。Mock Agent 无需 API Key。");
-  const [event, setEvent] = useState<HistoricalEvent | null>(null);
-  const [route, setRoute] = useState<HistoricalRoute | null>(null);
-  const [routeVisible, setRouteVisible] = useState(true);
-  const [mapReady, setMapReady] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const mapContainer = useRef<HTMLDivElement | null>(null);
-  const map = useRef<maplibregl.Map | null>(null);
-  const markers = useRef<maplibregl.Marker[]>([]);
+function HistoricalMap({ payload, showRoute, showEvidence, showCorridor, highlightedWaypointId, onSelectPanel, onSelectWaypoint }: { payload: HistoricalRoutePresentationPayload; showRoute: boolean; showEvidence: boolean; showCorridor: boolean; highlightedWaypointId: string | null; onSelectPanel: (panel: HistoricalKnowledgePanel | null) => void; onSelectWaypoint: (waypointId: string) => void }) {
+  const container = useRef<HTMLDivElement | null>(null);
+  const map = useRef<L.Map | null>(null);
+  const layer = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {
-    if (!mapContainer.current || map.current) return;
-    const instance = new maplibregl.Map({ container: mapContainer.current, style: ISOLATION_BASEMAP ? DIAGNOSTIC_STYLE : BASEMAP_STYLE, center: [5, 41], zoom: 3 });
-    instance.addControl(new maplibregl.NavigationControl(), "top-right");
-    map.current = instance;
-    if (import.meta.env.DEV) window.__historicalMap = instance;
-    mapDebug("map constructed", { isolationBasemap: ISOLATION_BASEMAP });
-    mapDebug("geoapify key diagnostics", { geoapifyKeyPresent: Boolean(GEOAPIFY_MAP_KEY), geoapifyKeyLength: GEOAPIFY_MAP_KEY.length });
-    instance.once("load", () => { mapDebug("load event fired"); setMapReady(true); });
-    instance.on("style.load", () => mapDebug("style.load event fired"));
-    instance.on("styledata", (event) => mapDebug("styledata", { dataType: event.dataType }));
-    instance.on("sourcedata", (event) => mapDebug("sourcedata", { sourceId: event.sourceId, sourceDataType: event.sourceDataType, isSourceLoaded: event.isSourceLoaded }));
-    instance.on("data", (event) => { const diagnostic = event as unknown as { dataType?: string; sourceId?: string }; mapDebug("data", { dataType: diagnostic.dataType, sourceId: diagnostic.sourceId }); });
-    instance.on("idle", () => mapDebug("idle"));
-    instance.on("error", (event) => {
-      const diagnostic = event as unknown as { error?: { message?: string; url?: string }; sourceId?: string; tile?: unknown };
-      mapDebug("map error", { message: safeMapDiagnostic(diagnostic.error?.message) ?? "unknown MapLibre error", sourceId: diagnostic.sourceId, tile: diagnostic.tile ? String(diagnostic.tile) : undefined, resourceUrl: safeMapDiagnostic(diagnostic.error?.url) });
-    });
-    return () => { markers.current.forEach((marker) => marker.remove()); markers.current = []; instance.remove(); map.current = null; };
+    if (!container.current || map.current) return;
+    map.current = L.map(container.current, { zoomControl: true }).setView([42, 5], 4);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap contributors", maxZoom: 19 }).addTo(map.current);
+    layer.current = L.layerGroup().addTo(map.current);
+    return () => { map.current?.remove(); map.current = null; layer.current = null; };
   }, []);
 
   useEffect(() => {
-    const instance = map.current;
-    mapDebug("route effect executed", { mapReady, routePointCount: route?.ordered_points.length ?? 0 });
-    if (ISOLATION_BASEMAP) { mapDebug("route effect skipped", { reason: "diagnostic basemap mode" }); return; }
-    if (!instance) { mapDebug("route effect skipped", { reason: "map unavailable" }); return; }
-    if (!mapReady) { mapDebug("route effect skipped", { reason: "map not ready" }); return; }
-    if (instance.getLayer(ROUTE_LAYER)) instance.removeLayer(ROUTE_LAYER);
-    if (instance.getSource(ROUTE_SOURCE)) instance.removeSource(ROUTE_SOURCE);
-    if (!route) { mapDebug("route effect skipped", { reason: "no route" }); return; }
-    instance.addSource(ROUTE_SOURCE, { type: "geojson", data: { type: "Feature", properties: { label: "Historical reconstruction / schematic connection" }, geometry: route.geometry } });
-    mapDebug("addSource executed", { source: ROUTE_SOURCE });
-    instance.addLayer({ id: ROUTE_LAYER, type: "line", source: ROUTE_SOURCE, layout: { visibility: routeVisible ? "visible" : "none", "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#2f6f9f", "line-width": 4, "line-opacity": 0.78, "line-dasharray": [2, 1] } });
-    mapDebug("addLayer executed", { layer: ROUTE_LAYER });
-  }, [mapReady, route]);
+    if (!map.current || !layer.current) return;
+    layer.current.clearLayers();
+    const bounds = L.latLngBounds([]);
+    const visibleLayers = visibleMapLayers(payload, { evidence: showEvidence, route: showRoute, corridor: showCorridor });
+    for (const feature of visibleLayers.corridor) {
+      if (feature.geometry?.type !== "Polygon") continue;
+      const coordinates = feature.geometry.coordinates.map((ring) => ring.map(([longitude, latitude]) => [latitude, longitude] as [number, number]));
+      L.polygon(coordinates, { color: "#8f6b2e", weight: 1.5, dashArray: "5 6", fillColor: "#d4a24c", fillOpacity: 0.12 }).bindTooltip(String(feature.properties.label ?? "Uncertainty corridor")).addTo(layer.current);
+    }
+    const coordinates = toLeafletLineCoordinates(visibleLayers.route);
+    if (coordinates.length >= 2) {
+      const polyline = L.polyline(coordinates, { color: "#1e4f79", weight: 5, opacity: 0.9, dashArray: "11 8", lineCap: "round" });
+      polyline.addTo(layer.current);
+      for (const arrow of routeDirectionArrows(payload)) {
+        L.marker(arrow.position, { interactive: false, icon: L.divIcon({ className: "route-direction-arrow", html: `<span style="transform:rotate(${arrow.rotationDeg}deg)">➜</span>`, iconSize: [22, 22], iconAnchor: [11, 11] }) }).addTo(layer.current);
+      }
+      bounds.extend(polyline.getBounds());
+    }
+    for (const [index, feature] of visibleLayers.evidence.entries()) {
+      if (feature.geometry?.type !== "Point") continue;
+      const [longitude, latitude] = feature.geometry.coordinates;
+      const waypointId = String(feature.properties.waypoint_id ?? "");
+      const className = `waypoint-number waypoint-tone-${index % 4}${highlightedWaypointId === waypointId ? " is-highlighted" : ""}`;
+      const marker = L.marker([latitude, longitude], { icon: L.divIcon({ className, html: String(index + 1), iconSize: [26, 26], iconAnchor: [13, 13] }) });
+      marker.bindPopup(popupElement(payload, feature, () => { onSelectWaypoint(waypointId); onSelectPanel(panelForFeature(payload, feature)); }));
+      marker.addTo(layer.current);
+      if (highlightedWaypointId === waypointId) map.current.panTo(marker.getLatLng());
+      bounds.extend(marker.getLatLng());
+    }
+    if (bounds.isValid()) map.current.fitBounds(bounds, { padding: [42, 42], maxZoom: 7 });
+  }, [payload, showRoute, showEvidence, showCorridor, highlightedWaypointId, onSelectPanel, onSelectWaypoint]);
 
-  useEffect(() => {
-    const instance = map.current;
-    if (!instance || !mapReady || !instance.getLayer(ROUTE_LAYER)) return;
-    instance.setLayoutProperty(ROUTE_LAYER, "visibility", routeVisible ? "visible" : "none");
-  }, [mapReady, route, routeVisible]);
-
-  useEffect(() => {
-    const instance = map.current;
-    if (ISOLATION_BASEMAP) { mapDebug("marker effect skipped", { reason: "diagnostic basemap mode" }); return; }
-    if (!instance) { mapDebug("marker effect skipped", { reason: "map unavailable" }); return; }
-    if (!mapReady) { mapDebug("marker effect skipped", { reason: "map not ready" }); return; }
-    markers.current.forEach((marker) => marker.remove());
-    markers.current = [];
-    const points = route?.ordered_points ?? event?.places.map((historical_place, index) => ({ sequence: index + 1, historical_place, event_summary: event.summary, evidence_refs: [], confidence: historical_place.confidence })) ?? [];
-    if (!event) { mapDebug("marker effect skipped", { reason: "no event" }); return; }
-    if (!points.length) { mapDebug("marker effect skipped", { reason: "no points" }); return; }
-    mapDebug("current route point count", { count: points.length });
-    const bounds = new maplibregl.LngLatBounds();
-    points.forEach((point) => {
-      const place = point.historical_place;
-      const marker = new maplibregl.Marker({ color: route ? "#2f6f9f" : "#9c3f22" }).setLngLat([place.longitude, place.latitude]).setPopup(new maplibregl.Popup({ offset: 24 }).setDOMContent(placePopup(place, event, point))).addTo(instance);
-      marker.getElement().setAttribute("aria-label", `${place.canonical_name} marker`);
-      markers.current.push(marker);
-      bounds.extend([place.longitude, place.latitude]);
-    });
-    mapDebug("marker creation count", { count: markers.current.length });
-    instance.fitBounds(bounds, { padding: 72, maxZoom: 6, duration: 0 });
-    mapDebug("fitBounds executed", { pointCount: points.length });
-  }, [mapReady, event, route]);
-
-  async function send() {
-    setLoading(true);
-    try {
-      const response = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: "browser-demo", message }) });
-      if (!response.ok) throw new Error("Agent API request failed");
-      const body: ChatResponse = await response.json(); setReply(body.reply); setEvent(body.state.current_event ?? null); setRoute(body.state.historical_route ?? null);
-    } catch { setReply("后端不可达。请先启动 FastAPI 服务。"); setEvent(null); setRoute(null); } finally { setLoading(false); }
-  }
-
-  return <main><header><h1>Historical Military GIS Agent</h1><p>Phase 4 · Evidence-driven Historical Route · MapLibre</p></header><section><label>历史问题<input value={message} onChange={(e) => setMessage(e.target.value)} /></label><button onClick={send} disabled={loading}>{loading ? "分析中…" : "发送"}</button></section><article><h2>Agent</h2><p>{reply}</p></article><article className="map-panel"><div className="map-heading"><div><h2>历史行动路线</h2><p>{route ? `${route.name} · ${route.period}` : event ? `${event.name} · ${event.period}` : "发送汉尼拔问题以加载地点"}</p></div><div className="map-actions">{route && <label><input type="checkbox" checked={routeVisible} onChange={(e) => setRouteVisible(e.target.checked)} /> 显示路线</label>}<span data-testid="marker-count">{route?.ordered_points.length ?? event?.places.length ?? 0} markers</span></div></div><div ref={mapContainer} className="map" aria-label="Historical places and route map" />{route && <div className="route-note"><strong>Historical reconstruction / schematic connection</strong><p>{route.assumptions.join(" ")}</p><p>{route.limitations.join(" ")}</p></div>}{event?.uncertainty_note && <p className="uncertainty">{event.uncertainty_note}</p>}</article></main>;
+  return <div ref={container} className="historical-map" aria-label="Historical route map" />;
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+function KnowledgePanel({ panel, payload }: { panel: HistoricalKnowledgePanel | null; payload: HistoricalRoutePresentationPayload | null }) {
+  if (!panel) return <aside className="knowledge-panel"><h2>历史资料</h2><p>点击一个历史节点，然后选择“查看资料”。</p>{payload && <p>路线节点均保留已审核的史料来源；不会展示内部 evidence ID。</p>}</aside>;
+  return <aside className="knowledge-panel"><h2>{panel.title}</h2><dl><dt>时间</dt><dd>{panel.period ?? "未提供"}</dd><dt>阶段</dt><dd>{panel.event_type ?? "未提供"}</dd><dt>史料来源</dt><dd>{sourceText(panel)}</dd><dt>证据记录</dt><dd>{panel.evidence_refs.length}</dd></dl><h3>资料摘要</h3><p>{panel.summary ?? "未提供独立摘要。"}</p><h3>相关资料</h3>{panel.external_references.length ? <ul>{panel.external_references.map((reference) => <li key={reference.id}><a href={reference.url} target="_blank" rel="noreferrer">{reference.title}</a> <small>({reference.reference_type})</small></li>)}</ul> : <p>未提供。</p>}</aside>;
+}
+
+function TimelinePanel({ summary, payload, highlightedWaypointId, onSelect }: { summary: HistoricalRoutePresentationPayload["presentation_summary"]; payload: HistoricalRoutePresentationPayload; highlightedWaypointId: string | null; onSelect: (waypointId: string) => void }) {
+  if (!summary?.timeline.length) return null;
+  return <section className="timeline-panel" aria-label="Historical route timeline"><h2>Timeline</h2><ol>{summary.timeline.map((step) => { const waypoint = timelineWaypoint(payload, step.order); const selected = waypoint?.id === highlightedWaypointId; return <li key={step.order} className={selected ? "is-selected" : ""}><button type="button" onClick={() => waypoint && onSelect(waypoint.id)}><strong>{step.order}. {step.title}</strong>{step.period && <span> · {step.period}</span>}</button>{step.description && <p>{step.description}</p>}<small>Evidence records: {step.evidence_count} · Confidence: {Math.round(step.confidence * 100)}%</small></li>; })}</ol></section>;
+}
+
+function DemoApp() {
+  const [campaignId, setCampaignId] = useState<DemoCampaign["id"]>("hannibal");
+  const [question, setQuestion] = useState(DEMO_CAMPAIGNS[0].prompt);
+  const [payload, setPayload] = useState<HistoricalRoutePresentationPayload | null>(null);
+  const [presentationSummary, setPresentationSummary] = useState<HistoricalRoutePresentationPayload["presentation_summary"]>(null);
+  const [selectedPanel, setSelectedPanel] = useState<HistoricalKnowledgePanel | null>(null);
+  const [showRoute, setShowRoute] = useState(true);
+  const [showEvidence, setShowEvidence] = useState(true);
+  const [showCorridor, setShowCorridor] = useState(true);
+  const [highlightedWaypointId, setHighlightedWaypointId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const campaign = DEMO_CAMPAIGNS.find((item) => item.id === campaignId)!;
+  const selectPanel = useCallback((panel: HistoricalKnowledgePanel | null) => setSelectedPanel(panel), []);
+
+  function selectCampaign(nextId: DemoCampaign["id"]) {
+    const next = DEMO_CAMPAIGNS.find((item) => item.id === nextId)!;
+    setCampaignId(nextId); setQuestion(next.prompt); setPayload(null); setPresentationSummary(null); setSelectedPanel(null); setHighlightedWaypointId(null); setError(null);
+  }
+
+  async function loadPresentationFor(target: DemoCampaign) {
+    setLoading(true); setError(null); setPresentationSummary(null); setSelectedPanel(null);
+    try {
+      if (target.presentationRouteId) {
+        const next = await fetchHistoricalRoutePresentation(target.presentationRouteId);
+        setPayload(next); setPresentationSummary(next.presentation_summary ?? null);
+      } else {
+        const result = await fetchAgentHistoricalRoutePresentation(question, `demo-${Date.now()}`);
+        setPayload(result.payload); setPresentationSummary(result.payload.presentation_summary ?? null);
+      }
+    } catch (cause) {
+      setPayload(null); setPresentationSummary(null); setError(cause instanceof Error ? cause.message : "无法加载历史路线。");
+    } finally { setLoading(false); }
+  }
+
+  function loadPresentation() { return loadPresentationFor(campaign); }
+  function activatePreset(next: DemoCampaign) { selectCampaign(next.id); void loadPresentationFor(next); }
+  function selectTimelineWaypoint(waypointId: string) {
+    setHighlightedWaypointId(waypointId);
+    if (!payload) return;
+    const pointFeature = markerFeatures(payload).find((feature) => feature.properties.waypoint_id === waypointId);
+    if (pointFeature) setSelectedPanel(panelForFeature(payload, pointFeature));
+  }
+
+  return <main className="demo-shell"><header className="demo-header"><div><p className="eyebrow">Historical GIS Agent · Phase 20</p><h1>Historical Route Reconstruction Agent</h1><p>Evidence-grounded historical GIS reconstruction using RAG, MCP and terrain-aware path planning.</p></div><a href="/evaluation">查看评估链路</a></header><section className="demo-presets" aria-label="Demo presets">{DEMO_CAMPAIGNS.map((item) => <button key={item.id} type="button" className={item.id === campaignId ? "preset is-active" : "preset"} onClick={() => activatePreset(item)} disabled={loading}><strong>{item.id === "hannibal" ? "Hannibal" : "Caesar"}</strong><span>{item.id === "hannibal" ? "Second Punic War · 218 BCE" : "Gallic War · 58–51 BCE"}</span></button>)}</section><section className="controls"><label>Campaign<select value={campaignId} onChange={(event) => selectCampaign(event.target.value as DemoCampaign["id"])}>{DEMO_CAMPAIGNS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>{campaign.id === "hannibal" && <label>历史问题<input value={question} onChange={(event) => setQuestion(event.target.value)} /></label>}<button type="button" onClick={loadPresentation} disabled={loading}>{loading ? "加载中…" : campaign.id === "hannibal" ? "请求路线" : "加载路线"}</button></section>{error && <p className="error" role="alert">{error}</p>}{presentationSummary && <section className="presentation-summary" aria-label="Historical route summary"><h2>{presentationSummary.title}</h2>{presentationSummary.campaign && <p><strong>Campaign:</strong> {presentationSummary.campaign}</p>}{presentationSummary.operation && <p><strong>Operation:</strong> {presentationSummary.operation}</p>}{presentationSummary.date && <p><strong>Date:</strong> {presentationSummary.date}</p>}<p><strong>Sources:</strong> {presentationSummary.sources.join(" · ") || "Reviewed evidence metadata"}</p><section className="why-route"><h3>Why this route?</h3><p><strong>Historical evidence:</strong> {presentationSummary.evidence_basis.join(" · ") || "Reviewed evidence metadata"}</p><p><strong>Geographic constraints:</strong> {presentationSummary.geographic_constraints.join(" ")}</p><p><strong>Algorithm method:</strong> {presentationSummary.route_method}</p><p>{presentationSummary.route_interpretation}</p></section><p><strong>Uncertainty:</strong> {presentationSummary.uncertainty_notes.join(" ")}</p><p><strong>Limitations:</strong> {presentationSummary.limitations.join(" ")}</p></section>}{payload && <div className="route-layout"><section className="map-card"><div className="map-card-header"><div><h2>{payload.route.route_name ?? payload.route.route_id}</h2><p>{payload.route.period ?? "时期未提供"} · {payload.waypoints.length} 个历史节点</p></div><div className="layer-toggles"><label className="route-toggle"><input type="checkbox" checked={showEvidence} onChange={(event) => setShowEvidence(event.target.checked)} /> Evidence points</label><label className="route-toggle"><input type="checkbox" checked={showRoute} onChange={(event) => setShowRoute(event.target.checked)} /> Reconstructed route</label><label className="route-toggle"><input type="checkbox" checked={showCorridor} onChange={(event) => setShowCorridor(event.target.checked)} /> Uncertainty corridor</label></div></div><HistoricalMap payload={payload} showRoute={showRoute} showEvidence={showEvidence} showCorridor={showCorridor} highlightedWaypointId={highlightedWaypointId} onSelectPanel={selectPanel} onSelectWaypoint={setHighlightedWaypointId} /><div className="map-legend" aria-label="Map legend"><span><i className="legend-line" /> Reconstructed route</span><span><i className="legend-marker" /> Historical evidence points</span></div><p className="route-notice">该路线为基于史料节点与地理约束生成的示意路线，不代表真实逐日行军轨迹。</p></section><aside className="right-panels"><KnowledgePanel panel={selectedPanel} payload={payload} /><TimelinePanel summary={presentationSummary} payload={payload} highlightedWaypointId={highlightedWaypointId} onSelect={selectTimelineWaypoint} /><section className="architecture-panel"><h2>Architecture</h2><ol>{["Natural language", "Agent Intent", "RAG Evidence", "Historical Registry", "Geographic MCP", "Terrain constrained A*", "GeoJSON"].map((step) => <li key={step}>{step}</li>)}</ol></section><section className="uncertainty-panel"><h2>Uncertainty guide</h2><p><strong>Known:</strong> Evidence-supported location</p><p><strong>Estimated:</strong> Algorithm reconstruction</p><p><strong>Unknown:</strong> Historical uncertainty</p></section></aside></div>}</main>;
+}
+
+function EvaluationPage() {
+  return <main className="evaluation"><a href="/">← 返回 Demo</a><p className="eyebrow">Phase 17</p><h1>Demo evaluation</h1><section><h2>当前支持的语料</h2><ul>{DEMO_EVALUATION.corpora.map((item) => <li key={item}>{item}</li>)}</ul></section><section><h2>路线展示链路</h2><ol>{DEMO_EVALUATION.pipeline.map((item) => <li key={item}>{item}</li>)}</ol></section><section><h2>最近离线验证</h2><ul>{DEMO_EVALUATION.verification.map((item) => <li key={item}>{item}</li>)}</ul><p>测试统计是发布时的 demo metadata；请以本地 CI/pytest 输出为最终依据。</p></section></main>;
+}
+
+createRoot(document.getElementById("root")!).render(window.location.pathname === "/evaluation" ? <EvaluationPage /> : <DemoApp />);

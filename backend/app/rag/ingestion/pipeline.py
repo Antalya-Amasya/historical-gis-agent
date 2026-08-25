@@ -5,7 +5,7 @@ from pathlib import Path
 from time import perf_counter
 
 from .chunking import structure_aware
-from .loaders import load_pdf
+from .loaders import load_epub, load_pdf
 from .structure import annotate_structure
 
 
@@ -53,3 +53,28 @@ def write_processed(output: Path, pages: list, chunks: list, log: dict[str, obje
         for chunk in chunks:
             stream.write(json.dumps(asdict(chunk), ensure_ascii=False) + "\n")
     (output / "metadata.json").write_text(json.dumps(log, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_corpus_manifest(path: Path) -> dict[str, object]:
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    required = {"corpus_id", "author", "work", "language", "source", "books"}
+    missing = required - set(manifest)
+    if missing:
+        raise ValueError(f"corpus manifest missing fields: {sorted(missing)}")
+    return manifest
+
+def ingest_epub(epub: Path, manifest_path: Path) -> tuple[list, dict[str, object], list]:
+    """Ingest an offline EPUB with manifest-supplied provenance; PDF behaviour remains unchanged."""
+    started = perf_counter()
+    manifest = load_corpus_manifest(manifest_path)
+    pages = load_epub(epub)
+    metadata = {
+        "author": manifest["author"], "work": manifest["work"], "language": manifest["language"],
+        "source": manifest["source"], "corpus_id": manifest["corpus_id"],
+        "provenance": "manifest_declared_epub", "source_reference": manifest["source"],
+        "source_file": epub.as_posix(), "source_type": "primary_source_epub",
+        "fingerprint": sha256(epub.read_bytes()).hexdigest(),
+    }
+    chunks = structure_aware(annotate_structure(pages), metadata)
+    log = {"source_file": epub.as_posix(), "corpus_id": manifest["corpus_id"], "sections_total": len(pages), "chunks_created": len(chunks), "book_detection_result": sorted({chunk.metadata["book"] for chunk in chunks}), "duration_seconds": round(perf_counter() - started, 3), "errors": []}
+    return pages, log, chunks

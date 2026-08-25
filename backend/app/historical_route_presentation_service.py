@@ -24,6 +24,10 @@ class HistoricalRoutePresentationCatalog:
         self._responses = {"phase10-demo-route": self._phase10_demo()}
 
     def get(self, route_id: str) -> HistoricalRouteResponse:
+        if route_id == "caesar-gallic-campaign":
+            # Lazy composition keeps the standard catalog import free of campaign-planning work.
+            from backend.app.historical_campaign_presentation_service import CaesarCampaignPresentationFactory
+            return CaesarCampaignPresentationFactory().build()
         try:
             return self._responses[route_id]
         except KeyError as exc:
@@ -32,14 +36,20 @@ class HistoricalRoutePresentationCatalog:
     @staticmethod
     def _phase10_demo() -> HistoricalRouteResponse:
         waypoints = [
-            HistoricalWaypointViewModel(id="carthago-nova", name="Carthago Nova", event_type=HistoricalEventType.CITY, period="218 BCE", description="Supplied presentation metadata.", location_confidence=LocationConfidence.EXACT, evidence_refs=["polybius_iii"], source_references=["polybius_iii"]),
-            HistoricalWaypointViewModel(id="rhodanus", name="Rhodanus", event_type=HistoricalEventType.CROSSING, period="218 BCE", description="Supplied presentation metadata.", location_confidence=LocationConfidence.APPROXIMATE, evidence_refs=["polybius_iii", "livy_xxi"], source_references=["polybius_iii", "livy_xxi"]),
-            HistoricalWaypointViewModel(id="unresolved", name="Unresolved waypoint", event_type=HistoricalEventType.OTHER, period="218 BCE", description="No trusted display coordinate is supplied.", location_confidence=LocationConfidence.UNKNOWN, evidence_refs=["polybius_iii"], source_references=["polybius_iii"]),
+            HistoricalWaypointViewModel(id="carthago-nova", name="Carthago Nova", event_type=HistoricalEventType.CITY, period="218 BCE", description="Supplied presentation metadata.", location_confidence=LocationConfidence.EXACT, evidence_refs=["polybius_iii"], source_references=["Polybius, Histories, Book III"]),
+            HistoricalWaypointViewModel(id="rhodanus", name="Rhodanus", event_type=HistoricalEventType.CROSSING, period="218 BCE", description="Supplied presentation metadata.", location_confidence=LocationConfidence.APPROXIMATE, evidence_refs=["polybius_iii", "livy_xxi"], source_references=["Polybius, Histories, Book III", "Livy, Ab Urbe Condita, Book XXI"]),
+            HistoricalWaypointViewModel(id="unresolved", name="Unresolved waypoint", event_type=HistoricalEventType.OTHER, period="218 BCE", description="No trusted display coordinate is supplied.", location_confidence=LocationConfidence.UNKNOWN, evidence_refs=["polybius_iii"], source_references=["Polybius, Histories, Book III"]),
         ]
         panels = [
-            HistoricalKnowledgePanel(waypoint_id="carthago-nova", title="Carthago Nova", period="218 BCE", event_type=HistoricalEventType.CITY, summary="Explicitly supplied local summary.", evidence_refs=["polybius_iii"], source_references=["polybius_iii"], external_references=[HistoricalExternalReference(id="reading", reference_type=HistoricalExternalReferenceType.ENCYCLOPEDIA, title="Reference reading", url="https://example.invalid/reading")], confidence=LocationConfidence.EXACT),
-            HistoricalKnowledgePanel(waypoint_id="rhodanus", title="Rhodanus", period="218 BCE", event_type=HistoricalEventType.CROSSING, summary=None, evidence_refs=["polybius_iii", "livy_xxi"], source_references=["polybius_iii", "livy_xxi"], external_references=[HistoricalExternalReference(id="modern", reference_type=HistoricalExternalReferenceType.GOOGLE_MAPS, title="Modern location link", url="https://example.invalid/modern")], confidence=LocationConfidence.APPROXIMATE),
-            HistoricalKnowledgePanel(waypoint_id="unresolved", title="Unresolved waypoint", period="218 BCE", event_type=HistoricalEventType.OTHER, summary=None, evidence_refs=["polybius_iii"], source_references=["polybius_iii"], confidence=LocationConfidence.UNKNOWN),
+            HistoricalKnowledgePanel(waypoint_id="carthago-nova", title="Carthago Nova", period="218 BCE", event_type=HistoricalEventType.CITY, summary="Explicitly supplied local summary.", evidence_refs=["polybius_iii"], source_references=["Polybius, Histories, Book III"], external_references=[
+                HistoricalExternalReference(id="wikipedia", reference_type=HistoricalExternalReferenceType.WIKIPEDIA, title="Carthago Nova", url="https://en.wikipedia.org/wiki/Carthago_Nova"),
+                HistoricalExternalReference(id="modern-map", reference_type=HistoricalExternalReferenceType.GOOGLE_MAPS, title="Location map", url="https://www.google.com/maps?q=37.6257,-0.9966"),
+            ], confidence=LocationConfidence.EXACT),
+            HistoricalKnowledgePanel(waypoint_id="rhodanus", title="Rhodanus", period="218 BCE", event_type=HistoricalEventType.CROSSING, summary=None, evidence_refs=["polybius_iii", "livy_xxi"], source_references=["Polybius, Histories, Book III", "Livy, Ab Urbe Condita, Book XXI"], external_references=[
+                HistoricalExternalReference(id="wikipedia", reference_type=HistoricalExternalReferenceType.WIKIPEDIA, title="Rhône", url="https://en.wikipedia.org/wiki/Rh%C3%B4ne"),
+                HistoricalExternalReference(id="modern-map", reference_type=HistoricalExternalReferenceType.GOOGLE_MAPS, title="Location map", url="https://www.google.com/maps?q=45.7600,4.8400"),
+            ], confidence=LocationConfidence.APPROXIMATE),
+            HistoricalKnowledgePanel(waypoint_id="unresolved", title="Unresolved waypoint", period="218 BCE", event_type=HistoricalEventType.OTHER, summary=None, evidence_refs=["polybius_iii"], source_references=["Polybius, Histories, Book III"], confidence=LocationConfidence.UNKNOWN),
         ]
         geojson = {"type": "FeatureCollection", "features": [
             {"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[-0.4, 39.99], [4.83, 45.76], [9.19, 45.47]]}, "properties": {"route_id": "phase10-demo-route", "total_cost": 42.0, "confidence": 0.72}},
@@ -49,7 +59,7 @@ class HistoricalRoutePresentationCatalog:
         ]}
         explanations = HistoricalRouteExplanations(distance_reason="The route contains 3 supplied historical waypoint(s).", terrain_reason="No terrain cost is present in the supplied route evaluation.", historical_reason="The graph retains supplied evidence references.")
         route = HistoricalRoutePresentation(route_id="phase10-demo-route", route_name="Evidence-backed presentation demo", period="218 BCE", waypoints=waypoints, segments=[], geojson=geojson, summary="Route connects supplied historical waypoints.", confidence=0.72, score=RouteScore(profile_name="baseline", distance_cost=42.0, terrain_cost=0.0, historical_cost=0.0, total_cost=42.0), explanations=explanations)
-        return HistoricalRouteResponse(route=route, waypoints=waypoints, geojson=geojson, explanations=explanations, knowledge_panels=panels)
+        return HistoricalRouteResponse(route=route, waypoints=waypoints, geojson=geojson, route_geojson=geojson["features"][0], explanations=explanations, knowledge_panels=panels)
 
 
 class HistoricalRoutePresentationReadService:
