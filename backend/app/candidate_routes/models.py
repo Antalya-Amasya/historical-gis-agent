@@ -70,3 +70,8 @@ class CandidateRoute(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
     provenance: str = "algorithmic_candidate"
     coordinate_system: str = "synthetic_grid"
+    projection_method: str | None = None
+    grid_cell_size_m: float | None = Field(default=None, gt=0)
+    grid_width: int | None = Field(default=None, ge=1)
+    grid_height: int | None = Field(default=None, ge=1)
+    terrain_source: str | None = None
