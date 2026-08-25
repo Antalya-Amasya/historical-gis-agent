@@ -113,6 +113,7 @@ class CandidateRouteEngine:
             slope_cost=sum(item.slope_cost for item in components),
             terrain_cost=sum(item.terrain_cost for item in components),
             barrier_cost=sum(item.barrier_cost for item in components),
+            historical_cost=sum(item.historical_cost for item in components),
             total_cost=sum(item.total_cost for item in components),
         )
         gain = loss = 0.0

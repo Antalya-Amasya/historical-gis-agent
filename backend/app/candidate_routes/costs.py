@@ -18,13 +18,29 @@ class SyntheticCostModel:
             )
         distance_cost = profile.distance_weight
         slope_cost = profile.slope_weight * abs(neighbor.elevation_m - current.elevation_m)
-        terrain_cost = profile.terrain_weight * (neighbor.terrain_multiplier - 1.0)
+        terrain_factor = max(neighbor.terrain_multiplier, self.terrain_factor(current, neighbor))
+        terrain_cost = profile.terrain_weight * (terrain_factor - 1.0)
         barrier_cost = 0.0
         total_cost = distance_cost + slope_cost + terrain_cost + barrier_cost
         return RouteCostBreakdown(
             distance_cost=distance_cost, slope_cost=slope_cost, terrain_cost=terrain_cost,
             barrier_cost=barrier_cost, total_cost=total_cost,
         )
+
+    @staticmethod
+    def terrain_factor(current: GridCell, neighbor: GridCell) -> float:
+        """Classify local slope only when a geographic cell size is available.
+
+        Synthetic-grid fixtures keep their explicit terrain multiplier unchanged.
+        """
+        if neighbor.cell_size_m is None:
+            return 1.0
+        slope_ratio = abs(neighbor.elevation_m - current.elevation_m) / neighbor.cell_size_m
+        if slope_ratio < 0.05:
+            return 1.0
+        if slope_ratio < 0.15:
+            return 2.0
+        return 5.0
 
     @staticmethod
     def heuristic_distance_cost(dx: int, dy: int, profile: ArmyProfile) -> float:

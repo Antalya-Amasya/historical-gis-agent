@@ -3,13 +3,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import ceil, cos, pi
-from typing import Callable
 
 from backend.app.models import GeoJsonLineString, HistoricalRoutePoint
 
 from .engine import CandidateRouteEngine
 from .grid import GridCell, GridPoint, SyntheticGrid
 from .models import ArmyProfile, CandidateRoute, CandidateRouteAnchor
+from .terrain import SyntheticTerrainProvider, TerrainOverride, TerrainProvider
+
+# Backward-compatible public name retained for Phase 6.1 callers.
+SyntheticGeographicTerrainProvider = SyntheticTerrainProvider
 
 EARTH_RADIUS_M = 6_371_000.0
 DEFAULT_MAX_GRID_CELLS = 100_000
@@ -153,7 +156,7 @@ class TerrainGrid(SyntheticGrid):
         super().__init__(spec.width, spec.height)
         self.spec = spec
         for point in tuple(self._cells):
-            self.set_cell(point, terrain="plain")
+            self.set_cell(point, terrain="plain", cell_size_m=spec.cell_size_m)
 
     def terrain_cell(self, point: GridPoint) -> TerrainCell:
         cell: GridCell = self.cell(point)
@@ -161,37 +164,11 @@ class TerrainGrid(SyntheticGrid):
         return TerrainCell(point, longitude, latitude, cell.elevation_m, cell.terrain, cell.terrain_multiplier, cell.blocked)
 
 
-@dataclass(frozen=True)
-class TerrainOverride:
-    elevation_m: float | None = None
-    terrain: str | None = None
-    terrain_multiplier: float | None = None
-    blocked: bool | None = None
-
-
-class SyntheticGeographicTerrainProvider:
-    """Offline deterministic provider; tests may inject a geographic cell rule."""
-
-    def __init__(self, rule: Callable[[GridPoint, float, float], TerrainOverride | None] | None = None):
-        self.rule = rule
-
-    def build(self, spec: GeographicGridSpec) -> TerrainGrid:
-        grid = TerrainGrid(spec)
-        if self.rule is None:
-            return grid
-        for point in tuple(grid._cells):
-            lon, lat = spec.grid_to_geographic(point)
-            override = self.rule(point, lon, lat)
-            if override is not None:
-                grid.set_cell(point, elevation_m=override.elevation_m, terrain=override.terrain, terrain_multiplier=override.terrain_multiplier, blocked=override.blocked)
-        return grid
-
-
 class GeographicCandidateRouteService:
     """Maps Evidence anchors through an offline terrain grid without changing A*."""
 
-    def __init__(self, terrain_provider: SyntheticGeographicTerrainProvider | None = None, engine: CandidateRouteEngine | None = None):
-        self.terrain_provider = terrain_provider or SyntheticGeographicTerrainProvider()
+    def __init__(self, terrain_provider: TerrainProvider | None = None, engine: CandidateRouteEngine | None = None):
+        self.terrain_provider = terrain_provider or SyntheticTerrainProvider()
         self.engine = engine or CandidateRouteEngine()
 
     def build_between(
@@ -210,7 +187,7 @@ class GeographicCandidateRouteService:
             (first.longitude, first.latitude), (second.longitude, second.latitude),
             padding_km=padding_km, cell_size_m=cell_size_m, max_grid_cells=max_grid_cells,
         )
-        grid = self.terrain_provider.build(spec)
+        grid = self.terrain_provider.build_grid(spec, resolution_m=spec.cell_size_m)
         candidate = self.engine.build_route(
             from_anchor=CandidateRouteAnchor.from_historical_point(from_point),
             to_anchor=CandidateRouteAnchor.from_historical_point(to_point),
@@ -229,6 +206,6 @@ class GeographicCandidateRouteService:
             "grid_cell_size_m": spec.cell_size_m,
             "grid_width": spec.width,
             "grid_height": spec.height,
-            "terrain_source": spec.source,
+            "terrain_source": self.terrain_provider.source,
             "assumptions": [*candidate.assumptions, "Terrain is offline synthetic geographic data; geographic cells are algorithmic candidates, not historical facts."],
         })

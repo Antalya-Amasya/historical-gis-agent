@@ -17,10 +17,13 @@ class GridCell:
     terrain: str = "flat"
     terrain_multiplier: float = 1.0
     blocked: bool = False
+    cell_size_m: float | None = None
 
     def __post_init__(self) -> None:
         if self.terrain_multiplier < 1.0:
             raise ValueError("terrain_multiplier must be at least 1")
+        if self.cell_size_m is not None and self.cell_size_m <= 0:
+            raise ValueError("cell_size_m must be positive when supplied")
 
 
 class SyntheticGrid:
@@ -57,6 +60,7 @@ class SyntheticGrid:
         terrain: str | None = None,
         terrain_multiplier: float | None = None,
         blocked: bool | None = None,
+        cell_size_m: float | None = None,
     ) -> None:
         current = self.cell(point)
         self._cells[point] = replace(
@@ -65,6 +69,7 @@ class SyntheticGrid:
             terrain=current.terrain if terrain is None else terrain,
             terrain_multiplier=current.terrain_multiplier if terrain_multiplier is None else terrain_multiplier,
             blocked=current.blocked if blocked is None else blocked,
+            cell_size_m=current.cell_size_m if cell_size_m is None else cell_size_m,
         )
 
     def neighbors4(self, point: GridPoint) -> tuple[GridPoint, ...]:
