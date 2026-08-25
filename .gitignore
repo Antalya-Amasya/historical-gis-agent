@@ -1,16 +1,35 @@
+# Local environment and secrets
 .env
+.env.*
+!.env.example
 .venv/
+venv/
+
+# Python caches and generated files
 __pycache__/
+**/__pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE/editor state
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Frontend dependencies and build outputs
 frontend/node_modules/
 frontend/dist/
-
-frontend/*.tsbuildinfo
+*.tsbuildinfo
 frontend/vite.config.js
 frontend/vite.config.d.ts
-data/historical_sources/raw/
-data/historical_sources/processed/
-data/chroma/
-.idea/
+
+# Local source corpora, processed artifacts, and vector indexes
 data/
+
+# General local logs
+*.log
