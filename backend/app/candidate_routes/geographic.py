@@ -197,7 +197,8 @@ class GeographicCandidateRouteService:
         )
         path = [GridPoint(int(x), int(y)) for x, y in candidate.geometry.coordinates]
         geographic_geometry = GeoJsonLineString(coordinates=[spec.grid_to_geographic(point) for point in path])
-        metrics = candidate.metrics.model_copy(update={"distance_km": candidate.metrics.segment_count * cell_size_m / 1_000.0})
+        # CandidateRouteEngine already reports physical metres converted to kilometres.
+        metrics = candidate.metrics
         return candidate.model_copy(update={
             "geometry": geographic_geometry,
             "metrics": metrics,

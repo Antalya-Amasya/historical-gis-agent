@@ -1,4 +1,4 @@
-"""A deterministic 4-neighbor A* route engine over synthetic geography."""
+"""A deterministic 8-neighbor A* route engine over synthetic geography."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -48,7 +48,7 @@ class CandidateRouteEngine:
                 continue
             if current == goal:
                 return self._reconstruct(grid, start, goal, came_from, edge_costs)
-            for neighbor in grid.neighbors4(current):
+            for neighbor in grid.neighbors8(current):
                 breakdown = self.cost_model.edge_cost(grid.cell(current), grid.cell(neighbor), profile)
                 if isinf(breakdown.total_cost):
                     continue
@@ -82,16 +82,24 @@ class CandidateRouteEngine:
             to_anchor=to_anchor,
             geometry=GeoJsonLineString(coordinates=[(float(point.x), float(point.y)) for point in path.points]),
             metrics=RouteMetrics(
-                distance_km=float(len(path.points) - 1),
+                distance_km=sum(
+                    self.cost_model.step_distance_m(grid.cell(first), grid.cell(second))
+                    for first, second in zip(path.points, path.points[1:])
+                ) / 1_000.0,
                 elevation_gain_m=path.elevation_gain_m,
                 elevation_loss_m=path.elevation_loss_m,
                 estimated_cost=path.cost_breakdown.total_cost,
                 cell_count=len(path.points),
                 segment_count=max(0, len(path.points) - 1),
+                search_cost=path.cost_breakdown.total_cost,
+                max_slope=max(
+                    (self.cost_model.slope_ratio(grid.cell(first), grid.cell(second)) for first, second in zip(path.points, path.points[1:])),
+                    default=0.0,
+                ),
             ),
             cost_breakdown=path.cost_breakdown,
             confidence=0.0,
-            assumptions=["Synthetic 4-neighbor grid; one grid edge equals one kilometre.", "This is an algorithmic candidate connection, not an evidence-grounded historical track."],
+            assumptions=["A* search costs are normalized grid costs; physical distance_km is calculated from metre-valued grid edges.", "This is an algorithmic candidate connection, not an evidence-grounded historical track."],
             evidence_refs=refs,
         )
 

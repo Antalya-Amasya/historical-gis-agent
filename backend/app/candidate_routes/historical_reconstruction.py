@@ -1,18 +1,19 @@
 """Offline, terrain-aware reconstruction from explicitly reviewed historical anchors."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 from pydantic import BaseModel, Field
 
 from backend.app.models import GeoJsonLineString
+from backend.app.gis.srtm import SrtmElevationService, SrtmElevationUnavailableError
 
 from .engine import CandidateRouteEngine
 from .geographic import DEFAULT_MAX_GRID_CELLS, GeographicGridSpec, TerrainGrid
 from .grid import GridPoint
-from .models import ArmyProfile, CandidateRoute, CandidateRouteAnchor
-from .terrain import OfflineMockTerrainProvider, RealTerrainProvider, TerrainOverride
+from .models import ArmyProfile, CandidateRoute, CandidateRouteAnchor, CandidateRouteSegmentLedger
+from .terrain import OfflineMockTerrainProvider, TerrainOverride, TerrainProvider
 
 
 class HistoricalRouteReconstructionError(ValueError):
@@ -38,6 +39,7 @@ class TerrainGraph:
     spec: GeographicGridSpec
     grid: TerrainGrid
     source: str
+    applied_constraints: list[str] = field(default_factory=list)
 
     def grid_point_for(self, waypoint: ReviewedHistoricalWaypoint) -> GridPoint:
         return self.spec.geographic_to_grid(waypoint.longitude, waypoint.latitude)
@@ -49,7 +51,7 @@ class TerrainGraph:
 class RealTerrainGraphProvider:
     """Builds a TerrainGraph from a caller-supplied offline DEM provider; it never downloads data."""
 
-    def __init__(self, terrain_provider: RealTerrainProvider) -> None:
+    def __init__(self, terrain_provider: TerrainProvider | SrtmElevationService) -> None:
         self.terrain_provider = terrain_provider
 
     def build_graph(
@@ -60,9 +62,22 @@ class RealTerrainGraphProvider:
         cell_size_m: float = 5_000.0,
         max_grid_cells: int = DEFAULT_MAX_GRID_CELLS,
     ) -> TerrainGraph:
-        spec = _spec_for_waypoints(waypoints, padding_km, cell_size_m, max_grid_cells, self.terrain_provider.source)
-        grid = self.terrain_provider.build_grid(spec, resolution_m=spec.cell_size_m)
-        return TerrainGraph(spec=spec, grid=grid, source=self.terrain_provider.source)
+        source = "srtm3_real_terrain" if isinstance(self.terrain_provider, SrtmElevationService) else self.terrain_provider.source
+        spec = _spec_for_waypoints(waypoints, padding_km, cell_size_m, max_grid_cells, source)
+        applied_constraints = ["dem_availability_blocking", "dem_nodata_blocking", "slope_cost"]
+        if isinstance(self.terrain_provider, SrtmElevationService):
+            grid = TerrainGrid(spec)
+            for point in tuple(grid._cells):
+                longitude, latitude = spec.grid_to_geographic(point)
+                try:
+                    elevation = self.terrain_provider.get_elevation(latitude, longitude)
+                except SrtmElevationUnavailableError as exc:
+                    grid.set_cell(point, terrain=f"{exc.status.lower()}_dem", blocked=True, cell_size_m=spec.cell_size_m)
+                else:
+                    grid.set_cell(point, elevation_m=elevation, terrain="srtm3_dem", terrain_multiplier=1.0, cell_size_m=spec.cell_size_m)
+        else:
+            grid = self.terrain_provider.build_grid(spec, resolution_m=spec.cell_size_m)
+        return TerrainGraph(spec=spec, grid=grid, source=source, applied_constraints=applied_constraints)
 
 
 class OfflineMockTerrainGraphProvider:
@@ -73,8 +88,11 @@ class OfflineMockTerrainGraphProvider:
     def __init__(
         self,
         rule: Callable[[GridPoint, float, float], TerrainOverride | None] | None = None,
+        *,
+        applied_constraints: list[str] | None = None,
     ) -> None:
         self._terrain = OfflineMockTerrainProvider(rule)
+        self.applied_constraints = list(applied_constraints or ["synthetic_mock_terrain"])
 
     def build_graph(
         self,
@@ -86,7 +104,7 @@ class OfflineMockTerrainGraphProvider:
     ) -> TerrainGraph:
         spec = _spec_for_waypoints(waypoints, padding_km, cell_size_m, max_grid_cells, self.source)
         grid = self._terrain.build_grid(spec, resolution_m=spec.cell_size_m)
-        return TerrainGraph(spec=spec, grid=grid, source=self.source)
+        return TerrainGraph(spec=spec, grid=grid, source=self.source, applied_constraints=self.applied_constraints)
 
 
 def _spec_for_waypoints(
@@ -197,6 +215,7 @@ class HistoricalRouteReconstructor:
                     *candidate.assumptions,
                     "Endpoints are explicit reviewed coordinates; intermediate cells are offline terrain-aware algorithmic candidates.",
                 ],
+                "segment_ledger": [self._segment_ledger(candidate, first, second, terrain_graph)],
             }))
         coordinates: list[tuple[float, float]] = []
         for candidate in candidates:
@@ -225,3 +244,28 @@ class HistoricalRouteReconstructor:
     def _validate_waypoint(waypoint: ReviewedHistoricalWaypoint) -> None:
         if not waypoint.evidence_refs:
             raise HistoricalRouteReconstructionError(f"waypoint {waypoint.id} has no evidence references")
+
+    @staticmethod
+    def _segment_ledger(
+        candidate: CandidateRoute,
+        first: ReviewedHistoricalWaypoint,
+        second: ReviewedHistoricalWaypoint,
+        terrain_graph: TerrainGraph,
+    ) -> CandidateRouteSegmentLedger:
+        missing_or_nodata = sum(
+            terrain_graph.grid.cell(GridPoint(int(x), int(y))).terrain in {"missing_dem", "nodata_dem", "no_data"}
+            for x, y in candidate.geometry.coordinates
+        )
+        return CandidateRouteSegmentLedger(
+            segment_id=f"{first.id}-to-{second.id}", source_anchor_id=first.id, target_anchor_id=second.id,
+            physical_distance_km=candidate.metrics.distance_km,
+            elevation_gain_m=candidate.metrics.elevation_gain_m,
+            elevation_loss_m=candidate.metrics.elevation_loss_m,
+            max_slope=candidate.metrics.max_slope,
+            search_cost_total=candidate.metrics.search_cost,
+            cost_breakdown=candidate.cost_breakdown,
+            terrain_source=terrain_graph.source, grid_resolution_m=terrain_graph.spec.cell_size_m,
+            sample_count=candidate.metrics.cell_count, edge_count=candidate.metrics.segment_count,
+            nodata_or_missing_count=missing_or_nodata,
+            applied_constraints=list(terrain_graph.applied_constraints),
+        )

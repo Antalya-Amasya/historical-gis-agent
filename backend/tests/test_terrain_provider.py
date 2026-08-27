@@ -9,6 +9,7 @@ from backend.app.candidate_routes.models import ArmyProfile
 from backend.app.candidate_routes.terrain import (
     DEMTerrainProvider,
     HgtRaster,
+    MosaicDEMProvider,
     SyntheticTerrainProvider,
     TerrainDataUnavailableError,
     UnsupportedDemError,
@@ -77,14 +78,48 @@ def test_invalid_hgt_fixture_is_rejected(tmp_path):
         HgtRaster.from_file(invalid)
 
 
-def test_cost_uses_local_slope_factor_not_absolute_elevation():
-    current = GridCell(GridPoint(0, 0), elevation_m=0, cell_size_m=1_000)
-    flat = GridCell(GridPoint(1, 0), elevation_m=0, cell_size_m=1_000)
-    steep = GridCell(GridPoint(1, 0), elevation_m=200, cell_size_m=1_000)
+def test_mosaic_dem_provider_queries_adjacent_tiles_and_caches_them(tmp_path):
+    """Shared edge values make the synthetic two-tile surface continuous at E005."""
+    west_tile = tmp_path / "N45E004.hgt"
+    east_tile = tmp_path / "N45E005.hgt"
+    west_tile.write_bytes(struct.pack(">9h", *([100, 150, 200] * 3)))
+    east_tile.write_bytes(struct.pack(">9h", *([200, 250, 300] * 3)))
+    provider = MosaicDEMProvider(tmp_path)
+
+    assert provider.get_elevation(4.99, 45.5) == 200.0
+    assert provider.get_elevation(5.0, 45.5) == 200.0
+    assert provider.get_elevation(5.01, 45.5) == 200.0
+    assert set(provider._rasters) == {"N45E004.hgt", "N45E005.hgt"}
+
+
+def test_mosaic_dem_provider_uses_srtm_south_west_tile_names_for_negative_coordinates(tmp_path):
+    tile = tmp_path / "S01W001.hgt"
+    tile.write_bytes(struct.pack(">4h", 7, 7, 7, 7))
+    provider = MosaicDEMProvider(tmp_path)
+
+    assert provider.tile_name_for(-0.1, -0.1) == "S01W001.hgt"
+    assert provider.get_elevation(-0.1, -0.1) == 7.0
+
+
+def test_cost_uses_physical_slope_and_changes_with_cell_resolution():
+    current_1km = GridCell(GridPoint(0, 0), elevation_m=0, cell_size_m=1_000)
+    current_5km = GridCell(GridPoint(0, 0), elevation_m=0, cell_size_m=5_000)
+    uphill_1km = GridCell(GridPoint(1, 0), elevation_m=100, cell_size_m=1_000)
+    uphill_5km = GridCell(GridPoint(1, 0), elevation_m=100, cell_size_m=5_000)
     model = SyntheticCostModel()
-    profile = ArmyProfile(distance_weight=1, slope_weight=0, terrain_weight=2, barrier_weight=1)
-    flat_cost = model.edge_cost(current, flat, profile)
-    steep_cost = model.edge_cost(current, steep, profile)
-    assert flat_cost.terrain_cost == 0
-    assert steep_cost.terrain_cost == 8
-    assert flat_cost.total_cost < steep_cost.total_cost
+    profile = ArmyProfile(distance_weight=1, slope_weight=1, terrain_weight=0, barrier_weight=1)
+
+    one_km_cost = model.edge_cost(current_1km, uphill_1km, profile)
+    five_km_cost = model.edge_cost(current_5km, uphill_5km, profile)
+
+    assert one_km_cost.slope_cost == 1_500
+    assert five_km_cost.slope_cost == 0
+    assert one_km_cost.total_cost > five_km_cost.total_cost
+
+
+def test_slope_cost_falls_back_to_one_kilometre_when_cell_size_is_unspecified():
+    current = GridCell(GridPoint(0, 0), elevation_m=0)
+    uphill = GridCell(GridPoint(1, 0), elevation_m=100)
+    cost = SyntheticCostModel().edge_cost(current, uphill, ArmyProfile(slope_weight=1))
+
+    assert cost.slope_cost == 1_500

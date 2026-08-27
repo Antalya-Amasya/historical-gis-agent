@@ -73,6 +73,30 @@ class RouteMetrics(BaseModel):
     estimated_cost: float = Field(ge=0)
     cell_count: int = Field(ge=1)
     segment_count: int = Field(ge=0)
+    # Search cost is intentionally separate from physical geographic distance.
+    search_cost: float = Field(default=0.0, ge=0)
+    max_slope: float = Field(default=0.0, ge=0)
+
+
+class CandidateRouteSegmentLedger(BaseModel):
+    """Auditable GIS computation for one evidence-grounded anchor segment."""
+
+    segment_id: str
+    source_anchor_id: str
+    target_anchor_id: str
+    physical_distance_km: float = Field(ge=0)
+    elevation_gain_m: float = Field(ge=0)
+    elevation_loss_m: float = Field(ge=0)
+    max_slope: float = Field(ge=0)
+    search_cost_total: float = Field(ge=0)
+    cost_breakdown: RouteCostBreakdown
+    terrain_source: str | None = None
+    grid_resolution_m: float | None = Field(default=None, gt=0)
+    sample_count: int = Field(ge=0)
+    edge_count: int = Field(ge=0)
+    nodata_or_missing_count: int = Field(default=0, ge=0)
+    applied_constraints: list[str] = Field(default_factory=list)
+    geometry_role: str = "algorithmic_candidate"
 
 
 class CandidateRoute(BaseModel):
@@ -95,6 +119,7 @@ class CandidateRoute(BaseModel):
     grid_height: int | None = Field(default=None, ge=1)
     terrain_source: str | None = None
     generation_method: str = "single_astar"
+    segment_ledger: list[CandidateRouteSegmentLedger] = Field(default_factory=list)
 
 
     def evaluate(self, army_profile: ArmyProfile | None = None) -> RouteScore:

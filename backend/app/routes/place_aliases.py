@@ -15,6 +15,8 @@ HISTORICAL_PLACE_ALIASES = (
     HistoricalPlaceAlias("Rhodanus", ("rhodanus", "rhone", "rhône")),
     HistoricalPlaceAlias("Massalia", ("massalia", "massilia", "marseilles")),
     HistoricalPlaceAlias("Alpes", ("alpes", "alps")),
+    HistoricalPlaceAlias("Italia", ("italia", "italy")),
+    HistoricalPlaceAlias("Roma", ("roma", "rome")),
     HistoricalPlaceAlias("Taurini", ("taurini", "taurinians")),
     HistoricalPlaceAlias("Padus", ("padus", "po valley", "river po", "po, italy")),
 )

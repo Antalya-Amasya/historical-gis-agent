@@ -20,11 +20,14 @@ class HistoricalCostModel(SyntheticCostModel):
         """Penalty for a single edge based on change, terrain labels, and profile preferences."""
         if cell_from.blocked or cell_to.blocked:
             return inf
+        step_distance_m = self.step_distance_m(cell_from, cell_to)
         elevation_delta = cell_to.elevation_m - cell_from.elevation_m
-        uphill_penalty = max(elevation_delta, 0.0) * (1.0 - army_profile.mountain_tolerance)
-        downhill_penalty = max(-elevation_delta, 0.0) * 0.05
-        terrain_factor = max(cell_to.terrain_multiplier, self.terrain_factor(cell_from, cell_to))
-        rough_penalty = (terrain_factor - 1.0) * army_profile.rough_terrain_penalty
+        uphill_slope = max(elevation_delta, 0.0) / step_distance_m
+        downhill_slope = max(-elevation_delta, 0.0) / step_distance_m
+        slope_multiplier = 1.0 if uphill_slope + downhill_slope < 0.05 else 1.5 if uphill_slope + downhill_slope < 0.15 else 5.0
+        uphill_penalty = uphill_slope * step_distance_m * (1.0 - army_profile.mountain_tolerance) * slope_multiplier
+        downhill_penalty = downhill_slope * step_distance_m * 0.05 * slope_multiplier
+        rough_penalty = (cell_to.terrain_multiplier - 1.0) * army_profile.rough_terrain_penalty
         river_penalty = army_profile.river_crossing_penalty if cell_to.terrain == "river" else 0.0
         return uphill_penalty + downhill_penalty + rough_penalty + river_penalty
 

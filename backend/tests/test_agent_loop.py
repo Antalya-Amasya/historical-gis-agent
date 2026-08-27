@@ -19,6 +19,7 @@ class Geo:
         if tool == "calculate_distance": return {"meters":1,"kilometers":.001,"method":"haversine_geodesic","source":"local"}
         return {"provider":"mock","source":"mock"}
 def ev(identifier,text): return Evidence(id=identifier,author="Polybius",work="Histories",locator="Book III",excerpt=text,text=text,book="3",page_start=1,page_end=1,source_file="polybius.pdf",source_type="pdf")
+def route_ev(): return [ev("move", "Synthetic test evidence: Hannibal's army marched from New Carthage to the Rhone.")]
 def agent(script, evidence=None, max_steps=4, max_tool_executions=10, max_rag_search_executions=4, max_completion_corrections=1, max_completion_tool_executions=1): return HistoricalGisAgent(ScriptedLLMProvider(script),Retriever(evidence or []),Geo(),max_steps=max_steps,max_tool_executions=max_tool_executions,max_rag_search_executions=max_rag_search_executions,max_completion_corrections=max_completion_corrections,max_completion_tool_executions=max_completion_tool_executions)
 def call(name,args,ident="x"): return AgentModelResponse(tool_calls=[AgentToolCall(id=ident,name=name,arguments=args)],finish_reason="tool_calls")
 
@@ -27,7 +28,7 @@ def test_tool_registry_has_only_allowlisted_schemas():
     assert names=={"search_historical_evidence","resolve_ancient_place","calculate_distance","get_elevation","get_elevation_profile","build_historical_route"}
 
 def test_scripted_llm_search_then_route_then_finish():
-    subject=agent([call("search_historical_evidence",{"query":"route"}),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="Schematic route returned.")],[ev("n","New Carthage"),ev("r","Rhone")])
+    subject=agent([call("search_historical_evidence",{"query":"route"}),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="Schematic route returned.")],route_ev())
     reply,state=subject.respond("show a route",AgentState(session_id="a"))
     assert state.historical_route and len(state.historical_route.ordered_points)==2
     assert [entry.tool_name for entry in state.tool_history]==["search_historical_evidence","build_historical_route"]
@@ -141,7 +142,7 @@ def test_route_final_without_route_triggers_one_completion_correction():
 
 def test_route_correction_allows_llm_to_choose_builder_then_complete():
     provider=ScriptedLLMProvider([call("search_historical_evidence",{"query":"Hannibal"}),AgentModelResponse(content="I will answer without a route."),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="The structured route is available.")])
-    subject=HistoricalGisAgent(provider,Retriever([ev("n","New Carthage"),ev("r","Rhone"),ev("h","Hannibal")]),Geo(),max_steps=5)
+    subject=HistoricalGisAgent(provider,Retriever(route_ev()),Geo(),max_steps=5)
     _,state=subject.respond("show a Hannibal historical route",AgentState(session_id="route-builder"))
     assert state.status=="completed" and state.historical_route is not None
     assert state.tool_execution_stats["completion_corrections"]==1
@@ -160,6 +161,13 @@ def test_route_correction_without_builder_stops_with_failed_contract():
     _,state=subject.respond("show a Hannibal historical route",AgentState(session_id="route-failed-contract"))
     assert state.status=="failed_contract" and "historical_route_required_but_not_built" in state.warnings
     assert state.tool_execution_stats["completion_corrections"]==1
+
+
+def test_route_safeguard_refuses_when_builder_has_no_grounded_edge():
+    subject=agent([call("search_historical_evidence",{"query":"Hannibal route"}),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="An unsupported route is ready.")],[ev("bare","Hannibal crossed the Rhone.")],max_steps=3,max_completion_corrections=0)
+    reply,state=subject.respond("show a Hannibal historical route",AgentState(session_id="grounded-route-required"))
+    assert state.historical_route is None and state.status=="failed_contract"
+    assert reply=="The requested HistoricalRoute was not built from the available Evidence."
 
 
 def test_non_route_questions_do_not_require_builder():
@@ -183,14 +191,14 @@ def test_repeated_place_resolution_does_not_satisfy_route_contract():
 
 
 def test_existing_route_finishes_without_extra_correction():
-    subject=agent([call("search_historical_evidence",{"query":"route"}),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="Structured route complete.")],[ev("n","New Carthage"),ev("r","Rhone")])
+    subject=agent([call("search_historical_evidence",{"query":"route"}),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="Structured route complete.")],route_ev())
     _,state=subject.respond("show a historical route",AgentState(session_id="route-exists"))
     assert state.status=="completed" and state.historical_route is not None
     assert state.tool_execution_stats["completion_corrections"]==0
 
 
 def test_route_builder_uses_general_budget_when_capacity_remains():
-    subject=agent([call("search_historical_evidence",{"query":"route"}),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="Done.")],[ev("n","New Carthage"),ev("r","Rhone")],max_tool_executions=3)
+    subject=agent([call("search_historical_evidence",{"query":"route"}),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="Done.")],route_ev(),max_tool_executions=3)
     _,state=subject.respond("show a historical route",AgentState(session_id="general-builder"))
     builder=next(item for item in state.tool_history if item.tool_name=="build_historical_route")
     assert state.status=="completed" and builder.budget_source=="general"
@@ -198,7 +206,7 @@ def test_route_builder_uses_general_budget_when_capacity_remains():
 
 
 def test_route_builder_gets_one_reserved_execution_after_general_budget_exhaustion():
-    subject=agent([call("search_historical_evidence",{"query":"route"}),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="Done.")],[ev("n","New Carthage"),ev("r","Rhone")],max_tool_executions=1)
+    subject=agent([call("search_historical_evidence",{"query":"route"}),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="Done.")],route_ev(),max_tool_executions=1)
     _,state=subject.respond("show a historical route",AgentState(session_id="reserved-builder"))
     builder=next(item for item in state.tool_history if item.tool_name=="build_historical_route")
     assert state.status=="completed" and state.historical_route is not None

@@ -2,7 +2,11 @@
 from __future__ import annotations
 
 from time import perf_counter
+from pathlib import Path
 from backend.app.models import AgentState, HistoricalEvent, HistoricalPlace
+from backend.app.core.config import settings
+from backend.app.candidate_routes.historical_reconstruction import RealTerrainGraphProvider
+from backend.app.candidate_routes.terrain import MosaicDEMProvider
 from backend.app.rag.retriever import HistoricalRetriever
 from backend.app.routes.extractor import HistoricalRouteExtractor
 from backend.app.route_orchestrator import (
@@ -24,8 +28,19 @@ class AgentToolRegistry:
     def __init__(self, retriever: HistoricalRetriever, geography_client, *, route_orchestrator=None, campaign_registry=None):
         self.retriever, self.geography_client = retriever, geography_client
         self.route_extractor = HistoricalRouteExtractor(geography_client)
-        self.route_orchestrator = route_orchestrator or HistoricalRouteOrchestrator()
+        self.route_orchestrator = route_orchestrator or HistoricalRouteOrchestrator(
+            terrain_graph_provider=self._terrain_graph_provider_from_settings(),
+        )
         self.campaign_registry = campaign_registry or HistoricalCampaignIntentRegistry()
+
+    @staticmethod
+    def _terrain_graph_provider_from_settings():
+        if not settings.dem_hgt_dir:
+            return None
+        hgt_dir = Path(settings.dem_hgt_dir)
+        if not hgt_dir.is_dir():
+            return None
+        return RealTerrainGraphProvider(MosaicDEMProvider(hgt_dir=hgt_dir))
 
     def resolve_route_intent(self, message: str):
         return self.campaign_registry.resolve(message)

@@ -75,6 +75,23 @@ class ExtractedHistoricalPlaceMention(BaseModel):
     unresolved_reason: str | None = None
 
 
+class HistoricalClaim(BaseModel):
+    """Minimal, evidence-backed statement used by route orchestration only."""
+    id: str
+    claim_type: str
+    text: str
+    supporting_evidence_ids: list[str] = Field(default_factory=list)
+    source_documents: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0, le=1)
+    status: str = "accepted"
+    source_place: str | None = None
+    destination_place: str | None = None
+    traversed_place: str | None = None
+    movement_relation: str | None = None
+    sequence_status: str = "unordered"
+    textual_basis: str | None = None
+
+
 class HistoricalRoutePoint(BaseModel):
     sequence: int = Field(ge=1)
     historical_place: HistoricalPlace
@@ -84,6 +101,7 @@ class HistoricalRoutePoint(BaseModel):
     confidence: float = Field(ge=0, le=1)
     coordinate_role: str = "exact_site"
     source_support: list[str] = Field(default_factory=list)
+    claim_ids: list[str] = Field(default_factory=list)
 
 
 class HistoricalRoute(BaseModel):
@@ -99,6 +117,7 @@ class HistoricalRoute(BaseModel):
     historical_confidence: float = Field(ge=0, le=1)
     unresolved_mentions: list[ExtractedHistoricalPlaceMention] = Field(default_factory=list)
     source_disagreements: list[str] = Field(default_factory=list)
+    claims: list[HistoricalClaim] = Field(default_factory=list)
 
 
 class RouteMetrics(BaseModel):

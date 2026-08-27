@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     geoapify_api_key: str | None = None
     opentopography_api_key: str | None = None
     geography_provider_mode: str = "mock"
+    dem_hgt_dir: str | None = None
+    route_cell_size_m: float = 5_000.0
     backend_cors_origins: str = "http://127.0.0.1:5173"
     rag_chroma_path: str = "data/chroma"
     rag_embedding_provider: str = "semantic"

@@ -45,6 +45,9 @@ def test_hannibal_route_request_returns_terrain_reconstruction_presentation_from
         AgentModelResponse(content="The evidence-backed terrain-aware candidate is available."),
     ])
     agent = HistoricalGisAgent(provider, EvidenceRetriever(), Geography(), max_steps=4)
+    # This test verifies the documented offline demo constraints, independently
+    # of a developer's DEM_HGT_DIR environment setting.
+    agent.tools.route_orchestrator = HistoricalRouteOrchestrator()
     _, state = agent.respond("展示汉尼拔翻越阿尔卑斯路线", AgentState(session_id="phase16-hannibal"))
 
     assert state.status == "completed"
@@ -73,7 +76,7 @@ def test_hannibal_route_request_returns_terrain_reconstruction_presentation_from
     assert summary["route_method"] == "terrain_constrained_reconstruction"
     assert summary["evidence_basis"] == summary["sources"]
     assert summary["geographic_constraints"] and summary["uncertainty_notes"]
-    assert [step["order"] for step in summary["timeline"]] == [1, 2, 3, 4]
+    assert [step["order"] for step in summary["timeline"]] == [1, 2]
     assert all("id" not in step for step in summary["timeline"])
     quality = presentation["route_geojson"]["properties"]["route_quality"]
     assert quality["coordinate_count"] == len(coordinates)
@@ -82,10 +85,12 @@ def test_hannibal_route_request_returns_terrain_reconstruction_presentation_from
     assert quality["waypoint_order_preserved"] is True
     assert quality["terrain_source"] == "offline_mock_terrain"
     assert quality["terrain_constrained"] is True
-    assert quality["search_constraint"] == "reviewed_historical_corridor"
+    assert quality["applied_constraints"] == ["synthetic_mock_terrain", "mock_ocean_blocking", "mock_reviewed_corridor_mask", "mock_alpine_terrain_multiplier"]
     assert quality["elevation_gain"] >= 0
     assert quality["max_slope"] >= 0
     assert quality["mountain_penalty"] >= 0
+    assert quality["segment_ledger"]
+    assert quality["segment_ledger"][0]["geometry_role"] == "algorithmic_candidate"
     assert {source["source_type"] for source in quality["data_sources"]} == {"reviewed_annotation"}
     assert all({"dataset_name", "version", "license", "confidence"} <= source.keys() for source in quality["data_sources"])
     waypoint_coordinates = [
@@ -107,9 +112,11 @@ def test_hannibal_route_request_returns_terrain_reconstruction_presentation_from
 def test_hannibal_orchestrator_calls_terrain_reconstructor_and_emits_display_safe_summary():
     class RecordingReconstructor(HistoricalRouteReconstructor):
         called = False
+        graph_cell_size_m = None
 
         def reconstruct(self, *args, **kwargs):
             self.called = True
+            self.graph_cell_size_m = args[1].spec.cell_size_m
             return super().reconstruct(*args, **kwargs)
 
     reconstructor = RecordingReconstructor()
@@ -119,16 +126,34 @@ def test_hannibal_orchestrator_calls_terrain_reconstructor_and_emits_display_saf
         AgentModelResponse(content="# Internal-looking model prose must not be used by presentation."),
     ])
     agent = HistoricalGisAgent(provider, EvidenceRetriever(), Geography(), max_steps=4)
-    agent.tools.route_orchestrator = HistoricalRouteOrchestrator(reconstructor=reconstructor)
+    agent.tools.route_orchestrator = HistoricalRouteOrchestrator(reconstructor=reconstructor, cell_size_m=5_000)
 
     _, state = agent.respond("展示汉尼拔进入意大利路线", AgentState(session_id="phase17-5-summary"))
 
     assert reconstructor.called is True
+    assert reconstructor.graph_cell_size_m == 5_000
     assert state.historical_route_presentation is not None
     summary = state.historical_route_presentation["presentation_summary"]
     assert summary["title"] == "Hannibal's invasion of Italy"
     assert "Internal-looking" not in summary["historical_context"]
     assert all("#" not in value for value in summary.values() if isinstance(value, str))
+
+
+def test_presentation_reports_only_provider_applied_constraints():
+    provider = ScriptedLLMProvider([
+        call("search_historical_evidence", {"query": "Hannibal Alps", "top_k": 5}, "search"),
+        call("build_historical_route", {"event_id": "hannibal-alps", "name": "Hannibal into Italy", "period": "218 BCE"}, "route"),
+        AgentModelResponse(content="Candidate available."),
+    ])
+    from backend.app.candidate_routes.historical_reconstruction import OfflineMockTerrainGraphProvider
+    agent = HistoricalGisAgent(provider, EvidenceRetriever(), Geography(), max_steps=4)
+    agent.tools.route_orchestrator = HistoricalRouteOrchestrator(
+        terrain_graph_provider=OfflineMockTerrainGraphProvider(applied_constraints=["fixture_constraint"]),
+    )
+    _, state = agent.respond("展示汉尼拔翻越阿尔卑斯路线", AgentState(session_id="constraint-truth"))
+    route_geojson = state.historical_route_presentation["route_geojson"]
+    assert route_geojson["properties"]["applied_constraints"] == ["fixture_constraint"]
+    assert state.historical_route_presentation["presentation_summary"]["geographic_constraints"] == ["fixture_constraint"]
 
 
 def test_unrecognized_route_request_does_not_receive_a_campaign_orchestrator_presentation():

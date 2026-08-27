@@ -185,3 +185,65 @@ class DEMTerrainProvider(RealTerrainProvider):
             else:
                 grid.set_cell(point, elevation_m=elevation, terrain="dem", cell_size_m=bounds.cell_size_m)
         return grid
+
+
+class MosaicDEMProvider(TerrainProvider):
+    """Offline SRTM HGT provider that loads and caches the tile for each query.
+
+    Missing tiles and HGT no-data samples remain explicit unavailable terrain; this
+    provider deliberately does not infer water coverage or download data.
+    """
+
+    source = "offline_srtm_hgt_mosaic"
+
+    def __init__(self, hgt_dir: str | Path, *, dataset_id: str = "local_srtm_hgt_mosaic") -> None:
+        self.hgt_dir = Path(hgt_dir)
+        self.dataset_id = dataset_id
+        self._rasters: dict[str, HgtRaster] = {}
+
+    @staticmethod
+    def tile_name_for(longitude: float, latitude: float) -> str:
+        if not -180 <= longitude <= 180 or not -90 <= latitude <= 90:
+            raise ValueError("longitude/latitude is invalid")
+        # SRTM tile names identify their south-west integer-degree corner. floor()
+        # is required for negative coordinates: -0.1 degrees belongs to S01/W001.
+        from math import floor
+
+        south_lat = floor(latitude)
+        west_lon = floor(longitude)
+        latitude_hemisphere = "N" if south_lat >= 0 else "S"
+        longitude_hemisphere = "E" if west_lon >= 0 else "W"
+        return f"{latitude_hemisphere}{abs(south_lat):02d}{longitude_hemisphere}{abs(west_lon):03d}.hgt"
+
+    def _raster_for(self, longitude: float, latitude: float) -> HgtRaster:
+        tile_name = self.tile_name_for(longitude, latitude)
+        raster = self._rasters.get(tile_name)
+        if raster is not None:
+            return raster
+        tile_path = self.hgt_dir / tile_name
+        if not tile_path.is_file():
+            raise TerrainDataUnavailableError(f"DEM tile is unavailable: {tile_name}")
+        raster = HgtRaster.from_file(tile_path)
+        self._rasters[tile_name] = raster
+        return raster
+
+    def get_elevation(self, longitude: float, latitude: float) -> float:
+        return self._raster_for(longitude, latitude).elevation_at(longitude, latitude)
+
+    def build_grid(self, bounds: "GeographicGridSpec", resolution_m: float | None = None) -> "TerrainGrid":
+        if resolution_m is not None and resolution_m <= 0:
+            raise ValueError("resolution_m must be positive")
+        if resolution_m is not None and resolution_m != bounds.cell_size_m:
+            raise ValueError("terrain resolution must match the geographic grid cell size")
+        from .geographic import TerrainGrid
+
+        grid = TerrainGrid(bounds)
+        for point in tuple(grid._cells):
+            lon, lat = bounds.grid_to_geographic(point)
+            try:
+                elevation = self.get_elevation(lon, lat)
+            except TerrainDataUnavailableError:
+                grid.set_cell(point, terrain="no_data", blocked=True, cell_size_m=bounds.cell_size_m)
+            else:
+                grid.set_cell(point, elevation_m=elevation, terrain="dem", cell_size_m=bounds.cell_size_m)
+        return grid

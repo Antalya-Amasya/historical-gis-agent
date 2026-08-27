@@ -61,6 +61,20 @@ def test_mountain_edge_penalty_exceeds_plain_edge_penalty():
     assert model.edge_cost(current, mountain, profile).historical_cost > 0
 
 
+def test_historical_costs_distinguish_uphill_and_downhill_by_physical_slope():
+    model = HistoricalCostModel()
+    profile = roman()
+    level = GridCell(GridPoint(0, 0), elevation_m=0, cell_size_m=1_000)
+    higher = GridCell(GridPoint(1, 0), elevation_m=100, cell_size_m=1_000)
+
+    uphill = model.calculate_movement_penalty(level, higher, profile)
+    downhill = model.calculate_movement_penalty(higher, level, profile)
+
+    assert uphill == 75
+    assert downhill == 7.5
+    assert uphill > downhill
+
+
 def test_supply_range_adds_cost_only_after_route_exceeds_range():
     short = route_over(SyntheticGrid.flat(6, 1))
     long = route_over(SyntheticGrid.flat(41, 1))

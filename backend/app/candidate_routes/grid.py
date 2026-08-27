@@ -75,3 +75,11 @@ class SyntheticGrid:
     def neighbors4(self, point: GridPoint) -> tuple[GridPoint, ...]:
         candidates = (GridPoint(point.x, point.y - 1), GridPoint(point.x - 1, point.y), GridPoint(point.x + 1, point.y), GridPoint(point.x, point.y + 1))
         return tuple(candidate for candidate in candidates if self.contains(candidate))
+
+    def neighbors8(self, point: GridPoint) -> tuple[GridPoint, ...]:
+        candidates = (
+            GridPoint(point.x - 1, point.y - 1), GridPoint(point.x, point.y - 1), GridPoint(point.x + 1, point.y - 1),
+            GridPoint(point.x - 1, point.y), GridPoint(point.x + 1, point.y),
+            GridPoint(point.x - 1, point.y + 1), GridPoint(point.x, point.y + 1), GridPoint(point.x + 1, point.y + 1),
+        )
+        return tuple(candidate for candidate in candidates if self.contains(candidate))

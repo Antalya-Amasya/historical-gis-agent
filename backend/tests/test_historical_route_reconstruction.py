@@ -31,6 +31,12 @@ def test_hannibal_alps_offline_reconstruction_returns_terrain_aware_candidate_ge
     assert feature["properties"]["route_type"] == "terrain_aware_historical_reconstruction"
     assert reconstruction.candidate_paths[0].terrain_source == "offline_mock_terrain"
     assert reconstruction.evidence_refs == ["polybius-book-3"]
+    ledger = reconstruction.candidate_paths[0].segment_ledger
+    assert len(ledger) == 1
+    assert ledger[0].source_anchor_id == "rhodanus-crossing"
+    assert ledger[0].target_anchor_id == "alps-approach"
+    assert ledger[0].physical_distance_km == reconstruction.candidate_paths[0].metrics.distance_km
+    assert ledger[0].geometry_role == "algorithmic_candidate"
 
 
 def test_reconstructor_uses_existing_astar_to_avoid_blocked_offline_terrain_cell():

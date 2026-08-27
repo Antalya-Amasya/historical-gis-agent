@@ -33,7 +33,7 @@ from .multi_segment import (
 )
 from .models import (
     ArmyProfile, CandidateRoute, CandidateRouteAnchor, CandidateRouteConstraints, CandidateRouteSet,
-    RankedRoute, RankedRouteSet, RankingProfile, RouteCostBreakdown, RouteMetrics, RouteScore,
+    CandidateRouteSegmentLedger, RankedRoute, RankedRouteSet, RankingProfile, RouteCostBreakdown, RouteMetrics, RouteScore,
 )
 from .waypoint_graph import (
     HistoricalEventChain, HistoricalEventStep, HistoricalWaypoint, HistoricalWaypointBuilder,
@@ -41,7 +41,7 @@ from .waypoint_graph import (
     HistoricalWaypointSegment, WaypointBuilder, WaypointGraphPlanningAdapter,
 )
 from .terrain import (
-    DEMTerrainProvider, HgtRaster, OfflineMockTerrainProvider, RealTerrainProvider,
+    DEMTerrainProvider, HgtRaster, MosaicDEMProvider, OfflineMockTerrainProvider, RealTerrainProvider,
     SyntheticTerrainProvider, TerrainDataUnavailableError, TerrainProvider, UnsupportedDemError,
 )
 from .historical_reconstruction import (
@@ -64,8 +64,8 @@ __all__ = [
     "build_route_explanation", "evaluate_route", "route_to_geojson", "serialize_route_evaluation",
     "GeographicCandidateRouteService", "GeographicGridSpec", "GridTooLargeError",
     "LocalProjection", "NoPathError", "PointOutsideGridError", "RouteCostBreakdown",
-    "RouteMetrics", "RouteScore", "SyntheticGeographicTerrainProvider", "TerrainGrid",
-    "DEMTerrainProvider", "HgtRaster", "OfflineMockTerrainProvider", "RealTerrainProvider",
+    "RouteMetrics", "RouteScore", "CandidateRouteSegmentLedger", "SyntheticGeographicTerrainProvider", "TerrainGrid",
+    "DEMTerrainProvider", "HgtRaster", "MosaicDEMProvider", "OfflineMockTerrainProvider", "RealTerrainProvider",
     "SyntheticTerrainProvider", "TerrainDataUnavailableError", "TerrainProvider", "UnsupportedDemError",
     "HistoricalRouteReconstructor", "OfflineMockTerrainGraphProvider", "RealTerrainGraphProvider",
     "ReconstructedHistoricalRoute", "ReviewedHistoricalWaypoint", "TerrainGraph",

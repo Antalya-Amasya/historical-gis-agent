@@ -30,6 +30,7 @@ from backend.app.models import Evidence, HistoricalRoute, HistoricalRouteIntent
 from backend.app.rag.campaign_ontology import HistoricalCampaignOntology
 from backend.app.candidate_routes.grid import GridPoint
 from backend.app.candidate_routes.terrain import TerrainOverride
+from backend.app.core.config import settings
 
 
 class RouteOrchestrationError(ValueError):
@@ -102,6 +103,7 @@ class PresentationSummaryBuilder:
         evidence: list[Evidence],
         *,
         terrain_source: str,
+        applied_constraints: list[str],
     ) -> PresentationSummary:
         entity = self.ontology.get(intent.entity)
         parent = self.ontology.get(entity.parent_campaign) if entity else None
@@ -127,11 +129,7 @@ class PresentationSummaryBuilder:
             route_interpretation="Terrain-constrained reconstruction joins evidence-backed anchors through deterministic A* search; it is not an exact daily march.",
             route_stages=[point.historical_place.canonical_name for point in historical_route.ordered_points],
             sources=sources,
-            geographic_constraints=[
-                "Reviewed historical corridor restricts the search area.",
-                "Coarse offline sea cells are blocked.",
-                "Coarse Alpine cells increase terrain movement cost.",
-            ],
+            geographic_constraints=list(applied_constraints),
             uncertainty_notes=[
                 "Representative river, regional, and mountain coordinates do not identify an exact passage.",
                 "Intermediate geometry is algorithmic rather than direct historical evidence.",
@@ -173,23 +171,33 @@ class HistoricalRouteOrchestrator:
         terrain_graph_provider: OfflineMockTerrainGraphProvider | None = None,
         reconstructor: HistoricalRouteReconstructor | None = None,
         presentation_service: LocationAwarePresentationService | None = None,
+        cell_size_m: float | None = None,
     ) -> None:
+        configured_cell_size_m = settings.route_cell_size_m if cell_size_m is None else cell_size_m
+        if configured_cell_size_m <= 0:
+            raise ValueError("cell_size_m must be positive")
         self.terrain_graph_provider = terrain_graph_provider
         self.reconstructor = reconstructor or HistoricalRouteReconstructor()
         self.presentation_service = presentation_service or LocationAwarePresentationService()
+        self.cell_size_m = configured_cell_size_m
 
     def present(
         self,
         intent: HistoricalRouteIntent,
         historical_route: HistoricalRoute,
         evidence: list[Evidence],
+        *,
+        cell_size_m: float | None = None,
     ) -> HistoricalRouteResponse:
         if intent.intent != "historical_route":
             raise RouteOrchestrationError("only historical_route intents can be reconstructed")
         reviewed = self._reviewed_waypoints(historical_route)
         terrain_graph_provider = self._terrain_graph_provider_for(intent)
+        effective_cell_size_m = self.cell_size_m if cell_size_m is None else cell_size_m
+        if effective_cell_size_m <= 0:
+            raise ValueError("cell_size_m must be positive")
         graph = terrain_graph_provider.build_graph(
-            reviewed, padding_km=10.0, cell_size_m=25_000.0,
+            reviewed, padding_km=10.0, cell_size_m=effective_cell_size_m,
         )
         reconstruction = self.reconstructor.reconstruct(
             reviewed, graph, route_id=f"{intent.campaign_id}-terrain-candidate",
@@ -207,6 +215,7 @@ class HistoricalRouteOrchestrator:
         )
         display_summary = PresentationSummaryBuilder().build(
             intent, historical_route, evidence, terrain_source=reconstruction.terrain_source,
+            applied_constraints=list(graph.applied_constraints),
         )
         presentation = presentation.model_copy(update={
             "route_name": display_summary.operation or presentation.route_name,
@@ -219,6 +228,7 @@ class HistoricalRouteOrchestrator:
             "terrain_source": reconstruction.terrain_source,
             "explanation": "Terrain-aware candidate connection between evidence-backed, MCP-resolved anchors; not an exact historical march path.",
             "route_quality": self._route_quality(route, graph, reconstruction, reviewed, historical_route),
+            "applied_constraints": list(graph.applied_constraints),
         })
         route_geojson["properties"] = route_properties
         geojson = dict(presentation.geojson)
@@ -242,7 +252,10 @@ class HistoricalRouteOrchestrator:
     def _terrain_graph_provider_for(self, intent: HistoricalRouteIntent):
         if self.terrain_graph_provider is not None:
             return self.terrain_graph_provider
-        return OfflineMockTerrainGraphProvider(self._terrain_constraints_for(intent))
+        constraints = ["synthetic_mock_terrain"]
+        if intent.campaign_id == _HANNIBAL_CORRIDOR.campaign_id:
+            constraints.extend(["mock_ocean_blocking", "mock_reviewed_corridor_mask", "mock_alpine_terrain_multiplier"])
+        return OfflineMockTerrainGraphProvider(self._terrain_constraints_for(intent), applied_constraints=constraints)
 
     @staticmethod
     def _terrain_constraints_for(intent: HistoricalRouteIntent) -> Callable[[GridPoint, float, float], TerrainOverride | None]:
@@ -300,11 +313,7 @@ class HistoricalRouteOrchestrator:
         reconstructed_ids.extend(path.to_anchor.historical_place_id for path in reconstruction.candidate_paths)
         terrain_cost = route.cost_breakdown.terrain_cost
         elevation_gain = route.metrics.elevation_gain_m
-        max_slope = 0.0
-        for first, second in zip(coordinates, coordinates[1:]):
-            first_cell = graph.grid.cell(graph.spec.geographic_to_grid(*first))
-            second_cell = graph.grid.cell(graph.spec.geographic_to_grid(*second))
-            max_slope = max(max_slope, abs(second_cell.elevation_m - first_cell.elevation_m) / graph.spec.cell_size_m)
+        max_slope = max((ledger.max_slope for ledger in route.segment_ledger), default=route.metrics.max_slope)
         sources = [
             HistoricalDataSource(
                 source_type="reviewed_annotation",
@@ -329,10 +338,11 @@ class HistoricalRouteOrchestrator:
             "waypoint_order_preserved": reconstructed_ids == expected_ids,
             "terrain_source": reconstruction.terrain_source,
             "terrain_constrained": True,
-            "search_constraint": "reviewed_historical_corridor" if len(reviewed) > 1 else "none",
+            "applied_constraints": list(graph.applied_constraints),
             "elevation_gain": elevation_gain,
             "max_slope": max_slope,
             "mountain_penalty": terrain_cost,
+            "segment_ledger": [item.model_dump(mode="json") for item in route.segment_ledger],
             "data_sources": sources,
         }
 
@@ -401,6 +411,7 @@ class HistoricalRouteOrchestrator:
             projection_method=first.projection_method,
             terrain_source=first.terrain_source,
             generation_method="historical_route_reconstruction",
+            segment_ledger=[ledger for path in paths for ledger in path.segment_ledger],
         )
 
     @staticmethod
