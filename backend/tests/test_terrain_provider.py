@@ -84,18 +84,18 @@ def test_mosaic_dem_provider_queries_adjacent_tiles_and_caches_them(tmp_path):
     east_tile = tmp_path / "N45E005.hgt"
     west_tile.write_bytes(struct.pack(">9h", *([100, 150, 200] * 3)))
     east_tile.write_bytes(struct.pack(">9h", *([200, 250, 300] * 3)))
-    provider = MosaicDEMProvider(tmp_path)
+    provider = MosaicDEMProvider(tmp_path, samples_per_edge=3)
 
     assert provider.get_elevation(4.99, 45.5) == 200.0
     assert provider.get_elevation(5.0, 45.5) == 200.0
     assert provider.get_elevation(5.01, 45.5) == 200.0
-    assert set(provider._rasters) == {"N45E004.hgt", "N45E005.hgt"}
+    assert set(provider.cached_tile_ids) == {"N45E004.hgt", "N45E005.hgt"}
 
 
 def test_mosaic_dem_provider_uses_srtm_south_west_tile_names_for_negative_coordinates(tmp_path):
     tile = tmp_path / "S01W001.hgt"
     tile.write_bytes(struct.pack(">4h", 7, 7, 7, 7))
-    provider = MosaicDEMProvider(tmp_path)
+    provider = MosaicDEMProvider(tmp_path, samples_per_edge=2)
 
     assert provider.tile_name_for(-0.1, -0.1) == "S01W001.hgt"
     assert provider.get_elevation(-0.1, -0.1) == 7.0

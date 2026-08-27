@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from math import isqrt
 from pathlib import Path
-import re
-import struct
 from typing import TYPE_CHECKING, Callable
+
+from backend.app.core.config import settings
+from backend.app.gis.dem import ElevationStatus, HgtFormatError, HgtRaster, HgtTileStore
+from backend.app.gis.dem_manifest import load_dem_manifest
 
 from .grid import GridPoint
 
@@ -19,8 +20,7 @@ class TerrainDataUnavailableError(ValueError):
     """The requested coordinate is outside an offline DEM tile or has no sample."""
 
 
-class UnsupportedDemError(ValueError):
-    """The supplied offline DEM does not match the supported HGT format."""
+UnsupportedDemError = HgtFormatError
 
 
 class TerrainProvider(ABC):
@@ -99,55 +99,6 @@ class TerrainOverride:
     blocked: bool | None = None
 
 
-@dataclass(frozen=True)
-class HgtRaster:
-    """One-degree SRTM HGT tile, sampled deterministically with nearest-neighbor lookup."""
-
-    west_lon: int
-    south_lat: int
-    samples: tuple[tuple[int, ...], ...]
-
-    @classmethod
-    def from_file(cls, path: str | Path) -> "HgtRaster":
-        dem_path = Path(path)
-        match = re.fullmatch(r"([NS])(\d{2})([EW])(\d{3})\.hgt", dem_path.name, re.IGNORECASE)
-        if match is None:
-            raise UnsupportedDemError("HGT filename must use the NxxEyyy.hgt convention")
-        raw = dem_path.read_bytes()
-        if len(raw) == 0 or len(raw) % 2:
-            raise UnsupportedDemError("HGT data must contain 16-bit samples")
-        size = isqrt(len(raw) // 2)
-        if size < 2 or size * size * 2 != len(raw):
-            raise UnsupportedDemError("HGT data must be a square raster")
-        values = struct.unpack(f">{size * size}h", raw)
-        rows = tuple(tuple(values[row * size:(row + 1) * size]) for row in range(size))
-        sign_lat = 1 if match.group(1).upper() == "N" else -1
-        sign_lon = 1 if match.group(3).upper() == "E" else -1
-        return cls(sign_lon * int(match.group(4)), sign_lat * int(match.group(2)), rows)
-
-    @property
-    def size(self) -> int:
-        return len(self.samples)
-
-    @property
-    def east_lon(self) -> int:
-        return self.west_lon + 1
-
-    @property
-    def north_lat(self) -> int:
-        return self.south_lat + 1
-
-    def elevation_at(self, longitude: float, latitude: float) -> float:
-        if not self.west_lon <= longitude <= self.east_lon or not self.south_lat <= latitude <= self.north_lat:
-            raise TerrainDataUnavailableError("coordinate is outside this DEM tile")
-        x = min(self.size - 1, max(0, round((longitude - self.west_lon) * (self.size - 1))))
-        north_index = min(self.size - 1, max(0, round((self.north_lat - latitude) * (self.size - 1))))
-        elevation = self.samples[north_index][x]
-        if elevation == -32768:
-            raise TerrainDataUnavailableError("DEM sample is marked no-data")
-        return float(elevation)
-
-
 class DEMTerrainProvider(RealTerrainProvider):
     """Optional, offline-only SRTM HGT terrain provider; it never downloads DEM data."""
 
@@ -166,7 +117,13 @@ class DEMTerrainProvider(RealTerrainProvider):
         return cls(HgtRaster.from_file(path))
 
     def get_elevation(self, longitude: float, latitude: float) -> float:
-        return self.raster.elevation_at(longitude, latitude)
+        try:
+            elevation = self.raster.sample_at(longitude, latitude)
+        except ValueError as exc:
+            raise TerrainDataUnavailableError("coordinate is outside this DEM tile") from exc
+        if elevation == HgtRaster.VOID_ELEVATION:
+            raise TerrainDataUnavailableError("DEM sample is marked no-data")
+        return float(elevation)
 
     def build_grid(self, bounds: "GeographicGridSpec", resolution_m: float | None = None) -> "TerrainGrid":
         if resolution_m is not None and resolution_m <= 0:
@@ -196,39 +153,31 @@ class MosaicDEMProvider(TerrainProvider):
 
     source = "offline_srtm_hgt_mosaic"
 
-    def __init__(self, hgt_dir: str | Path, *, dataset_id: str = "local_srtm_hgt_mosaic") -> None:
+    def __init__(self, hgt_dir: str | Path, *, dataset_id: str = "local_srtm_hgt_mosaic", cache_size: int | None = None, samples_per_edge: int | None = 1201, manifest_path: str | Path | None = None) -> None:
         self.hgt_dir = Path(hgt_dir)
         self.dataset_id = dataset_id
-        self._rasters: dict[str, HgtRaster] = {}
+        self.provenance_metadata = load_dem_manifest(manifest_path or settings.dem_manifest_path)
+        self._store = HgtTileStore(
+            self.hgt_dir,
+            cache_size=settings.dem_tile_cache_size if cache_size is None else cache_size,
+            samples_per_edge=samples_per_edge,
+            source=self.source,
+        )
 
     @staticmethod
     def tile_name_for(longitude: float, latitude: float) -> str:
-        if not -180 <= longitude <= 180 or not -90 <= latitude <= 90:
-            raise ValueError("longitude/latitude is invalid")
-        # SRTM tile names identify their south-west integer-degree corner. floor()
-        # is required for negative coordinates: -0.1 degrees belongs to S01/W001.
-        from math import floor
-
-        south_lat = floor(latitude)
-        west_lon = floor(longitude)
-        latitude_hemisphere = "N" if south_lat >= 0 else "S"
-        longitude_hemisphere = "E" if west_lon >= 0 else "W"
-        return f"{latitude_hemisphere}{abs(south_lat):02d}{longitude_hemisphere}{abs(west_lon):03d}.hgt"
-
-    def _raster_for(self, longitude: float, latitude: float) -> HgtRaster:
-        tile_name = self.tile_name_for(longitude, latitude)
-        raster = self._rasters.get(tile_name)
-        if raster is not None:
-            return raster
-        tile_path = self.hgt_dir / tile_name
-        if not tile_path.is_file():
-            raise TerrainDataUnavailableError(f"DEM tile is unavailable: {tile_name}")
-        raster = HgtRaster.from_file(tile_path)
-        self._rasters[tile_name] = raster
-        return raster
+        return HgtTileStore.tile_name_for(latitude, longitude)
 
     def get_elevation(self, longitude: float, latitude: float) -> float:
-        return self._raster_for(longitude, latitude).elevation_at(longitude, latitude)
+        sample = self._store.sample(latitude, longitude)
+        if sample.status is not ElevationStatus.VALID:
+            raise TerrainDataUnavailableError(f"DEM {sample.status.value.lower()}: {sample.tile_id}")
+        assert sample.elevation_m is not None
+        return sample.elevation_m
+
+    @property
+    def cached_tile_ids(self) -> tuple[str, ...]:
+        return self._store.cached_tile_ids
 
     def build_grid(self, bounds: "GeographicGridSpec", resolution_m: float | None = None) -> "TerrainGrid":
         if resolution_m is not None and resolution_m <= 0:

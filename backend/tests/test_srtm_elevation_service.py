@@ -23,7 +23,7 @@ def test_crossing_integer_longitude_loads_adjacent_tiles_without_a_seam(tmp_path
 
     assert max(west_of_seam, at_seam, east_of_seam) - min(west_of_seam, at_seam, east_of_seam) <= 1.0
     assert at_seam == east_of_seam == 200.0
-    assert service._load_tile.cache_info().currsize == 2
+    assert service.cached_tile_ids == ("N45E004.hgt", "N45E005.hgt")
 
 
 def test_missing_tile_is_explicitly_unavailable_not_sea_level(tmp_path):
