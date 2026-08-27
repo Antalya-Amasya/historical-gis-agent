@@ -10,6 +10,7 @@ from .engine import CandidateRouteEngine
 from .grid import GridCell, GridPoint, SyntheticGrid
 from .models import ArmyProfile, CandidateRoute, CandidateRouteAnchor
 from .terrain import SyntheticTerrainProvider, TerrainOverride, TerrainProvider
+from backend.app.gis.surface import SurfaceClassification, SurfaceClassifier
 
 # Backward-compatible public name retained for Phase 6.1 callers.
 SyntheticGeographicTerrainProvider = SyntheticTerrainProvider
@@ -146,6 +147,7 @@ class TerrainCell:
     terrain: str
     terrain_multiplier: float
     blocked: bool
+    surface: SurfaceClassification
     provenance: str = "derived_geographic_data"
 
 
@@ -161,7 +163,21 @@ class TerrainGrid(SyntheticGrid):
     def terrain_cell(self, point: GridPoint) -> TerrainCell:
         cell: GridCell = self.cell(point)
         longitude, latitude = self.spec.grid_to_geographic(point)
-        return TerrainCell(point, longitude, latitude, cell.elevation_m, cell.terrain, cell.terrain_multiplier, cell.blocked)
+        return TerrainCell(
+            point, longitude, latitude, cell.elevation_m, cell.terrain,
+            cell.terrain_multiplier, cell.blocked, cell.surface,
+        )
+
+    def apply_surface_classifier(self, classifier: SurfaceClassifier) -> None:
+        """Explicitly decorate cells with independent surface data.
+
+        Providers and routing do not call this automatically: a caller must opt
+        in with an audited surface-data adapter.  Surface labels therefore do
+        not change the existing land-only A* behaviour in this phase.
+        """
+        for point in tuple(self._cells):
+            longitude, latitude = self.spec.grid_to_geographic(point)
+            self.set_cell(point, surface=classifier.classify(latitude, longitude))
 
 
 class GeographicCandidateRouteService:

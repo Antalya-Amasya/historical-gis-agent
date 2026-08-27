@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
+from backend.app.gis.surface import SurfaceClassification, UNKNOWN_SURFACE
+
 
 @dataclass(frozen=True, order=True)
 class GridPoint:
@@ -18,6 +20,7 @@ class GridCell:
     terrain_multiplier: float = 1.0
     blocked: bool = False
     cell_size_m: float | None = None
+    surface: SurfaceClassification = UNKNOWN_SURFACE
 
     def __post_init__(self) -> None:
         if self.terrain_multiplier < 1.0:
@@ -61,6 +64,7 @@ class SyntheticGrid:
         terrain_multiplier: float | None = None,
         blocked: bool | None = None,
         cell_size_m: float | None = None,
+        surface: SurfaceClassification | None = None,
     ) -> None:
         current = self.cell(point)
         self._cells[point] = replace(
@@ -70,6 +74,7 @@ class SyntheticGrid:
             terrain_multiplier=current.terrain_multiplier if terrain_multiplier is None else terrain_multiplier,
             blocked=current.blocked if blocked is None else blocked,
             cell_size_m=current.cell_size_m if cell_size_m is None else cell_size_m,
+            surface=current.surface if surface is None else surface,
         )
 
     def neighbors4(self, point: GridPoint) -> tuple[GridPoint, ...]:
