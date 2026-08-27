@@ -3,6 +3,7 @@
 from .srtm import SrtmElevationService, SrtmElevationUnavailableError
 from .dem import DEMProvider, ElevationSample, ElevationStatus, HgtFormatError, HgtRaster, HgtTileStore
 from .dem_manifest import DEMInventory, DEMProvenance, build_hgt_inventory, load_dem_manifest
+from .ports import HistoricalPort, InMemoryPortRegistry, PortEvidenceStatus, PortRegistry, PortStatus, PortSurfaceContext, PortSurfaceDiagnostic, validate_port_surface_context
 from .natural_earth_surface import NaturalEarthDatasetAudit, NaturalEarthSurfaceClassifier
 from .natural_earth_preprocess import NaturalEarthPreprocessAudit, normalize_natural_earth_geojson
 from .surface import (
@@ -24,10 +25,17 @@ __all__ = [
     "HgtFormatError",
     "HgtRaster",
     "HgtTileStore",
+    "HistoricalPort",
+    "InMemoryPortRegistry",
     "NaturalEarthDatasetAudit",
     "NaturalEarthSurfaceClassifier",
     "NaturalEarthPreprocessAudit",
     "NoSurfaceClassifier",
+    "PortRegistry",
+    "PortEvidenceStatus",
+    "PortStatus",
+    "PortSurfaceContext",
+    "PortSurfaceDiagnostic",
     "SrtmElevationService",
     "SrtmElevationUnavailableError",
     "SurfaceClassification",
@@ -37,4 +45,5 @@ __all__ = [
     "normalize_natural_earth_geojson",
     "build_hgt_inventory",
     "load_dem_manifest",
+    "validate_port_surface_context",
 ]
