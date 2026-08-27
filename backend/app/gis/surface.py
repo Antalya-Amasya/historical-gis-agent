@@ -6,9 +6,10 @@ classifier explicitly; there is no implicit world-wide land or water default.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Protocol
+from types import MappingProxyType
+from typing import Mapping, Protocol
 
 
 class SurfaceType(str, Enum):
@@ -28,12 +29,14 @@ class SurfaceClassification:
     source: str
     confidence: float | None = None
     status: str | None = None
+    metadata: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.source:
             raise ValueError("surface classification source must be non-empty")
         if self.confidence is not None and not 0.0 <= self.confidence <= 1.0:
             raise ValueError("surface classification confidence must be between 0 and 1")
+        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 
 
 UNKNOWN_SURFACE = SurfaceClassification(
