@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,9 +11,7 @@ from backend.app.agent.mock_agent import MockAgent
 from backend.app.core.config import settings
 from backend.app.memory.store import InMemorySessionStore
 from backend.app.models import AgentState, ChatRequest, ChatResponse, RagSearchRequest, RagSearchResponse
-from backend.app.rag.embeddings.provider import SentenceTransformerEmbeddingProvider
-from backend.app.rag.retriever import ChromaHistoricalRetriever
-from backend.app.rag.store import ChromaEvidenceStore
+from backend.app.rag.http_store import build_production_retriever
 from backend.app.routes.evidence import SemanticRouteEvidenceRetriever
 from backend.app.candidate_routes.presentation import HistoricalRouteResponse
 from backend.app.historical_route_presentation_service import (
@@ -65,6 +62,5 @@ def historical_route_presentation(route_id: str) -> HistoricalRouteResponse:
 
 @app.post("/api/v1/rag/search", response_model=RagSearchResponse)
 def rag_search(request: RagSearchRequest) -> RagSearchResponse:
-    provider = SentenceTransformerEmbeddingProvider(settings.rag_embedding_model, settings.rag_embedding_device, settings.rag_embedding_batch_size)
-    retriever = ChromaHistoricalRetriever(ChromaEvidenceStore(Path("data/chroma_semantic"), "historical_primary_sources_semantic", provider))
+    retriever = build_production_retriever(settings)
     return RagSearchResponse(query=request.query, evidence=retriever.retrieve(request.query, request.top_k, request.filters))

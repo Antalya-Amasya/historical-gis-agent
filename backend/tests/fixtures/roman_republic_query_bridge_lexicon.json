@@ -1,0 +1,22 @@
+[
+  {"chinese_form":"凯撒","english_forms":["Caesar","Julius Caesar"],"type":"person","evidence_source":"paired_english_query","reason":"Named actor in frozen Caesar pairs."},
+  {"chinese_form":"庞培","english_forms":["Pompey"],"type":"person","evidence_source":"paired_english_query","reason":"Named actor in frozen civil-war pair."},
+  {"chinese_form":"汉尼拔","english_forms":["Hannibal"],"type":"person","evidence_source":"paired_english_query","reason":"Named actor in frozen Alpine pair."},
+  {"chinese_form":"马略","english_forms":["Marius"],"type":"person","evidence_source":"paired_english_query","reason":"Named actor in frozen conflict pair."},
+  {"chinese_form":"苏拉","english_forms":["Sulla"],"type":"person","evidence_source":"paired_english_query","reason":"Named actor in frozen conflict pair."},
+  {"chinese_form":"喀提林","english_forms":["Catiline"],"type":"person","evidence_source":"paired_english_query","reason":"Named actor in frozen conspiracy pair."},
+  {"chinese_form":"朱古达","english_forms":["Jugurtha"],"type":"person","evidence_source":"paired_english_query","reason":"Named actor in frozen war pair."},
+  {"chinese_form":"阿尔卑斯山","english_forms":["Alps"],"type":"place","evidence_source":"paired_english_query","reason":"Named place in frozen Alpine pair."},
+  {"chinese_form":"卢比孔河","english_forms":["Rubicon"],"type":"place","evidence_source":"paired_english_query","reason":"Named place in frozen Rubicon pair."},
+  {"chinese_form":"高卢","english_forms":["Gaul"],"type":"place","evidence_source":"paired_english_query","reason":"Named place in frozen Gallic campaign pair."},
+  {"chinese_form":"坦尼","english_forms":["Cannae"],"type":"place","evidence_source":"paired_english_query","reason":"Roman place/event name in frozen Cannae pair."},
+  {"chinese_form":"第二次布匏战争","english_forms":["Second Punic War"],"type":"event_entity","evidence_source":"paired_english_query","reason":"Canonical event expression for the frozen typo-form query."},
+  {"chinese_form":"内战","english_forms":["civil war"],"type":"concept","evidence_source":"paired_english_query","reason":"Event concept in frozen civil-war pair."},
+  {"chinese_form":"阴谋","english_forms":["conspiracy"],"type":"concept","evidence_source":"paired_english_query","reason":"Event concept in frozen Catiline pair."},
+  {"chinese_form":"战争","english_forms":["war"],"type":"concept","evidence_source":"paired_english_query","reason":"Event concept in frozen war pairs."},
+  {"chinese_form":"会战","english_forms":["battle"],"type":"concept","evidence_source":"paired_english_query","reason":"Combat concept in frozen Cannae pair."},
+  {"chinese_form":"渡过","english_forms":["crossing"],"type":"concept","evidence_source":"paired_english_query","reason":"Action concept in frozen Rubicon pair."},
+  {"chinese_form":"翻越","english_forms":["crossing"],"type":"concept","evidence_source":"paired_english_query","reason":"Action concept in frozen Alpine pair."},
+  {"chinese_form":"军事行动","english_forms":["campaign"],"type":"concept","evidence_source":"paired_english_query","reason":"Military-action concept in frozen Gallic pair."},
+  {"chinese_form":"冲突","english_forms":["conflict"],"type":"concept","evidence_source":"paired_english_query","reason":"Conflict concept in frozen Marius-Sulla pair."}
+]

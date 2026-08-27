@@ -1,0 +1,24 @@
+{
+  "base_lexicon": "roman_republic_query_bridge_lexicon.json",
+  "taxonomy": ["PERSON", "PLACE", "POLITICAL_EVENT", "MILITARY_EVENT", "MILITARY_ACTION", "MOVEMENT", "GEOGRAPHIC_ACTION", "POLITICAL_ACTION", "CONFLICT_RELATION", "TEMPORAL_CONCEPT"],
+  "entries": [
+    {"chinese_form":"行军","english_forms":["march"],"type":"MOVEMENT","rationale":"Generic military movement term reusable across campaigns.","derivation_source":"general_historical_terminology","benchmark_specific":false},
+    {"chinese_form":"进军","english_forms":["advance","march"],"type":"MOVEMENT","rationale":"Generic directional military movement.","derivation_source":"general_historical_terminology","benchmark_specific":false},
+    {"chinese_form":"撤退","english_forms":["retreat"],"type":"MOVEMENT","rationale":"Generic withdrawal movement.","derivation_source":"general_historical_terminology","benchmark_specific":false},
+    {"chinese_form":"进入","english_forms":["entering"],"type":"GEOGRAPHIC_ACTION","rationale":"Generic movement into a place or region.","derivation_source":"general_historical_terminology","benchmark_specific":false},
+    {"chinese_form":"离开","english_forms":["leaving"],"type":"GEOGRAPHIC_ACTION","rationale":"Generic movement away from a place or region.","derivation_source":"general_historical_terminology","benchmark_specific":false},
+    {"chinese_form":"渡河","english_forms":["river crossing"],"type":"GEOGRAPHIC_ACTION","rationale":"Generic river-crossing action.","derivation_source":"general_historical_terminology","benchmark_specific":false},
+    {"chinese_form":"山地","english_forms":["mountain"],"type":"PLACE","rationale":"Generic terrain reference for historical movement.","derivation_source":"general_historical_terminology","benchmark_specific":false},
+    {"chinese_form":"围攻","english_forms":["siege"],"type":"MILITARY_ACTION","rationale":"Generic military action.","derivation_source":"general_historical_terminology","benchmark_specific":false},
+    {"chinese_form":"攻击","english_forms":["attack"],"type":"MILITARY_ACTION","rationale":"Generic military action.","derivation_source":"general_historical_terminology","benchmark_specific":false},
+    {"chinese_form":"入侵","english_forms":["invasion"],"type":"MILITARY_ACTION","rationale":"Generic military action across historical campaigns.","derivation_source":"general_historical_terminology","benchmark_specific":false},
+    {"chinese_form":"战役","english_forms":["campaign"],"type":"MILITARY_EVENT","rationale":"Generic extended military-operation concept.","derivation_source":"general_historical_terminology","benchmark_specific":false},
+    {"chinese_form":"叛乱","english_forms":["rebellion","revolt"],"type":"POLITICAL_EVENT","rationale":"Generic political-military event.","derivation_source":"general_historical_terminology","benchmark_specific":false},
+    {"chinese_form":"反叛","english_forms":["rebellion","revolt"],"type":"POLITICAL_EVENT","rationale":"Generic political-military event.","derivation_source":"general_historical_terminology","benchmark_specific":false},
+    {"chinese_form":"暗杀","english_forms":["assassination"],"type":"POLITICAL_ACTION","rationale":"Generic political action.","derivation_source":"general_historical_terminology","benchmark_specific":false},
+    {"chinese_form":"竞争","english_forms":["rivalry"],"type":"CONFLICT_RELATION","rationale":"Generic political or personal conflict relation.","derivation_source":"general_historical_terminology","benchmark_specific":false},
+    {"chinese_form":"联盟","english_forms":["alliance"],"type":"CONFLICT_RELATION","rationale":"Generic political relationship.","derivation_source":"general_historical_terminology","benchmark_specific":false},
+    {"chinese_form":"政治","english_forms":["political"],"type":"POLITICAL_ACTION","rationale":"Generic political-domain concept.","derivation_source":"general_historical_terminology","benchmark_specific":false},
+    {"chinese_form":"共和国","english_forms":["republic"],"type":"TEMPORAL_CONCEPT","rationale":"Generic Roman political-period concept.","derivation_source":"general_historical_terminology","benchmark_specific":false}
+  ]
+}

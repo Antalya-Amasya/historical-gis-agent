@@ -1,11 +1,9 @@
-from pathlib import Path
 import logging
 
 from backend.app.core.config import settings
 from backend.app.models import Evidence
-from backend.app.rag.embeddings.provider import SentenceTransformerEmbeddingProvider
 from backend.app.rag.retriever import HistoricalRetriever, ChromaHistoricalRetriever
-from backend.app.rag.store import ChromaEvidenceStore
+from backend.app.rag.http_store import build_production_retriever
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +16,7 @@ class SemanticRouteEvidenceRetriever(HistoricalRetriever):
 
     def _get(self) -> ChromaHistoricalRetriever:
         if self._retriever is None:
-            provider = SentenceTransformerEmbeddingProvider(settings.rag_embedding_model, settings.rag_embedding_device, settings.rag_embedding_batch_size)
-            store = ChromaEvidenceStore(Path("data/chroma_semantic"), "historical_primary_sources_semantic", provider)
-            self._retriever = ChromaHistoricalRetriever(store)
+            self._retriever = build_production_retriever(settings)
         return self._retriever
 
     def retrieve(self, query: str, top_k: int = 5, filters: dict[str, str] | None = None) -> list[Evidence]:

@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     rag_embedding_model: str = "intfloat/multilingual-e5-small"
     rag_embedding_device: str = "auto"
     rag_embedding_batch_size: int = 16
+    rag_chroma_host: str = "127.0.0.1"
+    rag_chroma_port: int = 8002
+    rag_collection: str = "roman_republic_primary_sources_v2"
+    rag_top_k: int = 5
+    rag_query_bridge_enabled: bool = True
 
 
 settings = Settings()
