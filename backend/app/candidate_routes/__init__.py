@@ -1,5 +1,8 @@
 """Deterministic, evidence-constrained candidate routing primitives."""
 from .engine import CandidateRouteEngine, NoPathError
+from .roman_roads import RomanRoadAccess, RomanRoadCandidateResult, RomanRoadCandidateRoute, RomanRoadCandidateService
+from .roman_road_orchestration import RomanRoadRouteOrchestrator, RomanRoadRouteResult, RomanRoadRouteStatus
+from .roman_road_presentation import RomanRoadPresentation, RomanRoadPresentationService
 from .corpus import HistoricalCorpus
 from .generator import CandidateRouteGenerator
 from .evaluation import (

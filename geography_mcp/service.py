@@ -1,7 +1,7 @@
 from math import asin, cos, radians, sin, sqrt
 from pydantic import BaseModel, Field
 from backend.app.models import HistoricalPlace
-from geography_mcp.tools import resolve_demo_place
+from geography_mcp.tools import resolve_registry_places
 
 
 class GeoPoint(BaseModel):
@@ -47,7 +47,13 @@ class GeographyService:
         else:
             self.elevation_provider = MockElevationProvider()
     def resolve_ancient_place(self, name: str, period: str | None = None) -> HistoricalPlace | None:
-        return resolve_demo_place(name)
+        matches = resolve_registry_places(name)
+        return matches[0] if len(matches) == 1 else None
+    def resolve_ancient_place_payload(self, name: str, period: str | None = None) -> dict:
+        matches = resolve_registry_places(name)
+        if len(matches) == 1:
+            return {"found": True, **matches[0].model_dump(mode="json")}
+        return {"found": False, "ambiguous": True} if len(matches) > 1 else {"found": False}
     def calculate_distance(self, point_a: GeoPoint, point_b: GeoPoint) -> DistanceResult:
         lat1,lon1,lat2,lon2=map(radians,(point_a.latitude,point_a.longitude,point_b.latitude,point_b.longitude))
         value=2*6371008.8*asin(sqrt(sin((lat2-lat1)/2)**2+cos(lat1)*cos(lat2)*sin((lon2-lon1)/2)**2))

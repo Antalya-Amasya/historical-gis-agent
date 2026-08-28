@@ -14,6 +14,10 @@ from backend.app.models import AgentState, ChatRequest, ChatResponse, RagSearchR
 from backend.app.rag.http_store import build_production_retriever
 from backend.app.routes.evidence import SemanticRouteEvidenceRetriever
 from backend.app.candidate_routes.presentation import HistoricalRouteResponse
+from backend.app.candidate_routes.roman_road_orchestration import RomanRoadRouteOrchestrator
+from backend.app.candidate_routes.roman_roads import RomanRoadCandidateService
+from backend.app.roads.itiner_e import RomanRoadGraph
+from pathlib import Path
 from backend.app.historical_route_presentation_service import (
     HistoricalRoutePresentationReadService, PresentationContractError, PresentationNotFoundError,
 )
@@ -25,15 +29,28 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Historical Military GIS Agent", version="0.4.0")
 app.add_middleware(CORSMiddleware, allow_origins=[origin.strip() for origin in settings.backend_cors_origins.split(",")], allow_methods=["*"], allow_headers=["*"])
 store = InMemorySessionStore()
-def build_agent():
+def build_agent(*, roman_road_orchestrator=None):
     if settings.agent_mode == "mock": return MockAgent(evidence_retriever=SemanticRouteEvidenceRetriever())
     kwargs = {"max_steps": settings.agent_max_steps, "max_tool_executions": settings.agent_max_tool_executions, "max_rag_search_executions": settings.agent_max_rag_search_executions, "max_completion_corrections": settings.agent_max_completion_corrections, "max_completion_tool_executions": settings.agent_max_completion_tool_executions, "max_grounding_corrections": settings.agent_max_grounding_corrections}
-    if settings.agent_llm_provider != "deepseek": return HistoricalGisAgent(RuleBasedFakeLLMProvider(), SemanticRouteEvidenceRetriever(), **kwargs)
+    if settings.agent_llm_provider != "deepseek": return HistoricalGisAgent(RuleBasedFakeLLMProvider(), SemanticRouteEvidenceRetriever(), roman_road_orchestrator=roman_road_orchestrator, **kwargs)
     router = ModelRouter(settings.deepseek_model_flash, settings.deepseek_model_pro, settings.deepseek_model, settings.agent_model_policy)
     def provider_factory(model_id: str): return DeepSeekLLMProvider(settings.deepseek_api_key, settings.deepseek_base_url, model_id, timeout_s=settings.deepseek_read_timeout_s, connect_timeout_s=settings.deepseek_connect_timeout_s)
-    return HistoricalGisAgent(None, SemanticRouteEvidenceRetriever(), model_router=router, provider_factory=provider_factory, **kwargs)
+    return HistoricalGisAgent(None, SemanticRouteEvidenceRetriever(), model_router=router, provider_factory=provider_factory, roman_road_orchestrator=roman_road_orchestrator, **kwargs)
 agent = build_agent()
 historical_route_presentation_service = HistoricalRoutePresentationReadService()
+
+
+@app.on_event("startup")
+def compose_roman_road_capability() -> None:
+    """Load the optional deployment dataset once per FastAPI application lifecycle."""
+    global agent
+    if not settings.roman_road_enabled:
+        return
+    path = Path(settings.roman_road_geojson_path)
+    if not path.is_file():
+        raise RuntimeError(f"roman-road capability is enabled but dataset is unavailable: {path}")
+    orchestrator = RomanRoadRouteOrchestrator(RomanRoadCandidateService(RomanRoadGraph.load(path)))
+    agent = build_agent(roman_road_orchestrator=orchestrator)
 
 
 @app.get("/health")

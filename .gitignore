@@ -30,8 +30,13 @@ frontend/vite.config.d.ts
 
 # Local source corpora, processed artifacts, and vector indexes
 data/
+frontend/.cache/
 !data/
 data/*
+!data/chronology_registry/
+!data/chronology_registry/v1/
+!data/chronology_registry/v1/records.jsonl
+!data/chronology_registry/v1/source_manifest.json
 !data/historical_sources/
 data/historical_sources/*
 !data/historical_sources/raw/
@@ -39,6 +44,13 @@ data/historical_sources/raw/*
 !data/historical_sources/raw/caesar/
 data/historical_sources/raw/caesar/*
 !data/historical_sources/raw/caesar/corpus.json
+
+# Official Itiner-e raw exports are reproducible local data, not source assets.
+!data/raw/
+!data/raw/itiner_e/
+data/raw/itiner_e/*.ndjson
+data/raw/itiner_e/*.geojson
+data/raw/itiner_e/topology_benchmark.json
 
 # General local logs
 *.log

@@ -10,9 +10,7 @@ class ProfileRequest(BaseModel): points:list[GeoPoint]
 def health(): return {"status":"ok","service":"geography-mcp"}
 @app.post("/tools/resolve_ancient_place")
 def resolve(request:PlaceRequest):
- p=service.resolve_ancient_place(request.name,request.period)
- if not p: raise HTTPException(404,"Unknown ancient place")
- return p
+ return service.resolve_ancient_place_payload(request.name, request.period)
 @app.post("/tools/calculate_distance")
 def distance(request:DistanceRequest): return service.calculate_distance(request.point_a,request.point_b)
 @app.post("/tools/get_elevation")

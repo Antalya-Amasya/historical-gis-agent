@@ -1,10 +1,10 @@
 # Historical Military GIS Agent
 
-An evidence-constrained historical GIS demonstration. It separates source-backed historical claims, audited place coordinates, deterministic route reconstruction, and map presentation.
+An evidence-constrained, query-driven Historical GIS workspace. It keeps historical evidence, place resolution, deterministic route reconstruction, Roman-road infrastructure candidates, and map presentation as separate auditable layers.
 
-## Demo setup
+## Local setup
 
-Prerequisites: Python 3.11+, Node.js 20+, and the local dependencies listed below. No LLM key is required for the deterministic bounded-Agent demo: `.env.example` configures `AGENT_LLM_PROVIDER=fake`.
+Prerequisites: Python 3.11+, Node.js 20+, the packages in `backend/requirements.txt`, and the local data described below.
 
 ```powershell
 Copy-Item .env.example .env
@@ -13,97 +13,70 @@ py -3.11 -m venv .venv
 pip install -r backend\requirements.txt
 ```
 
-The Hannibal Agent demo requires the prepared local semantic index at `data/chroma_semantic` (`historical_primary_sources_semantic`). It is intentionally Git-ignored because it is generated local corpus data. If this directory is absent, the Caesar read-only presentation still works, but the Hannibal Agent request cannot retrieve its evidence; restore the prepared demo data before presenting Hannibal.
+The primary-source corpus is local generated data and deliberately Git-ignored. Production retrieval defaults to Chroma on `127.0.0.1:8002`, collection `roman_republic_primary_sources_v2`, using `intfloat/multilingual-e5-small`.
 
-Start the backend and frontend in separate terminals:
+## Run the query-driven workspace
+
+Start Chroma with the Roman Republic v2 persistence directory:
 
 ```powershell
-.\.venv\Scripts\Activate.ps1
-uvicorn backend.app.main:app --reload --port 8000
+.\.venv\Scripts\chroma.exe run --path data\chroma_server_roman_republic_v2 --host 127.0.0.1 --port 8002
 ```
 
+To enable the optional Roman-road capability before starting the backend:
+
 ```powershell
-cd frontend
+$env:ROMAN_ROAD_ENABLED = "true"
+$env:ROMAN_ROAD_GEOJSON_PATH = "data/raw/itiner_e/itinere_roads_zenodo_17122148.geojson"
+```
+
+The backend loads the road graph once during application startup. If enabled data is absent, startup fails explicitly; it does not silently fall back to terrain routing.
+
+```powershell
+.\.venv\Scripts\uvicorn.exe backend.app.main:app --reload --port 8000
+```
+
+In a separate terminal:
+
+```powershell
+Set-Location frontend
 pnpm install
 pnpm run dev
 ```
 
-Open `http://127.0.0.1:5173/`. The root page is the sole presentation entry; legacy phase/smoke URLs redirect back to it.
+Open `http://127.0.0.1:5173/`.
 
-## Fixed demo scenarios
+The only production frontend entry is `index.html` → `src/main.tsx` → `QueryApp`. A user asks a natural-language question; the Agent answer is always primary. When evidence supports a `HistoricalRoute`, the backend may attach a GIS presentation. No presentation is a valid answer state, not a request failure.
 
-- **Demo A — Hannibal crossing Alps**: enter `展示汉尼拔翻越阿尔卑斯进入意大利的路线`, then select **请求路线**. Confirm `historical_route` intent, `hannibal_italy_campaign`, source-backed markers, and a terrain-aware LineString.
-- **Demo B — Caesar conquest of Gaul**: select **Caesar conquest of Gaul**, then select **加载路线**. This deliberately loads the reviewed read-only Caesar presentation, including Book I / VII and Alesia metadata.
-- **Demo C — Alpine-pass uncertainty**: ask `告诉我汉尼拔准确经过哪个阿尔卑斯山口`. The system must not identify a uniquely established pass from its current Evidence. State the uncertainty and keep the route presentation evidence-grounded.
-
-## Architecture
+## Production chain
 
 ```text
-LLM / bounded Agent
-  → interprets a permitted request; the reviewed campaign ontology selects a structured entity, route type, and route context
-RAG
-  → returns primary-source Evidence only
-Registry
-  → holds manually reviewed campaign/event configuration, ontology metadata, and presentation metadata
-Geography MCP
-  → resolves audited geographic data; it is the coordinate boundary for HistoricalRoute extraction
-A* + terrain/cost model
-  → produces deterministic, algorithmic candidate connections between supplied anchors
-GIS presentation
-  → renders backend GeoJSON, markers, source references, and knowledge panels
+Natural-language query
+  → HistoricalGisAgent
+  → RAG primary-source Evidence
+  → evidence-constrained MovementClaim / HistoricalRoute when supported
+  → deterministic GIS reconstruction
+  → optional Roman-road candidate orchestration
+  → COMPLETE / PARTIAL / UNAVAILABLE presentation
+  → map, knowledge, and provenance display
 ```
 
-The frontend never geocodes a waypoint, invents a location, builds a route, or generates historical text. It consumes backend presentation DTOs and only displays supplied metadata.
-
-## Demo Script
-
-**30-second opening:** “This is an evidence-grounded historical route reconstruction agent. The language model can understand a permitted request, but source Evidence, reviewed registries, Geography MCP, and deterministic terrain-aware search keep historical claims, coordinates, and route geometry auditable.”
-
-1. Select the campaign and enter the fixed question.
-2. Explain the structured Agent intent and Evidence boundary.
-3. Load the backend presentation and point out source labels, Book/Chapter, and the evidence count on a marker popup.
-4. Open a knowledge panel, then toggle the route line to show that the map only consumes backend GeoJSON.
-5. Close with the route limitation: it is a terrain-aware schematic candidate, not a precise historical daily march.
-
-## Demo Workflow
-
-```text
-User question
-  → Agent intent detection
-  → Historical campaign ontology (reviewed entity, type, period, and parent context)
-  → Historical Evidence retrieval
-  → Evidence validation
-  → Campaign registry / reviewed anchors
-  → Terrain-aware reconstruction
-  → GeoJSON presentation
-```
-
-The Hannibal demo uses the bounded Agent response. The Caesar selector deliberately loads an already reviewed, read-only campaign presentation; it does not infer a campaign from a free-text query.
-
-## Design Philosophy
-
-- **LLM** understands permitted user intent; it does not create coordinates or route geometry.
-- **RAG** supplies historical evidence.
-- **Registry** holds manually reviewed facts and configuration.
-- **MCP** supplies bounded geographic capabilities.
-- **A\*** performs deterministic spatial search over supplied terrain cells.
-- **GIS** visualizes backend-provided GeoJSON and metadata only.
+Roman-road geometry is infrastructure evidence, not proof of historical movement. Failed legs remain explicit gaps; the application does not join them with terrain, straight-line, or LLM-generated geometry.
 
 ## Tests
 
 ```powershell
-.\.venv\Scripts\Activate.ps1
-python -m pytest backend\tests geography_mcp\tests -q
+.\.venv\Scripts\python.exe -m pytest backend\tests geography_mcp\tests -q
 
-cd frontend
+Set-Location frontend
 pnpm test
 pnpm run build
 ```
 
 ## Limitations
 
-- A displayed historical route is not an exact GPS trace or a claim about each day's march.
-- Alpine pass locations and some ancient geographic locations may remain debated; representative coordinates are labeled as such.
-- Coordinates can represent a region, river, or place rather than an exact crossing point.
-- DEM data changes terrain cost only. It does not establish historical facts, validate a campaign sequence, or create evidence.
-- External links in knowledge panels are display-only; the application does not fetch or validate them.
+- Historical evidence is necessary but does not establish an exact daily march track.
+- Ancient place coordinates can be representative points or regional geometries and retain uncertainty.
+- Roman-road candidates do not prove use of a road at a particular historical time.
+- Terrain changes algorithmic cost only; it does not create evidence or validate a movement claim.
+- A query without a safely grounded route remains an answer-only result.

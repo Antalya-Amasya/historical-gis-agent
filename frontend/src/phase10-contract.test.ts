@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fetchAgentHistoricalRoutePresentation, fetchHistoricalRoutePresentation, markerFeatures, panelForFeature, routeDirectionArrows, routeFeature, visibleMapLayers, toLeafletLineCoordinates, uncertaintyCorridorFeatures, waypointPopupMetadata } from "./phase10-contract";
+import { fetchAgentHistoricalRoutePresentation, fetchHistoricalRoutePresentation, loadHistoricalRoutePresentation, markerFeatures, panelForFeature, romanRoadSegmentFeatures, routeDirectionArrows, routeFeature, visibleMapLayers, toLeafletLineCoordinates, uncertaintyCorridorFeatures, waypointPopupMetadata } from "./phase10-contract";
 
 const response = { route: { route_id: "r1", route_name: "Route", confidence: 0.7 }, waypoints: [{ id: "a", name: "Anchor", event_type: "CITY", period: "218 BCE", description: "Supplied", location_confidence: "EXACT", evidence_refs: ["e1"] }], geojson: { type: "FeatureCollection" as const, features: [{ type: "Feature" as const, geometry: { type: "LineString" as const, coordinates: [[1, 2], [3, 4]] as [number, number][] }, properties: {} }, { type: "Feature" as const, geometry: { type: "Point" as const, coordinates: [1, 2] as [number, number] }, properties: { waypoint_id: "a", knowledge_panel_id: "a" } }, { type: "Feature" as const, geometry: null, properties: { waypoint_id: "missing" } }] }, knowledge_panels: [{ waypoint_id: "a", title: "Anchor", summary: "Bound summary", evidence_refs: ["e1"], source_references: ["e1"], external_references: [{ id: "ref", title: "Reading", url: "https://example.invalid", reference_type: "PAPER" }], confidence: "EXACT" }] };
 
@@ -31,7 +31,15 @@ describe("Phase 10.1 presentation API contract", () => {
     const agentResponse = { reply: "Ready", state: { route_intent: { intent: "historical_route", campaign_id: "hannibal_italy_campaign" }, historical_route_presentation: response } };
     const result = await fetchAgentHistoricalRoutePresentation("展示汉尼拔路线", "test", async () => ({ ok: true, status: 200, json: async () => agentResponse }));
     expect(result.campaignId).toBe("hannibal_italy_campaign");
-    expect(routeFeature(result.payload)?.geometry?.type).toBe("LineString");
+    expect(result.payload).not.toBeNull();
+    expect(routeFeature(result.payload!)?.geometry?.type).toBe("LineString");
+  });
+
+  it("keeps failed Roman-road gaps without a polyline and exposes role-labelled segments", () => {
+    const payload = loadHistoricalRoutePresentation({ ...response, route: { ...response.route, generation_method: "ROMAN_ROAD_NETWORK", route_status: "PARTIAL" }, road_network: { source: "Itiner-e", route_status: "PARTIAL", aggregate: { successful_leg_count: 1, failed_leg_count: 1, total_network_distance_m: 1, total_access_connector_distance_m: 1, road_type_counts: {}, segment_status_counts: {}, chronology_counts: {} }, limitations: [], legs: [] }, geojson: { type: "FeatureCollection", features: [{ type: "Feature", geometry: { type: "Point", coordinates: [1, 2] }, properties: { layer_type: "historical_anchor" } }, { type: "Feature", geometry: { type: "LineString", coordinates: [[1, 2], [2, 3]] }, properties: { layer_type: "roman_road_segment", segment_role: "roman_road" } }, { type: "Feature", geometry: null, properties: { layer_type: "roman_road_segment", segment_role: "failed_gap", failure_status: "RIVER_GEOMETRY_UNAVAILABLE" } }] } });
+    expect(romanRoadSegmentFeatures(payload)).toHaveLength(2);
+    expect(romanRoadSegmentFeatures(payload).find((item) => item.properties.segment_role === "failed_gap")?.geometry).toBeNull();
+    expect(markerFeatures(payload)[0]?.geometry).toEqual({ type: "Point", coordinates: [1, 2] });
   });
 
 });

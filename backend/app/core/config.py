@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     rag_collection: str = "roman_republic_primary_sources_v2"
     rag_top_k: int = 5
     rag_query_bridge_enabled: bool = True
+    roman_road_geojson_path: str = "data/raw/itiner_e/itinere_roads_zenodo_17122148.geojson"
+    roman_road_enabled: bool = False
 
 
 settings = Settings()

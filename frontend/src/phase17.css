@@ -13,3 +13,12 @@ a { color:#0e557c; } .demo-presets { display:flex; flex-wrap:wrap; gap:12px; mar
 .map-legend { display:flex; flex-wrap:wrap; gap:16px; padding:10px 2px 0; color:#33424c; font-size:.92rem; font-weight:600; }.map-legend span { display:inline-flex; align-items:center; gap:7px; }.legend-line { width:28px; border-top:4px dashed #1e4f79; }.legend-marker { width:14px; height:14px; border:2px solid #542a16; border-radius:50%; background:#c77a3c; }
 .knowledge-panel dl { display:grid; grid-template-columns:110px 1fr; gap:8px; }.knowledge-panel dt { font-weight:700; }.knowledge-panel dd { margin:0; }.route-popup p { margin:.35rem 0; }.route-popup h3 { margin-bottom:.5rem; }.route-popup button { margin-top:.5rem; font-size:.9rem; }.evaluation section { margin:18px 0; max-width:680px; } @media (max-width:850px) { .presentation-summary { margin: 16px 0; padding: 16px 18px; background: #fffaf0; border-left: 4px solid #b6772e; } .presentation-summary h2 { margin-bottom: 8px; } .presentation-summary p { margin: 8px 0; }
 .route-layout { grid-template-columns:1fr; } .demo-header { display:block; } .historical-map { height:430px; } }
+
+.answer-markdown > :first-child { margin-top: 0; }
+.answer-markdown > :last-child { margin-bottom: 0; }
+.answer-markdown h1, .answer-markdown h2, .answer-markdown h3 { margin: 1.1rem 0 .55rem; color: #1d2a34; }
+.answer-markdown p, .answer-markdown li { line-height: 1.65; }
+.answer-markdown ul, .answer-markdown ol { padding-left: 1.45rem; }
+.answer-markdown blockquote { margin: 1rem 0; padding: .2rem 1rem; border-left: 3px solid #b79665; color: #4d514f; }
+.answer-markdown hr { border: 0; border-top: 1px solid #d3c7b3; margin: 1.2rem 0; }
+.answer-markdown code { padding: .1rem .3rem; border-radius: 3px; background: #f2ecdf; }

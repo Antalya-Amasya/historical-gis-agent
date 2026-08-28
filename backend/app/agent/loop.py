@@ -102,6 +102,9 @@ class BoundedAgentLoop:
             if state.requested_output == "historical_route" else None
         )
         state.historical_route_presentation = None
+        state.historical_route_diagnostics = None
+        state.historical_events = []
+        state.historical_event_diagnostics = None
         state.intent = state.route_intent.intent if state.route_intent else state.requested_output
         state.messages.append({"role": "user", "content": user_message})
         state.tool_execution_stats = {

@@ -23,9 +23,9 @@ class RuleBasedFakeLLMProvider(LLMProvider):
                 return AgentModelResponse(content="Current corpus does not contain sufficient retrieved evidence for this request.")
             if is_route:
                 return AgentModelResponse(tool_calls=[AgentToolCall(id="route-1", name="build_historical_route", arguments={"event_id": "evidence-driven-route", "name": "Evidence-supported historical route", "period": "unspecified"})], finish_reason="tool_calls")
-            return AgentModelResponse(content="I retrieved historical evidence for this question. The response is limited to the returned primary-source evidence and does not assert a route.")
+            return AgentModelResponse(content="The available primary-source evidence supports a cautious historical answer, but it does not by itself establish a route.")
         if "build_historical_route" in last:
             if '"route_points": 0' in last:
                 return AgentModelResponse(content="The retrieved evidence was insufficient to construct a historical route, so no route was returned.")
-            return AgentModelResponse(content="I built an evidence-supported schematic historical route from the retrieved sources. It is not an exact march track.")
-        return AgentModelResponse(content="The requested tool result has been recorded.")
+            return AgentModelResponse(content="This is an evidence-supported schematic historical route, not an exact march track.")
+        return AgentModelResponse(content="The available evidence does not support a further historical conclusion.")

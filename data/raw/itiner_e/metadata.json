@@ -1,0 +1,11 @@
+{
+  "source_name": "Itiner-e — The Digital Atlas of Ancient Roads",
+  "source_url": "https://zenodo.org/api/records/17122148/files/itinere_roads.geojson/content",
+  "accessed_at": "2026-08-28T01:05:50.432929+00:00",
+  "license": "CC BY 4.0",
+  "citation": "Brughmans, T., de Soto, P., Pažout, A. and Bjerregaard Vahlstrup (2024), Itiner-e: the digital atlas of ancient roads, https://itiner-e.org",
+  "local_filename": "itinere_roads_zenodo_17122148.geojson",
+  "byte_size": 78054413,
+  "sha256": "4f8f5cf99f387bab2c509b1bf50143e9a3117691e316f2f46a9bb1d3d4b1cc34",
+  "format": "geojson"
+}

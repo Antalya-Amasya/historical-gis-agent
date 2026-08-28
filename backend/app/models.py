@@ -12,6 +12,16 @@ class PlaceConfidence(str, Enum):
     LOW = "low"
 
 
+class PlaceSpatialSemantics(str, Enum):
+    """Audited spatial meaning of a HistoricalPlace, separate from its name."""
+
+    SETTLEMENT = "settlement"
+    RIVER = "river"
+    MOUNTAIN_REGION = "mountain_region"
+    REGION = "region"
+    UNKNOWN = "unknown"
+
+
 class HistoricalPlace(BaseModel):
     id: str
     canonical_name: str
@@ -25,6 +35,10 @@ class HistoricalPlace(BaseModel):
     confidence: float = Field(ge=0, le=1)
     uncertain: bool = False
     coordinate_role: str = "exact_site"
+    spatial_semantics: PlaceSpatialSemantics = PlaceSpatialSemantics.UNKNOWN
+    spatial_semantics_provenance: str | None = None
+    authoritative_geometry_available: bool = False
+    authoritative_geometry_reference: str | None = None
     alternatives: list["HistoricalPlace"] = Field(default_factory=list)
 
 
@@ -49,14 +63,112 @@ class Evidence(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class HistoricalEventType(str, Enum):
+    POLITICAL = "POLITICAL"
+    MILITARY = "MILITARY"
+    BATTLE = "BATTLE"
+    SIEGE = "SIEGE"
+    REFORM = "REFORM"
+    ASSASSINATION = "ASSASSINATION"
+    TREATY = "TREATY"
+    ELECTION = "ELECTION"
+    REBELLION = "REBELLION"
+    MOVEMENT = "MOVEMENT"
+    OTHER = "OTHER"
+    UNKNOWN = "UNKNOWN"
+
+
+class TemporalPrecision(str, Enum):
+    DAY = "DAY"
+    MONTH = "MONTH"
+    YEAR = "YEAR"
+    YEAR_RANGE = "YEAR_RANGE"
+    APPROXIMATE = "APPROXIMATE"
+    UNKNOWN = "UNKNOWN"
+
+
+class TemporalGroundingStatus(str, Enum):
+    EVIDENCE_GROUNDED = "EVIDENCE_GROUNDED"
+    UNRESOLVED = "UNRESOLVED"
+    CONFLICT = "CONFLICT"
+
+
+class EventPlaceRole(str, Enum):
+    EVENT_SITE = "EVENT_SITE"
+    ORIGIN = "ORIGIN"
+    DESTINATION = "DESTINATION"
+    RELATED_PLACE = "RELATED_PLACE"
+    UNKNOWN = "UNKNOWN"
+
+
+class EventPlaceResolutionStatus(str, Enum):
+    RESOLVED = "RESOLVED"
+    TEXT_ONLY = "TEXT_ONLY"
+    NORMALIZED_TEXT_ONLY = "NORMALIZED_TEXT_ONLY"
+    UNRESOLVED = "UNRESOLVED"
+    AMBIGUOUS = "AMBIGUOUS"
+
+
+class EventGroundingStatus(str, Enum):
+    EVIDENCE_GROUNDED = "EVIDENCE_GROUNDED"
+    INSUFFICIENT_GROUNDING = "INSUFFICIENT_GROUNDING"
+
+
+class HistoricalEventTemporalGrounding(BaseModel):
+    """Evidence-only historical time using signed historical years (no year zero).
+
+    BCE years are negative (1 BCE == -1); CE years are positive (1 CE == 1).
+    This deliberately is not astronomical year numbering.
+    """
+    raw_expression: str | None = None
+    normalized_start: str | None = None
+    normalized_end: str | None = None
+    precision: TemporalPrecision = TemporalPrecision.UNKNOWN
+    evidence_refs: list[str] = Field(default_factory=list)
+    status: TemporalGroundingStatus = TemporalGroundingStatus.UNRESOLVED
+
+
+class HistoricalEventPlaceMention(BaseModel):
+    raw_text: str
+    canonical_hint: str | None = None
+    role: EventPlaceRole = EventPlaceRole.UNKNOWN
+    evidence_refs: list[str] = Field(default_factory=list)
+    resolution_status: EventPlaceResolutionStatus = EventPlaceResolutionStatus.TEXT_ONLY
+    alias_provenance: str | None = None
+
+
+class HistoricalEventPlaceBinding(BaseModel):
+    """A resolver-backed event/place relationship, not an event-site assertion by default."""
+
+    mention: HistoricalEventPlaceMention
+    place: HistoricalPlace | None = None
+    role: EventPlaceRole = EventPlaceRole.UNKNOWN
+    resolution_status: EventPlaceResolutionStatus = EventPlaceResolutionStatus.UNRESOLVED
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    evidence_refs: list[str] = Field(default_factory=list)
+    resolver_provenance: str | None = None
+    limitations: list[str] = Field(default_factory=list)
+
+
 class HistoricalEvent(BaseModel):
     id: str
     name: str
-    period: str
+    period: str | None = None
     summary: str
     places: list[HistoricalPlace] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
     uncertainty_note: str | None = None
+    event_type: HistoricalEventType = HistoricalEventType.UNKNOWN
+    temporal_grounding: HistoricalEventTemporalGrounding = Field(default_factory=HistoricalEventTemporalGrounding)
+    place_mentions: list[HistoricalEventPlaceMention] = Field(default_factory=list)
+    place_bindings: list[HistoricalEventPlaceBinding] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    grounding_status: EventGroundingStatus = EventGroundingStatus.EVIDENCE_GROUNDED
+    limitations: list[str] = Field(default_factory=list)
+    identity_key: str | None = None
+    candidate_ids: list[str] = Field(default_factory=list)
+    source_statements: list[str] = Field(default_factory=list)
+    temporal_groundings: list[HistoricalEventTemporalGrounding] = Field(default_factory=list)
 
 
 class GeoJsonLineString(BaseModel):
@@ -73,6 +185,7 @@ class ExtractedHistoricalPlaceMention(BaseModel):
     context_excerpt: str
     confidence: float = Field(ge=0, le=1)
     unresolved_reason: str | None = None
+    alias_provenance: str | None = None
 
 
 class HistoricalClaim(BaseModel):
@@ -188,6 +301,7 @@ class AgentState(BaseModel):
     session_id: str
     messages: list[dict[str, str]] = Field(default_factory=list)
     current_event: HistoricalEvent | None = None
+    historical_events: list[HistoricalEvent] = Field(default_factory=list)
     historical_route: HistoricalRoute | None = None
     historical_period: str | None = None
     selected_route: str | None = None
@@ -201,6 +315,8 @@ class AgentState(BaseModel):
     intent: str | None = None
     route_intent: HistoricalRouteIntent | None = None
     historical_route_presentation: dict[str, Any] | None = None
+    historical_route_diagnostics: dict[str, Any] | None = None
+    historical_event_diagnostics: dict[str, Any] | None = None
     requested_output: str = "answer"
     selected_model_tier: str | None = None
     selected_model_id: str | None = None

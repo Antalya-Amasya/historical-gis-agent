@@ -9,11 +9,17 @@ from backend.app.candidate_routes.historical_reconstruction import RealTerrainGr
 from backend.app.candidate_routes.terrain import MosaicDEMProvider
 from backend.app.rag.retriever import HistoricalRetriever
 from backend.app.routes.extractor import HistoricalRouteExtractor
+from backend.app.routes.events import EvidenceGroundedHistoricalEventExtractor, HistoricalEventConsolidator
+from backend.app.routes.event_places import HistoricalEventPlaceResolver
 from backend.app.route_orchestrator import (
     HistoricalCampaignIntentRegistry,
     HistoricalRouteOrchestrator,
     RouteOrchestrationError,
 )
+from backend.app.candidate_routes.roman_road_orchestration import RomanRoadRouteOrchestrator
+from backend.app.candidate_routes.roman_road_presentation import RomanRoadPresentationService
+from backend.app.candidate_routes.roman_roads import RomanRoadCandidateService
+from backend.app.roads.itiner_e import RomanRoadGraph
 
 TOOL_SCHEMAS = [
  {"name":"search_historical_evidence","description":"Search the frozen semantic primary-source retriever. Use it before historical claims or routes. Returns Evidence only; it does not prove an unsupported event.","input_schema":{"type":"object","properties":{"query":{"type":"string"},"top_k":{"type":"integer","minimum":1,"maximum":20},"author":{"type":"string"},"book":{"type":"string"}},"required":["query"]}},
@@ -25,13 +31,17 @@ TOOL_SCHEMAS = [
 ]
 
 class AgentToolRegistry:
-    def __init__(self, retriever: HistoricalRetriever, geography_client, *, route_orchestrator=None, campaign_registry=None):
+    def __init__(self, retriever: HistoricalRetriever, geography_client, *, route_orchestrator=None, campaign_registry=None, roman_road_orchestrator=None):
         self.retriever, self.geography_client = retriever, geography_client
         self.route_extractor = HistoricalRouteExtractor(geography_client)
+        self.event_extractor = EvidenceGroundedHistoricalEventExtractor()
+        self.event_consolidator = HistoricalEventConsolidator()
+        self.event_place_resolver = HistoricalEventPlaceResolver(geography_client)
         self.route_orchestrator = route_orchestrator or HistoricalRouteOrchestrator(
             terrain_graph_provider=self._terrain_graph_provider_from_settings(),
         )
         self.campaign_registry = campaign_registry or HistoricalCampaignIntentRegistry()
+        self.roman_road_orchestrator = roman_road_orchestrator
 
     @staticmethod
     def _terrain_graph_provider_from_settings():
@@ -41,6 +51,7 @@ class AgentToolRegistry:
         if not hgt_dir.is_dir():
             return None
         return RealTerrainGraphProvider(MosaicDEMProvider(hgt_dir=hgt_dir))
+
 
     def resolve_route_intent(self, message: str):
         return self.campaign_registry.resolve(message)
@@ -67,6 +78,15 @@ class AgentToolRegistry:
             accumulated = {item.id: item for item in state.historical_evidence}
             accumulated.update({item.id: item for item in evidence})
             state.historical_evidence = list(accumulated.values())
+            candidates, extraction_diagnostics = self.event_extractor.extract(state.historical_evidence)
+            consolidated_events, consolidation_diagnostics = self.event_consolidator.consolidate(candidates)
+            state.historical_events, place_diagnostics = self.event_place_resolver.resolve(consolidated_events)
+            state.historical_event_diagnostics = {
+                "extraction": extraction_diagnostics,
+                "consolidation": consolidation_diagnostics,
+                "place_resolution": place_diagnostics,
+                "statement_candidates": [item.model_dump(mode="json") for item in candidates],
+            }
             return {"evidence": [item.model_dump(mode="json") for item in evidence], "result_count": len(evidence)}, f"search_historical_evidence evidence_count={len(evidence)} accumulated_evidence_count={len(state.historical_evidence)}"
         if name in {"resolve_ancient_place", "calculate_distance", "get_elevation", "get_elevation_profile"}:
             result = self.geography_client.call(name, arguments)
@@ -76,11 +96,18 @@ class AgentToolRegistry:
         if name == "build_historical_route":
             for required in ("event_id", "name", "period"):
                 if not isinstance(arguments.get(required), str) or not arguments[required].strip(): raise ValueError(f"{required} must be a non-empty string")
-            route = self.route_extractor.build(state.historical_evidence, event_id=arguments["event_id"], name=arguments["name"], period=arguments["period"])
+            outcome = self.route_extractor.build_with_diagnostics(state.historical_evidence, event_id=arguments["event_id"], name=arguments["name"], period=arguments["period"])
+            state.historical_route_diagnostics = outcome.diagnostics
+            route = outcome.route
             if route is None:
-                return {"route": None}, "build_historical_route route_points=0 (insufficient evidence or resolved anchors)"
+                return {"route": None, "diagnostics": outcome.diagnostics}, "build_historical_route route_points=0 diagnostics=" + ",".join(outcome.diagnostics.get("reason_codes", []))
             state.historical_route = route
             state.current_event = HistoricalEvent(id=arguments["event_id"], name=arguments["name"], period=arguments["period"], summary="Evidence-supported schematic reconstruction.", places=[p.historical_place for p in route.ordered_points], evidence=state.historical_evidence, uncertainty_note="Historical reconstruction only; not an exact march track.")
+            if self.roman_road_orchestrator is not None:
+                road_result = self.roman_road_orchestrator.build_roman_road_candidates(route)
+                presentation = RomanRoadPresentationService().present(route, road_result)
+                state.historical_route_presentation = presentation.model_dump(mode="json")
+                return {"route": route.model_dump(mode="json"), "presentation": state.historical_route_presentation}, f"build_historical_route route_points={len(route.ordered_points)} roman_road_status={road_result.status.value}"
             if state.route_intent is not None:
                 try:
                     presentation = self.route_orchestrator.present(

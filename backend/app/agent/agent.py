@@ -9,11 +9,11 @@ logger = logging.getLogger(__name__)
 
 
 class HistoricalGisAgent:
-    def __init__(self, provider, evidence_retriever: HistoricalRetriever, geography_client=None, max_steps: int=8, max_tool_executions: int=10, max_rag_search_executions: int=4, max_completion_corrections: int=1, max_completion_tool_executions: int=1, max_grounding_corrections: int=1, model_router=None, provider_factory=None):
+    def __init__(self, provider, evidence_retriever: HistoricalRetriever, geography_client=None, max_steps: int=8, max_tool_executions: int=10, max_rag_search_executions: int=4, max_completion_corrections: int=1, max_completion_tool_executions: int=1, max_grounding_corrections: int=1, model_router=None, provider_factory=None, roman_road_orchestrator=None):
         self.provider = provider
         self.model_router = model_router
         self.provider_factory = provider_factory
-        self.tools = AgentToolRegistry(evidence_retriever, geography_client or GeographyMcpClient())
+        self.tools = AgentToolRegistry(evidence_retriever, geography_client or GeographyMcpClient(), roman_road_orchestrator=roman_road_orchestrator)
         self.max_steps = max_steps
         self.max_tool_executions = max_tool_executions
         self.max_rag_search_executions = max_rag_search_executions

@@ -5,8 +5,7 @@ mcp=FastMCP("Historical Military GIS Geography")
 service=GeographyService(provider_mode=settings.geography_provider_mode)
 @mcp.tool()
 def resolve_ancient_place(name: str, period: str | None = None) -> dict:
-    place=service.resolve_ancient_place(name,period)
-    return {"found":bool(place), **(place.model_dump(mode="json") if place else {"message":"Unknown ancient place"})}
+    return service.resolve_ancient_place_payload(name, period)
 @mcp.tool()
 def calculate_distance(point_a: GeoPoint, point_b: GeoPoint) -> dict:
     return service.calculate_distance(point_a,point_b).model_dump()

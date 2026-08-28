@@ -4,7 +4,8 @@ export type HistoricalWaypoint = { id: string; name: string; event_type?: string
 export type GeoJsonFeature = { type: "Feature"; geometry: { type: "LineString"; coordinates: [number, number][] } | { type: "Point"; coordinates: [number, number] } | { type: "Polygon"; coordinates: [number, number][][] } | null; properties: Record<string, unknown>; };
 export type PresentationTimelineStep = { order: number; title: string; description?: string | null; period?: string | null; evidence_count: number; confidence: number; };
 export type PresentationSummary = { title: string; campaign_id?: string | null; campaign?: string | null; operation_id?: string | null; operation?: string | null; date?: string | null; historical_context: string; route_method: string; evidence_basis: string[]; route_interpretation: string; route_stages: string[]; sources: string[]; geographic_constraints: string[]; uncertainty_notes: string[]; limitations: string[]; timeline: PresentationTimelineStep[]; };
-export type HistoricalRoutePresentationPayload = { route: { route_id: string; route_name?: string | null; period?: string | null; confidence: number }; waypoints: HistoricalWaypoint[]; geojson: { type: "FeatureCollection"; features: GeoJsonFeature[] }; route_geojson?: GeoJsonFeature; knowledge_panels: HistoricalKnowledgePanel[]; presentation_summary?: PresentationSummary | null; };
+export type RomanRoadNetwork = { source: string; route_status: "COMPLETE" | "PARTIAL" | "UNAVAILABLE"; aggregate: { successful_leg_count: number; failed_leg_count: number; total_network_distance_m: number; total_access_connector_distance_m: number; road_type_counts: Record<string, number>; segment_status_counts: Record<string, number>; chronology_counts: Record<string, number> }; limitations: string[]; legs: unknown[]; };
+export type HistoricalRoutePresentationPayload = { route: { route_id: string; route_name?: string | null; period?: string | null; confidence: number; generation_method?: string; route_status?: string }; waypoints: HistoricalWaypoint[]; geojson: { type: "FeatureCollection"; features: GeoJsonFeature[] }; route_geojson?: GeoJsonFeature; knowledge_panels: HistoricalKnowledgePanel[]; presentation_summary?: PresentationSummary | null; road_network?: RomanRoadNetwork; };
 export type WaypointPopupMetadata = { waypointId: string; name: string; eventType: string | null; period: string | null; description: string | null; confidence: string | null; evidenceCount: number; sourceBook: string | null; sourceChapter: string | null; externalReferenceCount: number; knowledgePanelId: string | null; };
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
@@ -47,6 +48,7 @@ export function routeDirectionArrows(payload: HistoricalRoutePresentationPayload
 }
 
 export function markerFeatures(payload: HistoricalRoutePresentationPayload): GeoJsonFeature[] { return payload.geojson.features.filter((feature) => feature.geometry?.type === "Point"); }
+export function romanRoadSegmentFeatures(payload: HistoricalRoutePresentationPayload): GeoJsonFeature[] { return payload.geojson.features.filter((feature) => feature.properties.layer_type === "roman_road_segment"); }
 
 export function uncertaintyCorridorFeatures(payload: HistoricalRoutePresentationPayload): GeoJsonFeature[] { return payload.geojson.features.filter((feature) => feature.geometry?.type === "Polygon" && feature.properties.layer_type === "uncertainty_corridor"); }
 
@@ -84,7 +86,7 @@ export async function fetchAgentHistoricalRoutePresentation(
   message: string,
   sessionId: string,
   request: FetchLike = fetch,
-): Promise<{ reply: string; payload: HistoricalRoutePresentationPayload; campaignId: string | null }> {
+): Promise<{ reply: string; payload: HistoricalRoutePresentationPayload | null; campaignId: string | null }> {
   const response = await request(`${BACKEND_ORIGIN}/api/v1/agent/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -93,10 +95,9 @@ export async function fetchAgentHistoricalRoutePresentation(
   if (!response.ok) throw new Error("Historical route request is unavailable");
   const body = await response.json() as AgentRouteChatResponse;
   const payload = body.state.historical_route_presentation;
-  if (!payload) throw new Error("The Agent did not return a terrain-aware historical route presentation");
   return {
     reply: body.reply,
-    payload: loadHistoricalRoutePresentation(payload),
+    payload: payload ? loadHistoricalRoutePresentation(payload) : null,
     campaignId: body.state.route_intent?.campaign_id ?? null,
   };
 }

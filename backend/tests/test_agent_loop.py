@@ -354,3 +354,17 @@ def test_grounding_validator_error_is_not_reported_as_guardrail_completion(monke
     assert "grounding_validator_error:RuntimeError" in state.warnings
     assert reply == "The system could not safely validate the requested HistoricalRoute response."
     assert state.historical_route is None
+
+
+def test_final_answer_prompt_separates_user_prose_from_execution_diagnostics():
+    provider = ScriptedLLMProvider([AgentModelResponse(content="## Historical answer\n\nEvidence supports this conclusion.")])
+    subject = HistoricalGisAgent(provider, Retriever([]), Geo(), max_steps=1)
+
+    reply, state = subject.respond("What happened?", AgentState(session_id="final-answer-boundary"))
+
+    system_prompt = provider.requests[0]["messages"][0]["content"]
+    assert reply == "## Historical answer\n\nEvidence supports this conclusion."
+    assert state.final_answer == reply
+    assert "final response is user-facing historical prose only" in system_prompt
+    assert "search or tool budgets" in system_prompt
+    assert state.tool_execution_stats["rag_search_budget_rejected"] == 0
