@@ -131,6 +131,52 @@ def test_search_tool_result_has_sufficiency_summary_and_remaining_budget():
     assert result["unique_authors"]==["Polybius"] and result["remaining_search_budget"]==3
 
 
+def test_search_context_exposes_bounded_evidence_provenance_and_events_to_answer_step():
+    provider=ScriptedLLMProvider([
+        call("search_historical_evidence",{"query":"Hannibal marched"},"one"),
+        AgentModelResponse(content="Polybius records that Hannibal's army marched from New Carthage to the Rhone."),
+    ])
+    subject=HistoricalGisAgent(provider,Retriever(route_ev()),Geo())
+    subject.respond("What did Hannibal do?",AgentState(session_id="grounded-context"))
+    import json
+    tool_message=next(message for message in provider.requests[1]["messages"] if message["role"]=="tool")
+    result=json.loads(tool_message["content"])["result"]
+    assert result["evidence"][0] == {
+        "id": "move", "author": "Polybius", "work": "Histories",
+        "locator": "Book III", "excerpt": "Synthetic test evidence: Hannibal's army marched from New Carthage to the Rhone.",
+    }
+    assert result["historical_events"][0]["event_type"] == "MOVEMENT"
+    assert result["historical_events"][0]["evidence_refs"] == ["move"]
+    assert result["historical_events"][0]["summary"].endswith("New Carthage to the Rhone.")
+
+
+def test_ordinary_qa_without_evidence_discards_provider_fact_claim():
+    provider=ScriptedLLMProvider([AgentModelResponse(content="Atlantis was the decisive location.")])
+    reply,state=HistoricalGisAgent(provider,Retriever([]),Geo()).respond(
+        "What happened?",AgentState(session_id="no-evidence-answer")
+    )
+    assert reply == "The current retrieved historical evidence is insufficient to support a reliable answer."
+    assert "Atlantis" not in reply
+    assert state.status == "completed"
+    assert state.grounding_corrections == 1
+    assert "call search_historical_evidence" in provider.requests[1]["messages"][-1]["content"]
+
+
+def test_ordinary_qa_unsupported_entity_is_corrected_against_evidence():
+    provider=ScriptedLLMProvider([
+        call("search_historical_evidence",{"query":"Hannibal"},"one"),
+        AgentModelResponse(content="Atlantis was the decisive location."),
+        AgentModelResponse(content="Polybius records that Hannibal's army marched from New Carthage to the Rhone."),
+    ])
+    reply,state=HistoricalGisAgent(provider,Retriever(route_ev()),Geo()).respond(
+        "What did Hannibal do?",AgentState(session_id="answer-grounding")
+    )
+    assert "Atlantis" not in reply
+    assert "Polybius" in reply
+    assert state.grounding_corrections == 1
+    assert state.final_grounding_status == "provenance_corrected"
+
+
 def test_route_final_without_route_triggers_one_completion_correction():
     provider=ScriptedLLMProvider([call("search_historical_evidence",{"query":"Hannibal"}),AgentModelResponse(content="Here is a route."),AgentModelResponse(content="Still no structured route.")])
     subject=HistoricalGisAgent(provider,Retriever([ev("n","New Carthage"),ev("h","Hannibal")]),Geo(),max_steps=4)
@@ -363,8 +409,9 @@ def test_final_answer_prompt_separates_user_prose_from_execution_diagnostics():
     reply, state = subject.respond("What happened?", AgentState(session_id="final-answer-boundary"))
 
     system_prompt = provider.requests[0]["messages"][0]["content"]
-    assert reply == "## Historical answer\n\nEvidence supports this conclusion."
+    assert reply == "The current retrieved historical evidence is insufficient to support a reliable answer."
     assert state.final_answer == reply
     assert "final response is user-facing historical prose only" in system_prompt
     assert "search or tool budgets" in system_prompt
     assert state.tool_execution_stats["rag_search_budget_rejected"] == 0
+    assert state.final_grounding_status == "insufficient_evidence"

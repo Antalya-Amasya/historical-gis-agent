@@ -35,6 +35,21 @@ def _model_result(tool_name: str, payload: dict, state: AgentState, remaining_se
         result = payload.get("result", {})
         if result.get("status") == "search_budget_exhausted":
             return {**result, "accumulated_evidence_count": len(state.historical_evidence), "remaining_search_budget": remaining_search_budget}
+        events = []
+        for event in state.historical_events[:8]:
+            serialized = event.model_dump(mode="json")
+            events.append({
+                "id": serialized["id"],
+                "name": serialized["name"],
+                "event_type": serialized.get("event_type"),
+                "summary": serialized.get("summary"),
+                "period": serialized.get("period"),
+                "temporal_grounding": serialized.get("temporal_grounding"),
+                "place_mentions": serialized.get("place_mentions", []),
+                "evidence_refs": serialized.get("evidence_refs", []),
+                "grounding_status": serialized.get("grounding_status"),
+                "limitations": serialized.get("limitations", []),
+            })
         return {
             "result_count": result.get("result_count", 0),
             "unique_authors": sorted({item.author for item in state.historical_evidence}),
@@ -48,6 +63,7 @@ def _model_result(tool_name: str, payload: dict, state: AgentState, remaining_se
             "matched_subject_terms": state.matched_subject_terms,
             "missing_subject_terms": state.missing_subject_terms,
             "evidence": [{"id": item.id, "author": item.author, "work": item.work, "locator": item.locator, "excerpt": item.excerpt[:360]} for item in state.historical_evidence[:8]],
+            "historical_events": events,
         }
     if tool_name == "build_historical_route":
         route = state.historical_route
@@ -81,6 +97,29 @@ class BoundedAgentLoop:
         state.matched_subject_terms = list(assessment.matched_subject_terms)
         state.missing_subject_terms = list(assessment.missing_subject_terms)
         return assessment
+
+    @staticmethod
+    def _record_grounding_assessment(state: AgentState, assessment) -> None:
+        entity_assessments = assessment.candidate_entities
+        state.detected_phrase_count = len(entity_assessments)
+        state.detected_entity_count = sum(item.entity_like for item in entity_assessments)
+        state.evidence_grounded_entity_count = sum(
+            item.entity_like and item.source == "evidence" for item in entity_assessments
+        )
+        state.query_context_entity_count = sum(
+            item.entity_like and item.source == "query" for item in entity_assessments
+        )
+        state.detected_work_titles = list(assessment.detected_work_titles)
+        state.evidence_grounded_claim_count = len(assessment.provenance.evidence_grounded_claims)
+        state.unverified_suggestion_count = len(assessment.provenance.unverified_suggestions)
+        state.unverified_suggestion_terms = [
+            item.text for item in assessment.provenance.unverified_suggestions
+        ]
+        state.unsupported_fact_terms = list(assessment.unsupported_fact_terms)
+        state.unsupported_fact_claim_count = len(assessment.unsupported_fact_terms)
+        state.ignored_non_entity_terms = list(assessment.ignored_non_entity_terms)
+        if assessment.candidate_explosion:
+            state.warnings.append("provenance_candidate_explosion")
 
     def _route_completion_action(self, response_content: str | None, state: AgentState, corrections: int) -> str:
         if state.requested_output != "historical_route" or state.historical_route is not None:
@@ -142,6 +181,77 @@ class BoundedAgentLoop:
             logger.info("llm_response_received step=%s finish_reason=%s tool_call_count=%s", step, response.finish_reason, len(response.tool_calls))
             if not response.tool_calls:
                 self._refresh_evidence_support(state)
+                if state.requested_output == "answer":
+                    if not state.historical_evidence:
+                        if grounding_corrections < self.max_grounding_corrections and step < self.max_steps:
+                            grounding_corrections += 1
+                            state.grounding_corrections += 1
+                            state.tool_execution_stats["grounding_corrections"] += 1
+                            messages.append({
+                                "role": "user",
+                                "content": (
+                                    "No Evidence has been supplied. Before answering this historical question, "
+                                    "call search_historical_evidence. Do not answer from model knowledge."
+                                ),
+                            })
+                            logger.info("answer_evidence_correction_started count=%s", grounding_corrections)
+                            continue
+                        state.final_grounding_status = "insufficient_evidence"
+                        state.warnings.append("answer_blocked_without_evidence")
+                        return self._finish(
+                            "The current retrieved historical evidence is insufficient to support a reliable answer.",
+                            state,
+                            started,
+                        )
+                    try:
+                        answer_assessment = assess_final_answer_provenance(
+                            response.content, state.user_query or "", state.historical_evidence
+                        )
+                    except Exception as exc:
+                        state.status = "failed_grounding"
+                        state.final_grounding_status = "validator_error"
+                        state.warnings.append(f"grounding_validator_error:{type(exc).__name__}")
+                        return self._finish(
+                            "The system could not safely validate the historical answer.",
+                            state,
+                            started,
+                        )
+                    self._record_grounding_assessment(state, answer_assessment)
+                    if (
+                        answer_assessment.status == "unsupported_fact"
+                        and grounding_corrections < self.max_grounding_corrections
+                        and step < self.max_steps
+                    ):
+                        grounding_corrections += 1
+                        state.grounding_corrections += 1
+                        state.tool_execution_stats["grounding_corrections"] += 1
+                        messages.append({
+                            "role": "user",
+                            "content": (
+                                "Revise the answer using only facts and named entities present in the supplied "
+                                "Evidence. Cite the supporting Evidence identifiers and source metadata. Remove "
+                                "unsupported dates, people, places, events, and routes. If the Evidence does not "
+                                "answer the question, say that it is insufficient."
+                            ),
+                        })
+                        logger.info(
+                            "answer_grounding_correction_started count=%s terms=%s",
+                            grounding_corrections,
+                            ",".join(answer_assessment.unsupported_fact_terms),
+                        )
+                        continue
+                    if answer_assessment.status == "unsupported_fact":
+                        state.status = "completed_with_guardrail"
+                        state.final_grounding_status = "guardrail_fallback"
+                        state.warnings.append("unsupported_historical_answer_discarded")
+                        return self._finish(
+                            "The current retrieved historical evidence is insufficient to support a reliable answer.",
+                            state,
+                            started,
+                        )
+                    state.final_grounding_status = (
+                        "provenance_corrected" if grounding_corrections else answer_assessment.status
+                    )
                 completion_action = self._route_completion_action(response.content, state, corrections)
                 if completion_action == "finish":
                     return self._finish(response.content or "The agent completed without a final answer.", state, started)
