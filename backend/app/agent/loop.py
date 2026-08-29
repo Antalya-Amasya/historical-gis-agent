@@ -94,6 +94,65 @@ class BoundedAgentLoop:
     def _is_completion_critical_tool(tool_name: str, state: AgentState) -> bool:
         return state.historical_route is None and COMPLETION_TOOL_BY_OUTPUT.get(state.requested_output) == tool_name
 
+    @staticmethod
+    def _route_builder_attempted(state: AgentState) -> bool:
+        return any(entry.tool_name == "build_historical_route" and entry.outcome in {"success", "failure"} for entry in state.tool_history)
+
+    def _should_attempt_deterministic_route_builder(self, state: AgentState) -> bool:
+        return (
+            state.requested_output == "historical_route"
+            and bool(state.historical_evidence)
+            and not self._route_builder_attempted(state)
+        )
+
+    @staticmethod
+    def _default_route_builder_arguments(state: AgentState) -> dict:
+        event = state.historical_events[0] if state.historical_events else None
+        period = (event.period if event and event.period else None) or state.historical_period or "unspecified"
+        return {
+            "event_id": event.id if event else "evidence-driven-route",
+            "name": event.name if event else "Evidence-supported historical route",
+            "period": period,
+        }
+
+    def _attempt_deterministic_route_builder(self, state: AgentState) -> None:
+        """One bounded route-builder attempt. Does not invent a route if construction fails closed."""
+        arguments = self._default_route_builder_arguments(state)
+        completion_critical = self._is_completion_critical_tool("build_historical_route", state)
+        general_exhausted = state.tool_execution_stats["general_tool_executions"] >= self.max_tool_executions
+        budget_source = "general"
+        if general_exhausted and completion_critical and state.tool_execution_stats["completion_reserved_executions"] < self.max_completion_tool_executions:
+            budget_source = "completion_reserved"
+        elif general_exhausted:
+            state.tool_execution_stats["budget_rejected"] += 1
+            if completion_critical:
+                state.tool_execution_stats["completion_budget_rejected"] += 1
+            else:
+                state.tool_execution_stats["general_budget_rejected"] += 1
+            state.tool_history.append(AgentToolHistoryEntry(
+                tool_name="build_historical_route", arguments=arguments, success=False,
+                result_summary="deterministic route builder skipped; tool execution budget reached",
+                duration_ms=0, outcome="completion_budget_rejected" if completion_critical else "budget_rejected",
+                budget_source="completion_reserved" if completion_critical else "general",
+            ))
+            return
+        logger.info("deterministic_route_builder_started budget_source=%s", budget_source)
+        payload, summary = self.tools.execute("build_historical_route", arguments, state)
+        logger.info("deterministic_route_builder_completed success=%s duration_ms=%s", payload["success"], payload["duration_ms"])
+        state.tool_execution_stats["actual_tool_executions"] += 1
+        state.tool_execution_stats["tool_requests"] += 1
+        if budget_source == "completion_reserved":
+            state.tool_execution_stats["completion_reserved_executions"] += 1
+        else:
+            state.tool_execution_stats["general_tool_executions"] += 1
+        if not payload["success"]:
+            state.tool_execution_stats["tool_failures"] += 1
+        state.tool_history.append(AgentToolHistoryEntry(
+            tool_name="build_historical_route", arguments=arguments, success=payload["success"],
+            result_summary=summary, duration_ms=payload["duration_ms"],
+            outcome="success" if payload["success"] else "failure", budget_source=budget_source,
+        ))
+
     def _refresh_evidence_support(self, state: AgentState):
         assessment = assess_evidence_support(state.user_query or "", state.requested_output, state.historical_evidence)
         state.evidence_support_status = assessment.status
@@ -134,6 +193,16 @@ class BoundedAgentLoop:
 
     def _route_completion_action(self, response_content: str | None, state: AgentState, corrections: int) -> str:
         if state.requested_output != "historical_route" or state.historical_route is not None:
+            return "finish"
+        if self._should_attempt_deterministic_route_builder(state):
+            self._attempt_deterministic_route_builder(state)
+            if state.historical_route is not None:
+                return "finish"
+        if not self._route_builder_attempted(state) and not state.historical_evidence:
+            return "finish_insufficient"
+        if self._route_builder_attempted(state) and state.historical_route is None:
+            if state.evidence_support_status in {"irrelevant", "insufficient"}:
+                return "finish_insufficient"
             return "finish"
         if state.evidence_support_status in {"irrelevant", "insufficient"}:
             return "finish_insufficient"
@@ -192,6 +261,8 @@ class BoundedAgentLoop:
                     totals[key] = totals.get(key, 0) + value
             logger.info("llm_response_received step=%s finish_reason=%s tool_call_count=%s", step, response.finish_reason, len(response.tool_calls))
             terminal_calls = [call for call in response.tool_calls if call.name == "submit_grounded_answer"]
+            if terminal_calls and self._should_attempt_deterministic_route_builder(state):
+                self._attempt_deterministic_route_builder(state)
             if terminal_calls:
                 call = terminal_calls[0]
                 arguments = call.arguments
@@ -420,6 +491,8 @@ class BoundedAgentLoop:
                 logger.info("agent_step=%s tool=%s outcome=%s", step, call.name, outcome)
                 remaining_search_budget = max(0, self.max_rag_search_executions - state.tool_execution_stats["rag_search_executions"])
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": json.dumps({"tool": call.name, "outcome": outcome, "success": payload["success"], "summary": summary, "evidence_count": len(state.historical_evidence), "route_points": len(state.historical_route.ordered_points) if state.historical_route else 0, "result": _model_result(call.name, payload, state, remaining_search_budget)}, ensure_ascii=False)})
+        if self._should_attempt_deterministic_route_builder(state):
+            self._attempt_deterministic_route_builder(state)
         state.status = "max_steps"
         state.warnings.append("Maximum agent steps reached")
         return self._finish("The agent reached its safe step limit and returned a partial result.", state, started)

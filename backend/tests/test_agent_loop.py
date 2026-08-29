@@ -246,22 +246,29 @@ def test_geography_fact_allows_audited_geography_tool_result():
     assert state.status == "completed" and "Carthago Nova" in reply
 
 
-def test_route_final_without_route_triggers_one_completion_correction():
-    provider=ScriptedLLMProvider([call("search_historical_evidence",{"query":"Hannibal"}),AgentModelResponse(content="Here is a route."),AgentModelResponse(content="Still no structured route.")])
-    subject=HistoricalGisAgent(provider,Retriever([ev("n","New Carthage"),ev("h","Hannibal")]),Geo(),max_steps=4)
+def test_route_intent_with_evidence_attempts_builder_without_waiting_for_llm():
+    subject=agent([call("search_historical_evidence",{"query":"Hannibal"}),AgentModelResponse(content="Here is a route.")],[ev("n","New Carthage"),ev("h","Hannibal")])
     _,state=subject.respond("show a Hannibal historical route",AgentState(session_id="route-correction"))
-    assert state.requested_output=="historical_route" and state.tool_execution_stats["completion_corrections"]==1
-    correction=provider.requests[2]["messages"][-1]
-    assert correction["role"]=="user" and "build_historical_route" in correction["content"]
+    assert state.requested_output=="historical_route"
+    assert [item.tool_name for item in state.tool_history].count("build_historical_route")==1
+    assert state.tool_execution_stats["completion_corrections"]==0
 
 
-def test_route_correction_allows_llm_to_choose_builder_then_complete():
+def test_route_intent_does_not_require_a_successful_route():
+    subject=agent([call("search_historical_evidence",{"query":"Hannibal"}),AgentModelResponse(content="Available evidence is insufficient to generate a route.")],[ev("n","New Carthage"),ev("h","Hannibal")])
+    _,state=subject.respond("show a Hannibal historical route",AgentState(session_id="route-fail-closed"))
+    assert state.historical_route is None and state.status=="completed"
+    assert state.historical_route_diagnostics is not None
+    assert state.historical_route_diagnostics.get("reason_codes")
+
+
+def test_route_builder_is_not_invoked_twice_once_attempted():
     provider=ScriptedLLMProvider([call("search_historical_evidence",{"query":"Hannibal"}),AgentModelResponse(content="I will answer without a route."),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="The structured route is available.")])
     subject=HistoricalGisAgent(provider,Retriever(route_ev()),Geo(),max_steps=5)
     _,state=subject.respond("show a Hannibal historical route",AgentState(session_id="route-builder"))
     assert state.status=="completed" and state.historical_route is not None
-    assert state.tool_execution_stats["completion_corrections"]==1
     assert [item.tool_name for item in state.tool_history].count("build_historical_route")==1
+    assert state.tool_execution_stats["completion_corrections"]==0
 
 
 def test_route_with_no_evidence_and_explicit_insufficiency_can_finish():
@@ -269,20 +276,29 @@ def test_route_with_no_evidence_and_explicit_insufficiency_can_finish():
     _,state=subject.respond("show a historical route",AgentState(session_id="route-insufficient"))
     assert state.status=="completed" and state.historical_route is None
     assert state.tool_execution_stats["completion_corrections"]==0
+    assert all(item.tool_name != "build_historical_route" for item in state.tool_history)
 
 
-def test_route_correction_without_builder_stops_with_failed_contract():
-    subject=agent([call("search_historical_evidence",{"query":"Hannibal"}),AgentModelResponse(content="A route exists."),AgentModelResponse(content="I still will not call the builder.")],[ev("n","New Carthage"),ev("h","Hannibal")],max_steps=4)
+def test_submit_grounded_answer_cannot_skip_route_builder_on_route_intent():
+    subject=agent([call("search_historical_evidence",{"query":"Hannibal"}),terminal("Evidence is insufficient to generate a route.",["h"],True)],[ev("h","Hannibal campaigned in Spain.")])
+    _,state=subject.respond("展示汉尼拔路线",AgentState(session_id="route-terminal"))
+    assert [item.tool_name for item in state.tool_history].count("build_historical_route")==1
+    assert state.historical_route is None
+
+
+def test_route_intent_without_builder_call_still_gets_one_deterministic_attempt():
+    subject=agent([call("search_historical_evidence",{"query":"Hannibal"}),AgentModelResponse(content="A route exists.")],[ev("n","New Carthage"),ev("h","Hannibal")],max_steps=4)
     _,state=subject.respond("show a Hannibal historical route",AgentState(session_id="route-failed-contract"))
-    assert state.status=="failed_contract" and "historical_route_required_but_not_built" in state.warnings
-    assert state.tool_execution_stats["completion_corrections"]==1
+    assert [item.tool_name for item in state.tool_history].count("build_historical_route")==1
+    assert state.historical_route is None
+    assert "historical_route_required_but_not_built" not in state.warnings
 
 
 def test_route_safeguard_refuses_when_builder_has_no_grounded_edge():
-    subject=agent([call("search_historical_evidence",{"query":"Hannibal route"}),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="An unsupported route is ready.")],[ev("bare","Hannibal crossed the Rhone.")],max_steps=3,max_completion_corrections=0)
-    reply,state=subject.respond("show a Hannibal historical route",AgentState(session_id="grounded-route-required"))
-    assert state.historical_route is None and state.status=="failed_contract"
-    assert reply=="The requested HistoricalRoute was not built from the available Evidence."
+    subject=agent([call("search_historical_evidence",{"query":"Hannibal route"}),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="The retrieved evidence was insufficient to construct a historical route.")],[ev("bare","Hannibal crossed the Rhone.")],max_steps=3,max_completion_corrections=0)
+    _,state=subject.respond("show a Hannibal historical route",AgentState(session_id="grounded-route-required"))
+    assert state.historical_route is None and state.status=="completed"
+    assert [item.tool_name for item in state.tool_history].count("build_historical_route")==1
 
 
 def test_non_route_questions_do_not_require_builder():
@@ -290,6 +306,7 @@ def test_non_route_questions_do_not_require_builder():
     _,state=subject.respond("What does Polybius describe?",AgentState(session_id="ordinary-question"))
     assert state.requested_output=="answer" and state.status=="completed"
     assert state.tool_execution_stats["completion_corrections"]==0
+    assert all(item.tool_name != "build_historical_route" for item in state.tool_history)
 
 
 def test_geography_question_does_not_require_builder():
@@ -298,11 +315,12 @@ def test_geography_question_does_not_require_builder():
     assert state.requested_output=="geography_fact" and state.status=="completed"
 
 
-def test_repeated_place_resolution_does_not_satisfy_route_contract():
-    subject=agent([call("search_historical_evidence",{"query":"Hannibal"}),call("resolve_ancient_place",{"name":"Carthago Nova"},"one"),call("resolve_ancient_place",{"name":"Rhodanus"},"two"),AgentModelResponse(content="The route is ready."),AgentModelResponse(content="No builder was called.")],[ev("n","New Carthage"),ev("h","Hannibal")],max_steps=6)
+def test_repeated_place_resolution_does_not_replace_route_builder():
+    subject=agent([call("search_historical_evidence",{"query":"Hannibal"}),call("resolve_ancient_place",{"name":"Carthago Nova"},"one"),call("resolve_ancient_place",{"name":"Rhodanus"},"two"),AgentModelResponse(content="The retrieved evidence was insufficient to construct a historical route.")],[ev("n","New Carthage"),ev("h","Hannibal")],max_steps=6)
     _,state=subject.respond("show a Hannibal historical route",AgentState(session_id="resolved-not-route"))
-    assert state.status=="failed_contract" and state.historical_route is None
-    assert state.tool_execution_stats["completion_corrections"]==1
+    assert state.historical_route is None
+    assert [item.tool_name for item in state.tool_history].count("build_historical_route")==1
+    assert state.tool_execution_stats["completion_corrections"]==0
 
 
 def test_existing_route_finishes_without_extra_correction():
@@ -356,8 +374,9 @@ def test_rag_search_cannot_use_completion_reservation():
     subject=agent([call("search_historical_evidence",{"query":"one"}),call("search_historical_evidence",{"query":"two"}),AgentModelResponse(content="Evidence is insufficient to generate a route.")],[ev("one","Alps")],max_tool_executions=1)
     _,state=subject.respond("show a historical route",AgentState(session_id="rag-no-reservation"))
     searches=[item for item in state.tool_history if item.tool_name=="search_historical_evidence"]
+    builder=next(item for item in state.tool_history if item.tool_name=="build_historical_route")
     assert [item.outcome for item in searches]==["success","budget_rejected"]
-    assert state.tool_execution_stats["completion_reserved_executions"]==0
+    assert builder.budget_source=="completion_reserved" and state.tool_execution_stats["completion_reserved_executions"]==1
 
 
 def test_duplicate_builder_does_not_consume_second_reservation():
@@ -369,11 +388,12 @@ def test_duplicate_builder_does_not_consume_second_reservation():
     assert state.tool_execution_stats["completion_reserved_executions"]==1
 
 
-def test_irrelevant_nonempty_evidence_allows_insufficient_route_finish_without_correction():
+def test_irrelevant_nonempty_evidence_still_attempts_builder_then_fail_closed():
     subject=agent([call("search_historical_evidence",{"query":"Caesar Gaul"}),AgentModelResponse(content="Current evidence is insufficient to support a reliable route.")],[ev("one","Hannibal crossed the Alps")])
     _,state=subject.respond("show Caesar route in Gaul",AgentState(session_id="irrelevant-evidence"))
     assert state.status=="completed" and state.historical_route is None
-    assert state.evidence_support_status=="irrelevant" and state.tool_execution_stats["completion_corrections"]==0
+    assert state.evidence_support_status=="irrelevant"
+    assert [item.tool_name for item in state.tool_history].count("build_historical_route")==1
     assert "insufficient_relevant_evidence" in state.warnings
 
 
@@ -393,13 +413,15 @@ def test_repeated_unsupported_route_answer_fails_grounding_without_returning_lea
     assert "unsupported_claims_with_insufficient_evidence" in state.warnings
     assert "A, B, C" not in reply and "甲、乙、丙" not in reply
     assert state.historical_route is None
-    assert [item.tool_name for item in state.tool_history] == ["search_historical_evidence"]
+    assert [item.tool_name for item in state.tool_history] == ["search_historical_evidence", "build_historical_route"]
 
 
-def test_sufficient_hannibal_support_still_triggers_route_correction():
-    subject=agent([call("search_historical_evidence",{"query":"Hannibal Alps"}),AgentModelResponse(content="I will answer without a route."),AgentModelResponse(content="Still no route.")],[ev("one","Hannibal crossed the Alps")],max_steps=4)
+def test_sufficient_hannibal_support_attempts_builder_instead_of_correction():
+    subject=agent([call("search_historical_evidence",{"query":"Hannibal Alps"}),AgentModelResponse(content="I will answer without a route.")],[ev("one","Hannibal crossed the Alps")],max_steps=4)
     _,state=subject.respond("show Hannibal route over the Alps",AgentState(session_id="sufficient-route-correction"))
-    assert state.evidence_support_status=="sufficient" and state.tool_execution_stats["completion_corrections"]==1
+    assert state.evidence_support_status=="sufficient"
+    assert [item.tool_name for item in state.tool_history].count("build_historical_route")==1
+    assert state.tool_execution_stats["completion_corrections"]==0
 
 
 def test_ordinary_question_is_not_subject_to_route_support_gate():
@@ -435,7 +457,7 @@ def test_work_title_grounding_correction_allows_corpus_gap_suggestion_without_gi
     assert state.final_grounding_status == "provenance_corrected"
     assert state.unverified_suggestion_terms == ["chronicles of bar"]
     assert state.unsupported_fact_terms == [] and state.historical_route is None
-    assert [entry.tool_name for entry in state.tool_history] == ["search_historical_evidence"]
+    assert [entry.tool_name for entry in state.tool_history] == ["search_historical_evidence", "build_historical_route"]
 
 
 def test_repeated_model_only_work_citation_fails_grounding_without_gis():
@@ -448,7 +470,7 @@ def test_repeated_model_only_work_citation_fails_grounding_without_gis():
     assert state.status == "completed_with_guardrail" and state.grounding_corrections == 1
     assert state.final_grounding_status == "guardrail_fallback"
     assert state.unsupported_fact_claim_count > 0 and state.historical_route is None
-    assert [entry.tool_name for entry in state.tool_history] == ["search_historical_evidence"]
+    assert [entry.tool_name for entry in state.tool_history] == ["search_historical_evidence", "build_historical_route"]
 
 
 
