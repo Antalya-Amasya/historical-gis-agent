@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from time import perf_counter
 from pathlib import Path
-from backend.app.models import AgentState, HistoricalEvent, HistoricalPlace
+from backend.app.models import AgentState, HistoricalEvent, HistoricalPlace, HistoricalRouteIntent
 from backend.app.core.config import settings
 from backend.app.candidate_routes.historical_reconstruction import RealTerrainGraphProvider
 from backend.app.candidate_routes.terrain import MosaicDEMProvider
@@ -99,6 +99,13 @@ class AgentToolRegistry:
         if name == "build_historical_route":
             for required in ("event_id", "name", "period"):
                 if not isinstance(arguments.get(required), str) or not arguments[required].strip(): raise ValueError(f"{required} must be a non-empty string")
+            existing_gis = (state.historical_route_diagnostics or {}).get("gis_reconstruction")
+            if state.historical_route is not None and existing_gis and existing_gis.get("attempted"):
+                return {
+                    "route": state.historical_route.model_dump(mode="json"),
+                    "presentation": state.historical_route_presentation,
+                    "gis_reconstruction": existing_gis,
+                }, f"build_historical_route reused_existing_route route_points={len(state.historical_route.ordered_points)}"
             event_first = self.event_route_builder.build_with_diagnostics(state.historical_events, state.historical_evidence, event_id=arguments["event_id"], name=arguments["name"], period=arguments["period"])
             if event_first.route is not None:
                 route, diagnostics = event_first.route, dict(event_first.diagnostics)
@@ -112,19 +119,63 @@ class AgentToolRegistry:
                 return {"route": None, "diagnostics": diagnostics}, "build_historical_route route_points=0 diagnostics=" + ",".join(diagnostics.get("reason_codes", []))
             state.historical_route = route
             state.current_event = HistoricalEvent(id=arguments["event_id"], name=arguments["name"], period=arguments["period"], summary="Evidence-supported schematic reconstruction.", places=[p.historical_place for p in route.ordered_points], evidence=state.historical_evidence, uncertainty_note="Historical reconstruction only; not an exact march track.")
-            if self.roman_road_orchestrator is not None:
-                road_result = self.roman_road_orchestrator.build_roman_road_candidates(route)
-                presentation = RomanRoadPresentationService().present(route, road_result)
-                state.historical_route_presentation = presentation.model_dump(mode="json")
-                return {"route": route.model_dump(mode="json"), "presentation": state.historical_route_presentation}, f"build_historical_route route_points={len(route.ordered_points)} roman_road_status={road_result.status.value}"
-            if state.route_intent is not None:
-                try:
-                    presentation = self.route_orchestrator.present(
-                        state.route_intent, route, state.historical_evidence,
-                    )
-                except RouteOrchestrationError as exc:
-                    return {"route": route.model_dump(mode="json"), "presentation": None}, f"build_historical_route route_points={len(route.ordered_points)} terrain_presentation_unavailable={type(exc).__name__}"
-                state.historical_route_presentation = presentation.model_dump(mode="json")
-                return {"route": route.model_dump(mode="json"), "presentation": state.historical_route_presentation}, f"build_historical_route route_points={len(route.ordered_points)} terrain_presentation=ready"
+            if state.requested_output == "historical_route":
+                reconstruction = self._reconstruct_candidate_route(route, state)
+                if reconstruction["presentation"] is not None:
+                    state.historical_route_presentation = reconstruction["presentation"]
+                return {
+                    "route": route.model_dump(mode="json"),
+                    "presentation": state.historical_route_presentation,
+                    "gis_reconstruction": reconstruction["diagnostics"],
+                }, f"build_historical_route route_points={len(route.ordered_points)} {reconstruction['summary']}"
             return {"route": route.model_dump(mode="json")}, f"build_historical_route route_points={len(route.ordered_points)}"
         raise ValueError(f"Unknown agent tool: {name}")
+
+    def _reconstruct_candidate_route(self, route, state: AgentState) -> dict:
+        """Run one deterministic GIS pass over an already accepted HistoricalRoute."""
+        diagnostics = state.historical_route_diagnostics or {}
+        if self.roman_road_orchestrator is not None:
+            road_result = self.roman_road_orchestrator.build_roman_road_candidates(route)
+            presentation = RomanRoadPresentationService().present(route, road_result).model_dump(mode="json")
+            diagnostics["gis_reconstruction"] = {
+                "attempted": True,
+                "pipeline": "roman_road_orchestrator",
+                "status": road_result.status.value,
+            }
+            state.historical_route_diagnostics = diagnostics
+            return {
+                "presentation": presentation,
+                "diagnostics": diagnostics["gis_reconstruction"],
+                "summary": f"roman_road_status={road_result.status.value}",
+            }
+
+        intent = state.route_intent or HistoricalRouteIntent(
+            campaign_id=route.event_id,
+            route_type="evidence_route",
+        )
+        try:
+            presentation = self.route_orchestrator.present(intent, route, state.historical_evidence)
+        except (RouteOrchestrationError, ValueError, KeyError) as exc:
+            diagnostics["gis_reconstruction"] = {
+                "attempted": True,
+                "pipeline": "terrain_candidate_orchestrator",
+                "status": "FAILED",
+                "reason_code": type(exc).__name__,
+            }
+            state.historical_route_diagnostics = diagnostics
+            return {
+                "presentation": None,
+                "diagnostics": diagnostics["gis_reconstruction"],
+                "summary": f"terrain_presentation_unavailable={type(exc).__name__}",
+            }
+        diagnostics["gis_reconstruction"] = {
+            "attempted": True,
+            "pipeline": "terrain_candidate_orchestrator",
+            "status": "COMPLETE",
+        }
+        state.historical_route_diagnostics = diagnostics
+        return {
+            "presentation": presentation.model_dump(mode="json"),
+            "diagnostics": diagnostics["gis_reconstruction"],
+            "summary": "terrain_presentation=ready",
+        }
