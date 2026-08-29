@@ -21,18 +21,26 @@ class RomanRoadPresentationService:
     """Creates role-labelled map data without altering route computation."""
 
     def present(self, historical_route: HistoricalRoute, result: RomanRoadRouteResult) -> RomanRoadPresentation:
+        terrain_fallback_used = any(leg.terrain_candidate is not None for leg in result.legs)
+        route_method = result.generation_method
+        interpretation = (
+            "Roman-road-preferred candidate reconstruction with terrain A* fallback only for unavailable adjacent road legs; it is not proof of an exact historical track."
+            if terrain_fallback_used
+            else "Partial Roman-road candidate reconstruction where available; it is not proof of an exact historical track."
+        )
         anchor_features = [self._anchor_feature(point) for point in historical_route.ordered_points]
         segment_features = []
         for segment in result.geometry_segments:
             geometry = {"type": "LineString", "coordinates": [list(item) for item in segment.coordinates]} if segment.coordinates else None
             segment_features.append({"type": "Feature", "geometry": geometry, "properties": {
-                "layer_type": "roman_road_segment", "segment_role": segment.segment_type,
+                "layer_type": "terrain_reconstruction_segment" if segment.segment_type == "terrain_candidate" else "roman_road_segment", "segment_role": segment.segment_type,
                 "leg_index": segment.leg_index, "source_anchor_id": segment.source_anchor_id,
                 "destination_anchor_id": segment.destination_anchor_id, "failure_status": segment.failure_status,
             }})
         road_network = {
-            "source": "Itiner-e — The Digital Atlas of Ancient Roads",
+            "source": "Itiner-e — The Digital Atlas of Ancient Roads" if result.aggregate.successful_leg_count and any(leg.candidate is not None for leg in result.legs) else "offline terrain A* fallback",
             "route_status": result.status.value,
+            "terrain_fallback_used": terrain_fallback_used,
             "aggregate": result.aggregate.model_dump(mode="json"),
             "legs": [leg.model_dump(mode="json") for leg in result.legs],
             "limitations": list(result.limitations),
@@ -42,8 +50,8 @@ class RomanRoadPresentationService:
             geojson={"type": "FeatureCollection", "features": [*anchor_features, *segment_features]},
             road_network=road_network, knowledge_panels=[self._anchor_panel(point) for point in historical_route.ordered_points],
             presentation_summary={
-                "title": historical_route.name, "route_method": "ROMAN_ROAD_NETWORK", "route_status": result.status.value,
-                "route_interpretation": "Partial Roman-road candidate reconstruction where available; it is not proof of an exact historical track.",
+                "title": historical_route.name, "route_method": route_method, "route_status": result.status.value,
+                "route_interpretation": interpretation,
                 "limitations": list(result.limitations),
             },
         )

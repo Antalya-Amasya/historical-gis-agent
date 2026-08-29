@@ -11,10 +11,10 @@ from backend.app.models import Evidence, GeoJsonLineString, HistoricalPlace, His
 from backend.app.route_orchestrator import HistoricalRouteOrchestrator
 
 
-DEM_DIR = Path(settings.dem_hgt_dir or "")
+DEM_DIR = Path(settings.dem_hgt_dir) if settings.dem_hgt_dir else None
 
 
-@pytest.mark.skipif(not DEM_DIR.is_dir(), reason="controlled local SRTM acceptance requires DEM_HGT_DIR")
+@pytest.mark.skipif(DEM_DIR is None or not DEM_DIR.is_dir(), reason="controlled local SRTM acceptance requires DEM_HGT_DIR")
 def test_real_alpes_to_italia_is_an_auditable_algorithmic_candidate():
     evidence = Evidence(id="e54", author="Livy", work="History of Rome", locator="Book 21", excerpt="came to Italy having crossed the Alps")
     alpes = HistoricalPlace(id="alpes", canonical_name="Alpes", longitude=7.0, latitude=44.0, source="fixture", confidence=.7, uncertain=True, coordinate_role="regional_centroid")

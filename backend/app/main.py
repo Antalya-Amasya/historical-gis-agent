@@ -16,6 +16,8 @@ from backend.app.routes.evidence import SemanticRouteEvidenceRetriever
 from backend.app.candidate_routes.presentation import HistoricalRouteResponse
 from backend.app.candidate_routes.roman_road_orchestration import RomanRoadRouteOrchestrator
 from backend.app.candidate_routes.roman_roads import RomanRoadCandidateService
+from backend.app.candidate_routes.geographic import GeographicCandidateRouteService
+from backend.app.candidate_routes.terrain import MosaicDEMProvider
 from backend.app.roads.itiner_e import RomanRoadGraph
 from pathlib import Path
 from backend.app.historical_route_presentation_service import (
@@ -49,7 +51,15 @@ def compose_roman_road_capability() -> None:
     path = Path(settings.roman_road_geojson_path)
     if not path.is_file():
         raise RuntimeError(f"roman-road capability is enabled but dataset is unavailable: {path}")
-    orchestrator = RomanRoadRouteOrchestrator(RomanRoadCandidateService(RomanRoadGraph.load(path)))
+    terrain_service = GeographicCandidateRouteService(
+        MosaicDEMProvider(Path(settings.dem_hgt_dir))
+        if settings.dem_hgt_dir and Path(settings.dem_hgt_dir).is_dir()
+        else None,
+    )
+    orchestrator = RomanRoadRouteOrchestrator(
+        RomanRoadCandidateService(RomanRoadGraph.load(path)),
+        terrain_route_service=terrain_service,
+    )
     agent = build_agent(roman_road_orchestrator=orchestrator)
 
 

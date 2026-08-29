@@ -8,7 +8,7 @@ from backend.app.models import GeoJsonLineString, HistoricalRoutePoint
 
 from .engine import CandidateRouteEngine
 from .grid import GridCell, GridPoint, SyntheticGrid
-from .models import ArmyProfile, CandidateRoute, CandidateRouteAnchor
+from .models import ArmyProfile, CandidateRoute, CandidateRouteAnchor, CandidateRouteSegmentLedger
 from .terrain import SyntheticTerrainProvider, TerrainOverride, TerrainProvider
 from backend.app.gis.surface import SurfaceClassification, SurfaceClassifier
 
@@ -224,5 +224,22 @@ class GeographicCandidateRouteService:
             "grid_width": spec.width,
             "grid_height": spec.height,
             "terrain_source": self.terrain_provider.source,
-            "assumptions": [*candidate.assumptions, "Terrain is offline synthetic geographic data; geographic cells are algorithmic candidates, not historical facts."],
+            "generation_method": "terrain_astar",
+            "assumptions": [*candidate.assumptions, f"Terrain source is {self.terrain_provider.source}; geographic cells are algorithmic candidates, not historical facts."],
+            "segment_ledger": [CandidateRouteSegmentLedger(
+                segment_id=f"{candidate.from_anchor.historical_place_id}-to-{candidate.to_anchor.historical_place_id}",
+                source_anchor_id=candidate.from_anchor.historical_place_id,
+                target_anchor_id=candidate.to_anchor.historical_place_id,
+                physical_distance_km=metrics.distance_km,
+                elevation_gain_m=metrics.elevation_gain_m,
+                elevation_loss_m=metrics.elevation_loss_m,
+                max_slope=metrics.max_slope,
+                search_cost_total=metrics.search_cost,
+                cost_breakdown=candidate.cost_breakdown,
+                terrain_source=self.terrain_provider.source,
+                grid_resolution_m=spec.cell_size_m,
+                sample_count=metrics.cell_count,
+                edge_count=metrics.segment_count,
+                applied_constraints=["terrain_grid_cost", "slope_cost"],
+            )],
         })
