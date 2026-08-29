@@ -261,3 +261,47 @@ def test_conflicting_praenomen_is_not_full_person_identity():
     details = {item.id: item.metadata["retrieval_ranking"] for item in rerank_evidence("assassination of Julius Caesar", [lucius, julius])}
     assert details["julius"]["person_support"] > details["lucius"]["person_support"]
     assert rerank_evidence("assassination of Julius Caesar", [lucius, julius])[0].id == "julius"
+
+
+def test_natural_language_what_did_scipio_do_in_spain_roles():
+    roles = analyze_query("What did Scipio do in Spain?")
+    assert roles.person_terms == frozenset({"scipio"})
+    assert roles.location_terms == frozenset({"spain"})
+    assert not (roles.person_terms & {"what", "did", "do"})
+
+
+def test_caesar_crossed_the_rubicon_roles():
+    roles = analyze_query("Caesar crossed the Rubicon")
+    assert roles.person_terms == frozenset({"caesar"})
+    assert "crossed" not in roles.person_terms
+    assert "rubicon" not in roles.person_terms
+
+
+def test_what_happened_at_the_battle_of_actium_roles():
+    roles = analyze_query("What happened at the Battle of Actium?")
+    assert roles.location_terms == frozenset({"actium"})
+    assert "battle" in roles.action_terms
+    assert not (roles.person_terms & {"what", "happened", "the"})
+
+
+def test_tell_me_about_tiberius_gracchus_roles():
+    roles = analyze_query("Tell me about Tiberius Gracchus")
+    assert roles.person_terms == frozenset({"tiberius", "gracchus"})
+    assert not (roles.person_terms & {"tell", "me", "about"})
+
+
+def test_chinese_query_roles_do_not_raise():
+    roles = analyze_query("总督遭到刺杀")
+    assert roles.person_terms == frozenset()
+
+
+def test_index_heading_with_epub3_nav_is_navigation():
+    item = evidence("idx", "Scipio Africanus, 12.", 0.5, heading="INDEX.", navigation_source="epub3_nav")
+    assert is_navigation_or_heading(item)
+    assert rerank_evidence("Scipio military actions in Spain", [item])[0].metadata["retrieval_ranking"]["navigation_penalty"] > 0
+
+
+def test_contents_heading_is_navigation():
+    item = evidence("contents", "Book I. The consuls of the year.", 0.5, heading="CONTENTS")
+    assert is_navigation_or_heading(item)
+    assert rerank_evidence("Battle of Cannae", [item])[0].metadata["retrieval_ranking"]["navigation_penalty"] > 0

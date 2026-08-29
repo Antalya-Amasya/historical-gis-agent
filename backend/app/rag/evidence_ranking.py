@@ -36,6 +36,11 @@ _CHAPTER_TOC = re.compile(
 _FRONT_MATTER = re.compile(
     r"(?is)(?:this ebook is for the use|^\s*title:\s|\*\*\*\s*start of (?:the )?project gutenberg)",
 )
+_STRUCTURAL_HEADING = re.compile(r"^(?:index|contents|table of contents)\.?\s*$", re.IGNORECASE)
+
+
+def _is_structural_heading(value: str) -> bool:
+    return bool(_STRUCTURAL_HEADING.match((value or "").strip()))
 
 
 def _text_is_navigation(text: str) -> bool:
@@ -54,6 +59,9 @@ def is_navigation_or_heading(evidence: Evidence) -> bool:
     """TOC/index metadata or navigational text; structural EPUB hints are not enough."""
     source = str(evidence.metadata.get("navigation_source", "")).casefold()
     if source in _STRONG_NAV_SOURCES:
+        return True
+    heading = str(evidence.metadata.get("heading") or "")
+    if _is_structural_heading(heading):
         return True
     return _text_is_navigation(evidence.text or "")
 

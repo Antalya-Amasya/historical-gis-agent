@@ -12,6 +12,17 @@ from dataclasses import dataclass
 
 _WORD = re.compile(r"[A-Za-z0-9]+")
 _STOP_WORDS = frozenset({"a", "an", "and", "at", "battle", "by", "for", "in", "of", "on", "the", "to", "with"})
+_QUERY_SCAFFOLD = frozenset({
+    "what", "who", "where", "when", "why", "how",
+    "did", "does", "do", "was", "were", "is", "are", "am", "be", "been", "being",
+    "has", "have", "had",
+    "tell", "show", "find", "describe", "explain",
+    "happen", "happened", "happens", "happening",
+    "me", "about", "please",
+    "can", "could", "would", "should", "may", "might",
+    "which", "whose", "whom",
+})
+_DETERMINERS = frozenset({"a", "an", "the"})
 _GENERIC_TERMS = frozenset({
     "action", "actions", "affairs", "campaign", "campaigns", "event", "events",
     "history", "historical", "military", "operation", "operations",
@@ -48,6 +59,7 @@ class QueryRoleAnalysis:
     location_terms: frozenset[str]
     action_terms: frozenset[str]
     generic_terms: frozenset[str]
+    context_terms: frozenset[str]
     expanded_action_terms: frozenset[str]
     stop_terms: frozenset[str]
 
@@ -79,14 +91,23 @@ def analyze_query(query: str) -> QueryRoleAnalysis:
             if tail not in _STOP_WORDS:
                 location.add(tail)
     generic = frozenset(token for token in norms if token in _GENERIC_TERMS)
-    reserved = _STOP_WORDS | _ACTION_UNION | _GENERIC_TERMS | location
-    person_sequence = tuple(token for token in norms if token not in reserved)
+    reserved = _STOP_WORDS | _ACTION_UNION | _GENERIC_TERMS | location | _QUERY_SCAFFOLD
+    after_determiner = {index + 1 for index, norm in enumerate(norms) if norm in _DETERMINERS}
+    leftover = [(index, raw, norm) for index, (raw, norm) in enumerate(pairs) if norm not in reserved]
+    titled = [(index, raw, norm) for index, raw, norm in leftover if raw[:1].isupper() and index not in after_determiner]
+    if titled:
+        person_sequence = [norm for _, _, norm in titled]
+        context = [norm for index, raw, norm in leftover if (index, raw, norm) not in titled]
+    else:
+        person_sequence = [norm for _, _, norm in leftover]
+        context = []
     return QueryRoleAnalysis(
         person_terms=frozenset(person_sequence),
-        person_sequence=person_sequence,
+        person_sequence=tuple(person_sequence),
         location_terms=frozenset(location),
         action_terms=action_terms,
         generic_terms=generic,
+        context_terms=frozenset(context),
         expanded_action_terms=expanded,
         stop_terms=stop_in_query,
     )
