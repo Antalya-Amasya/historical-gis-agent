@@ -2,6 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import re
+import re
 from backend.app.routes.place_aliases import HISTORICAL_PLACE_ALIASES
 
 # Maintainable bilingual normalization data, intentionally separate from runtime contracts.
@@ -376,6 +377,24 @@ def classify_candidate_phrase(phrase: CandidatePhrase, context: str, user_query:
     return CandidateEntityAssessment(phrase.raw_text, phrase.normalized_text, True, phrase.entity_type, "model_only", "unsupported_fact", "model-only entity-like phrase lacks explicit suggestion context")
 
 
+def event_relation_supports_answer(answer: str | None, events: list, evidence: list) -> bool:
+    """A bounded Event may aid QA only through wholly visible Evidence refs."""
+    visible = {str(item.id) for item in evidence[:8]}
+    text = answer or ""
+    entities = {item.lower() for item in re.findall(r"\b[A-Z][A-Za-z]+\b", text) if item.lower() not in {"the", "a", "an", "evidence"}}
+    if not entities:
+        return False
+    for event in events:
+        refs = set(getattr(event, "evidence_refs", []) or [])
+        if not refs or not refs.issubset(visible):
+            continue
+        context = " ".join([str(getattr(event, "name", "")), str(getattr(event, "summary", "")), *getattr(event, "source_statements", [])]).lower()
+        # Every material named entity must be traceable through the derived event.
+        if all(entity in context for entity in entities):
+            return True
+    return False
+
+
 def assess_final_answer_provenance(answer: str | None, user_query: str, evidence: list) -> FinalGroundingAssessment:
     answer = answer or ""
     phrases = extract_candidate_phrases(answer, user_query, evidence)
@@ -402,6 +421,15 @@ _EVIDENCE_CITATION = re.compile(
     r"\[Evidence:\s*(?P<id>.+?)\s+\N{EM DASH}\s*(?P<author>[^,\]]+),\s*(?P<work>[^,\]]+),\s*(?P<locator>[^\]]+)\]",
     re.IGNORECASE,
 )
+
+def validate_evidence_selection(ids: tuple[str, ...], evidence: list, *, require_selection: bool) -> tuple[str, ...]:
+    if require_selection and not ids: return ("missing_evidence_selection",)
+    visible = {str(item.id) for item in evidence[:8]}
+    return tuple(f"unknown_evidence_id:{identifier}" for identifier in dict.fromkeys(ids) if not identifier or identifier not in visible)
+
+def render_evidence_citations(ids: tuple[str, ...], evidence: list) -> str:
+    by_id = {str(item.id): item for item in evidence[:8]}
+    return " ".join(f"[Evidence: {identifier} \N{EM DASH} {by_id[identifier].author}, {by_id[identifier].work}, {by_id[identifier].locator}]" for identifier in dict.fromkeys(ids))
 
 
 def validate_evidence_citations(answer: str | None, evidence: list, *, require_citation: bool) -> tuple[str, ...]:

@@ -56,7 +56,8 @@ def test_mock_http_real_provider_path_generates_from_tool_evidence_not_fake_cann
         ))
         assert tool_payload["result"]["evidence"][0]["id"] == "cannae-1"
         assert tool_payload["result"]["historical_events"][0]["event_type"] == "BATTLE"
-        return response(200,body({"content":"Polybius records a battle at Cannae. [Evidence: cannae-1 " + chr(0x2014) + " Polybius, Histories, Book III]"}))
+        terminal = {"id":"answer","type":"function","function":{"name":"submit_grounded_answer","arguments":json.dumps({"answer":"Polybius records a battle at Cannae.","evidence_ids":["cannae-1"],"insufficient_evidence":False})}}
+        return response(200,body({"content":None,"tool_calls":[terminal]},"tool_calls"))
 
     class Retriever(HistoricalRetriever):
         def retrieve(self, query, top_k=5, filters=None):

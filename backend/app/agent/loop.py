@@ -2,7 +2,7 @@ from __future__ import annotations
 import json, logging
 from time import perf_counter
 from backend.app.agent.prompts import SYSTEM_PROMPT
-from backend.app.agent.evidence_support import assess_evidence_support, assess_final_answer_provenance, validate_evidence_citations
+from backend.app.agent.evidence_support import assess_evidence_support, assess_final_answer_provenance, event_relation_supports_answer, render_evidence_citations, validate_evidence_selection
 from backend.app.models import AgentState, AgentToolHistoryEntry
 
 logger = logging.getLogger(__name__)
@@ -176,7 +176,8 @@ class BoundedAgentLoop:
             state.step_count = step
             logger.info("llm_%s_started step=%s", "continuation" if step > 1 else "request", step)
             try:
-                response = self.provider.complete(messages, self.tools.schemas)
+                schemas = self.tools.schemas if state.requested_output == "answer" and state.historical_evidence else [tool for tool in self.tools.schemas if tool["name"] != "submit_grounded_answer"]
+                response = self.provider.complete(messages, schemas)
             except Exception as exc:
                 state.status = "provider_error"
                 state.warnings.append(f"LLM provider failure: {type(exc).__name__}")
@@ -190,6 +191,39 @@ class BoundedAgentLoop:
                 for key, value in response.usage.items():
                     totals[key] = totals.get(key, 0) + value
             logger.info("llm_response_received step=%s finish_reason=%s tool_call_count=%s", step, response.finish_reason, len(response.tool_calls))
+            terminal_calls = [call for call in response.tool_calls if call.name == "submit_grounded_answer"]
+            if terminal_calls:
+                call = terminal_calls[0]
+                arguments = call.arguments
+                answer = arguments.get("answer")
+                ids = arguments.get("evidence_ids")
+                insufficient = arguments.get("insufficient_evidence", False)
+                issues = []
+                if len(response.tool_calls) != 1 or not isinstance(answer, str) or not isinstance(ids, list) or not all(isinstance(item, str) for item in ids):
+                    issues.append("malformed_grounded_answer_submission")
+                selected_ids = tuple(ids) if isinstance(ids, list) and all(isinstance(item, str) for item in ids) else ()
+                explicit_insufficient = bool(insufficient) and _explicitly_insufficient(answer if isinstance(answer, str) else None)
+                issues.extend(validate_evidence_selection(selected_ids, state.historical_evidence, require_selection=not explicit_insufficient))
+                assessment = assess_final_answer_provenance(answer if isinstance(answer, str) else None, state.user_query or "", state.historical_evidence)
+                event_supported = event_relation_supports_answer(answer, state.historical_events, state.historical_evidence)
+                if assessment.status == "unsupported_fact" and not event_supported: issues.append("unsupported_fact")
+                if bool(insufficient) and not explicit_insufficient: issues.append("invalid_insufficient_evidence_submission")
+                if issues:
+                    state.warnings.extend(issues)
+                    if grounding_corrections < self.max_grounding_corrections and step < self.max_steps:
+                        grounding_corrections += 1; state.grounding_corrections += 1; state.tool_execution_stats["grounding_corrections"] += 1
+                        manifest = "; ".join(f"{item.id} ({item.author}, {item.work}, {item.locator})" for item in state.historical_evidence[:8])
+                        messages.append({"role":"user","content":f"Your submit_grounded_answer validation failed: {', '.join(issues)}. Call submit_grounded_answer again with answer and evidence_ids selected only from: {manifest}. Use insufficient_evidence=true only for an explicit insufficiency answer."})
+                        continue
+                    state.status="completed_with_guardrail"; state.final_grounding_status="guardrail_fallback"; state.warnings.append("unsupported_historical_answer_discarded")
+                    return self._finish("The current retrieved historical evidence is insufficient to support a reliable answer.", state, started)
+                self._record_grounding_assessment(state, assessment)
+                if explicit_insufficient:
+                    state.final_grounding_status="insufficient_evidence"
+                    return self._finish(answer, state, started)
+                rendered = render_evidence_citations(selected_ids, state.historical_evidence)
+                state.final_grounding_status="provenance_corrected" if grounding_corrections else "grounded"
+                return self._finish(f"{answer.strip()} {rendered}".strip(), state, started)
             if not response.tool_calls:
                 self._refresh_evidence_support(state)
                 if state.requested_output in {"answer", "geography_fact"}:
@@ -230,14 +264,8 @@ class BoundedAgentLoop:
                             started,
                         )
                     self._record_grounding_assessment(state, answer_assessment)
-                    citation_issues = validate_evidence_citations(
-                        response.content,
-                        state.historical_evidence,
-                        require_citation=(
-                            state.requested_output == "answer"
-                            and not _explicitly_insufficient(response.content)
-                        ),
-                    )
+                    answer_text = response.content or ""
+                    citation_issues = ("missing_grounded_answer_submission",) if state.requested_output == "answer" and not _explicitly_insufficient(answer_text) else ()
                     if citation_issues:
                         state.warnings.extend(citation_issues)
                     if (
@@ -251,9 +279,9 @@ class BoundedAgentLoop:
                         messages.append({
                             "role": "user",
                             "content": (
-                                "Revise the answer using only facts and named entities present in the supplied "
-                                "Evidence. Every factual answer needs valid [Evidence: id — author, work, locator] "
-                                "citations copied from the supplied Evidence. Remove "
+                                f"Revise the answer; validation failed: {', '.join(citation_issues) or answer_assessment.status}. "
+                                "Call submit_grounded_answer with answer and evidence_ids selected from this manifest; do not write citation metadata. "
+                                "Allowed Evidence: " + "; ".join(f"{item.id} ({item.author}, {item.work}, {item.locator})" for item in state.historical_evidence[:8]) + ". Remove "
                                 "unsupported dates, people, places, events, and routes. If the Evidence does not "
                                 "answer the question, say that it is insufficient."
                             ),
