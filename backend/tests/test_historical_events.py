@@ -68,6 +68,72 @@ def test_document_period_metadata_is_not_treated_as_event_time():
     assert temporal.status is TemporalGroundingStatus.UNRESOLVED
 
 
+def test_query_relevance_keeps_asserted_event_without_inventing_query_facts():
+    item = evidence("asserted", "Commander A captured Town B in Province C.")
+
+    events, _ = EvidenceGroundedHistoricalEventExtractor().extract([item], query="Commander A in Province C")
+
+    assert len(events) == 1
+    assert events[0].summary == item.text
+    assert events[0].event_type is HistoricalEventType.MILITARY
+    assert events[0].evidence_refs == ["asserted"]
+
+
+def test_retrospective_reference_is_not_classified_as_the_asserted_battle():
+    events, _ = EvidenceGroundedHistoricalEventExtractor().extract([
+        evidence("retrospective", "After the defeat at Battlefield D, Settlement E revolted from the alliance."),
+    ], query="Battlefield D")
+
+    assert len(events) == 1
+    assert events[0].event_type is HistoricalEventType.REBELLION
+    assert events[0].summary.startswith("After the defeat at Battlefield D")
+
+
+def test_hypothetical_and_reported_actions_do_not_become_completed_events():
+    events, _ = EvidenceGroundedHistoricalEventExtractor().extract([
+        evidence("planned", "Commander A planned to attack Town B."),
+        evidence("speech", 'The senator said that Commander C should march to Town D.'),
+    ], query="Commander")
+
+    assert events == []
+
+
+def test_query_normalization_handles_ligatures_without_hard_coded_event_names():
+    events, _ = EvidenceGroundedHistoricalEventExtractor().extract([
+        evidence("ligature", "Cæsar was assassinated at Forum E."),
+        evidence("place", "At Cannæ the armies fought a battle."),
+    ], query="Caesar Cannae")
+
+    assert [event.event_type for event in events] == [HistoricalEventType.ASSASSINATION, HistoricalEventType.BATTLE]
+
+
+def test_query_relevance_filters_unrelated_context_but_preserves_multiple_events():
+    events, _ = EvidenceGroundedHistoricalEventExtractor().extract([
+        evidence("capture", "Commander A captured Town B in Province C."),
+        evidence("siege", "Commander A besieged Fortress D in Province C."),
+        evidence("context", "General Z captured Town Y in Province Q."),
+    ], query="Commander A military actions in Province C")
+
+    assert [event.evidence_refs for event in events] == [["capture"], ["siege"]]
+
+
+def test_navigation_topic_is_not_treated_as_a_primary_source_statement():
+    item = evidence("topic", "The queen was honoured by the city.")
+    item.topic = "A famous battle"
+
+    events, _ = EvidenceGroundedHistoricalEventExtractor().extract([item], query="famous battle")
+
+    assert events == []
+
+
+def test_navigation_heading_is_not_promoted_to_an_event_statement():
+    events, _ = EvidenceGroundedHistoricalEventExtractor().extract([
+        evidence("heading", "How a ruler was murdered (chapters 19-22)."),
+    ], query="ruler murder")
+
+    assert events == []
+
+
 class Retriever(HistoricalRetriever):
     def retrieve(self, *_args, **_kwargs):
         return [evidence("agent-event", "The assembly elected an official in Place E.")]

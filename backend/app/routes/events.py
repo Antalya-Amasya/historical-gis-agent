@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import unicodedata
 
 from backend.app.models import (
     Evidence,
@@ -24,18 +25,39 @@ class EvidenceGroundedHistoricalEventExtractor:
     """Extract separate event statements without place resolution or route inference."""
 
     _TYPE_PATTERNS = (
-        (HistoricalEventType.ASSASSINATION, r"\b(?:assassinated|assassination|murdered|killed)\b"),
+        (HistoricalEventType.ASSASSINATION, r"\b(?:assassinated|assassination|murdered)\b"),
         (HistoricalEventType.REFORM, r"\b(?:reform(?:ed)?|reformers?|land law|legislation|proposed a law)\b"),
         (HistoricalEventType.BATTLE, r"\b(?:battle|fought at|defeated .* at)\b"),
         (HistoricalEventType.SIEGE, r"\b(?:siege|besieged)\b"),
         (HistoricalEventType.TREATY, r"\b(?:treaty|peace agreement|concluded peace)\b"),
         (HistoricalEventType.ELECTION, r"\b(?:elected|election|chosen as)\b"),
-        (HistoricalEventType.REBELLION, r"\b(?:rebellion|revolt|uprising|insurrection)\b"),
+        (HistoricalEventType.REBELLION, r"\b(?:rebellion|revolt(?:ed)?|uprising|insurrection)\b"),
         (HistoricalEventType.MOVEMENT, r"\b(?:marched|advanced|proceeded|moved|travelled|traveled|departed|arrived|entered|crossed|withdrew|retreated)\b"),
         (HistoricalEventType.MILITARY, r"\b(?:campaign|army|war|invaded|conquered|captured)\b"),
-        (HistoricalEventType.POLITICAL, r"\b(?:senate|tribune|consul|assembly|decree)\b"),
+        (HistoricalEventType.POLITICAL, r"\b(?:senate .*\bdecree|tribune .*\b(?:proposed|elected|opposed)|consul .*\b(?:appointed|elected|sent)|assembly .*\b(?:elected|passed)|issued a decree)\b"),
     )
     _PLACE_PATTERN = re.compile(r"\b(?P<role>at|in|near|from|to|into)\s+(?P<place>[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*){0,3})")
+    _RETROSPECTIVE = re.compile(
+        r"\b(?:after|following|because of|since)\s+(?:the\s+)?(?:battle|defeat|death|murder|assassination)\b[^,;:.]*[,;:]?\s*",
+        re.IGNORECASE,
+    )
+    _NON_COMPLETED = re.compile(
+        r"\b(?:would|could|might|should|may|planned\s+to|intended\s+to|wanted\s+to|hoped\s+to|feared\s+(?:that|lest)|if)\b",
+        re.IGNORECASE,
+    )
+    _REPORTED_SPEECH = re.compile(r"[\"“”]|\b(?:said|declared|claimed|reported|urged)\s+(?:that|:)", re.IGNORECASE)
+    _NAVIGATION_HEADING = re.compile(
+        r"^\s*(?:how\b.*\bchapters?\b|(?:chapter|book)\s+[ivxlcdm0-9]+\b)", re.IGNORECASE
+    )
+    _ACTOR = re.compile(
+        r"\b(?:the\s+)?(?:army|armies|senate|assembly|people|romans|carthaginians|rebels|consul|tribune|leader|reformer|commander|king|queen)\b",
+        re.IGNORECASE,
+    )
+    _QUERY_STOP = frozenset("a an and at by for from how in of on or the to what which who why with military actions battle history event political province".split())
+    _ACTION_EQUIVALENTS = {
+        "assassination": "violent_death", "assassinated": "violent_death", "murder": "violent_death",
+        "murdered": "violent_death", "slain": "violent_death", "killed": "violent_death",
+    }
 
     def __init__(self, mention_extractor: HistoricalPlaceMentionExtractor | None = None,
                  temporal_resolver: EvidenceTemporalResolver | None = None) -> None:
@@ -44,14 +66,34 @@ class EvidenceGroundedHistoricalEventExtractor:
 
     @staticmethod
     def _text(item: Evidence) -> str:
-        return " ".join(dict.fromkeys(value for value in (item.text, item.excerpt, item.topic) if value))
+        # ``topic`` is retrieval/navigation metadata, not a primary-source
+        # assertion.  Treating it as sentence text made chapter headings such
+        # as "Actium" manufacture unrelated events from their paragraphs.
+        return " ".join(dict.fromkeys(value for value in (item.text, item.excerpt) if value))
+
+    @classmethod
+    def _normalized_terms(cls, value: str | None) -> set[str]:
+        normalized = unicodedata.normalize("NFKD", value or "").casefold().replace("æ", "ae").replace("œ", "oe")
+        return {
+            cls._ACTION_EQUIVALENTS.get(term, term)
+            for term in re.findall(r"[a-z][a-z']{2,}", normalized)
+            if term not in cls._QUERY_STOP
+        }
+
+    @classmethod
+    def _is_query_relevant(cls, sentence: str, query_terms: set[str] | None) -> bool:
+        if not query_terms:
+            return True
+        return bool(cls._normalized_terms(sentence) & query_terms)
 
     @staticmethod
     def _sentences(text: str) -> list[str]:
         return [part.strip() for part in re.split(r"(?<=[.!?;])\s+|\n+", text) if part.strip()]
 
     def _event_type(self, sentence: str) -> HistoricalEventType:
-        lower = sentence.lower()
+        # A retrospective reference can name a battle or death while the main
+        # assertion describes another event.  Classify the asserted clause.
+        lower = self._RETROSPECTIVE.sub("", sentence).lower()
         for event_type, pattern in self._TYPE_PATTERNS:
             if re.search(pattern, lower):
                 return event_type
@@ -87,13 +129,29 @@ class EvidenceGroundedHistoricalEventExtractor:
             ))
         return values
 
-    def extract(self, evidence: list[Evidence]) -> tuple[list[HistoricalEvent], dict[str, object]]:
+    def _eligible(self, sentence: str, event_type: HistoricalEventType, query_terms: set[str] | None) -> bool:
+        if event_type is HistoricalEventType.UNKNOWN:
+            return False
+        if self._NON_COMPLETED.search(sentence) or self._REPORTED_SPEECH.search(sentence) or self._NAVIGATION_HEADING.search(sentence):
+            return False
+        # Proper names or a concrete collective/office keep this conservative
+        # without requiring a place or a normalized date.
+        if not self._proper_tokens(sentence) and not self._ACTOR.search(sentence):
+            return False
+        return self._is_query_relevant(sentence, query_terms)
+
+    @staticmethod
+    def _proper_tokens(value: str) -> set[str]:
+        return set(re.findall(r"\b[A-Z][A-Za-zÀ-ÖØ-öø-ÿÆæŒœ']{2,}", value))
+
+    def extract(self, evidence: list[Evidence], *, query: str | None = None) -> tuple[list[HistoricalEvent], dict[str, object]]:
         events: list[HistoricalEvent] = []
         temporal_codes: set[str] = set()
+        query_terms = self._normalized_terms(query) if query and query.strip() else None
         for item in evidence:
             for index, sentence in enumerate(self._sentences(self._text(item))):
                 event_type = self._event_type(sentence)
-                if event_type is HistoricalEventType.UNKNOWN:
+                if not self._eligible(sentence, event_type, query_terms):
                     continue
                 digest = hashlib.sha256(f"{item.id}:{index}:{sentence}".encode("utf-8")).hexdigest()[:12]
                 places = self._places(sentence, item.id)

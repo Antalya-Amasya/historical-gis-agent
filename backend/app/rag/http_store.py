@@ -14,6 +14,7 @@ class ChromaHttpEvidenceStore:
     def __init__(self, collection, embedding):
         self.collection = collection
         self.embedding = embedding
+        self._lexical_index = None
 
     def query(self, query: str, top_k: int, filters: dict[str, str] | None = None) -> dict:
         if top_k < 1:
@@ -28,6 +29,17 @@ class ChromaHttpEvidenceStore:
             where=where,
             include=["documents", "metadatas", "distances"],
         )
+
+    def lexical_candidates(self, query: str, top_k: int, filters: dict[str, str] | None = None):
+        from .lexical_index import LexicalEvidenceIndex
+        # Minimal test doubles and deliberately query-only collections remain
+        # valid semantic stores; they simply have no corpus read API for the
+        # supplementary lexical channel.
+        if not hasattr(self.collection, "get"):
+            return []
+        if self._lexical_index is None:
+            self._lexical_index = LexicalEvidenceIndex(self.collection)
+        return self._lexical_index.query(query, top_k, filters)
 
 
 def build_production_retriever(settings):

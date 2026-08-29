@@ -78,7 +78,7 @@ class AgentToolRegistry:
             accumulated = {item.id: item for item in state.historical_evidence}
             accumulated.update({item.id: item for item in evidence})
             state.historical_evidence = list(accumulated.values())
-            candidates, extraction_diagnostics = self.event_extractor.extract(state.historical_evidence)
+            candidates, extraction_diagnostics = self.event_extractor.extract(state.historical_evidence, query=query)
             consolidated_events, consolidation_diagnostics = self.event_consolidator.consolidate(candidates)
             state.historical_events, place_diagnostics = self.event_place_resolver.resolve(consolidated_events)
             state.historical_event_diagnostics = {
