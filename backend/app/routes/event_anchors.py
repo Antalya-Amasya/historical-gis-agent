@@ -4,7 +4,7 @@ This deliberately projects no edges and performs no route/GIS inference.
 """
 from __future__ import annotations
 from dataclasses import dataclass
-from backend.app.models import EventPlaceResolutionStatus, EventPlaceRole, HistoricalEvent
+from backend.app.models import EventPlaceResolutionStatus, EventPlaceRole, HistoricalEvent, HistoricalPlace
 
 
 @dataclass(frozen=True)
@@ -20,6 +20,7 @@ class EventAnchor:
     coordinate_role: str
     limitations: tuple[str, ...]
     period: str | None
+    place: HistoricalPlace
 
 
 def project_event_anchors(events: list[HistoricalEvent], evidence: list) -> tuple[list[EventAnchor], list[str]]:
@@ -43,5 +44,5 @@ def project_event_anchors(events: list[HistoricalEvent], evidence: list) -> tupl
             refs = set(binding.evidence_refs) or event_refs
             if not refs.issubset(visible):
                 diagnostics.append(f"INVALID_EVIDENCE_PROVENANCE:{event.id}"); continue
-            anchors.append(EventAnchor(event.id, event.event_type.value, binding.place.canonical_name, binding.role, binding.place.latitude, binding.place.longitude, tuple(sorted(refs)), binding.resolver_provenance, binding.place.coordinate_role, tuple(binding.limitations), event.period))
+            anchors.append(EventAnchor(event.id, event.event_type.value, binding.place.canonical_name, binding.role, binding.place.latitude, binding.place.longitude, tuple(sorted(refs)), binding.resolver_provenance, binding.place.coordinate_role, tuple(binding.limitations), event.period, binding.place))
     return anchors, diagnostics or ([] if anchors else ["NO_ELIGIBLE_EVENT_PLACES"])

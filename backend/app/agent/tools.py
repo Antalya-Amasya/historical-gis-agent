@@ -9,6 +9,7 @@ from backend.app.candidate_routes.historical_reconstruction import RealTerrainGr
 from backend.app.candidate_routes.terrain import MosaicDEMProvider
 from backend.app.rag.retriever import HistoricalRetriever
 from backend.app.routes.extractor import HistoricalRouteExtractor
+from backend.app.routes.event_route_orchestration import EventAnchorRouteBuilder
 from backend.app.routes.events import EvidenceGroundedHistoricalEventExtractor, HistoricalEventConsolidator
 from backend.app.routes.event_places import HistoricalEventPlaceResolver
 from backend.app.route_orchestrator import (
@@ -35,6 +36,7 @@ class AgentToolRegistry:
     def __init__(self, retriever: HistoricalRetriever, geography_client, *, route_orchestrator=None, campaign_registry=None, roman_road_orchestrator=None):
         self.retriever, self.geography_client = retriever, geography_client
         self.route_extractor = HistoricalRouteExtractor(geography_client)
+        self.event_route_builder = EventAnchorRouteBuilder()
         self.event_extractor = EvidenceGroundedHistoricalEventExtractor()
         self.event_consolidator = HistoricalEventConsolidator()
         self.event_place_resolver = HistoricalEventPlaceResolver(geography_client)
@@ -97,11 +99,17 @@ class AgentToolRegistry:
         if name == "build_historical_route":
             for required in ("event_id", "name", "period"):
                 if not isinstance(arguments.get(required), str) or not arguments[required].strip(): raise ValueError(f"{required} must be a non-empty string")
-            outcome = self.route_extractor.build_with_diagnostics(state.historical_evidence, event_id=arguments["event_id"], name=arguments["name"], period=arguments["period"])
-            state.historical_route_diagnostics = outcome.diagnostics
-            route = outcome.route
+            event_first = self.event_route_builder.build_with_diagnostics(state.historical_events, state.historical_evidence, event_id=arguments["event_id"], name=arguments["name"], period=arguments["period"])
+            if event_first.route is not None:
+                route, diagnostics = event_first.route, dict(event_first.diagnostics)
+            else:
+                # Compatibility fallback: strict legacy movement claims, never merged with event-first anchors.
+                legacy = self.route_extractor.build_with_diagnostics(state.historical_evidence, event_id=arguments["event_id"], name=arguments["name"], period=arguments["period"])
+                route = legacy.route
+                diagnostics = {**legacy.diagnostics, "route_source": "legacy_movement_claims" if route is not None else "none", "event_anchor_diagnostics": event_first.diagnostics}
+            state.historical_route_diagnostics = diagnostics
             if route is None:
-                return {"route": None, "diagnostics": outcome.diagnostics}, "build_historical_route route_points=0 diagnostics=" + ",".join(outcome.diagnostics.get("reason_codes", []))
+                return {"route": None, "diagnostics": diagnostics}, "build_historical_route route_points=0 diagnostics=" + ",".join(diagnostics.get("reason_codes", []))
             state.historical_route = route
             state.current_event = HistoricalEvent(id=arguments["event_id"], name=arguments["name"], period=arguments["period"], summary="Evidence-supported schematic reconstruction.", places=[p.historical_place for p in route.ordered_points], evidence=state.historical_evidence, uncertainty_note="Historical reconstruction only; not an exact march track.")
             if self.roman_road_orchestrator is not None:

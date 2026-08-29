@@ -20,6 +20,15 @@ class RouteBuildOutcome:
     diagnostics: dict[str, object]
 
 
+def evidence_structural_key(item: Evidence) -> tuple[str, int, int] | None:
+    """Only structure-derived source positions may order a connected chain."""
+    document_id = str(item.metadata.get("document_id") or item.source_file or "")
+    spine_index, start_offset = item.metadata.get("spine_index"), item.metadata.get("start_offset")
+    if not document_id or not isinstance(spine_index, int) or not isinstance(start_offset, int):
+        return None
+    return document_id, spine_index, start_offset
+
+
 class HistoricalPlaceMentionExtractor:
     """Literal place mentions for display/audit; mentions alone never create routes."""
 
@@ -126,14 +135,7 @@ class HistoricalRouteExtractor:
         self.geography_client = geography_client
         self.mention_extractor = mention_extractor or HistoricalPlaceMentionExtractor()
 
-    @staticmethod
-    def _evidence_order_key(item: Evidence) -> tuple[str, int, int] | None:
-        """Only structure-derived source positions may order a connected chain."""
-        document_id = str(item.metadata.get("document_id") or item.source_file or "")
-        spine_index, start_offset = item.metadata.get("spine_index"), item.metadata.get("start_offset")
-        if not document_id or not isinstance(spine_index, int) or not isinstance(start_offset, int):
-            return None
-        return document_id, spine_index, start_offset
+    _evidence_order_key = staticmethod(evidence_structural_key)
 
     def build(self, evidence: list[Evidence], *, event_id: str, name: str, period: str) -> HistoricalRoute | None:
         return self.build_with_diagnostics(evidence, event_id=event_id, name=name, period=period).route
