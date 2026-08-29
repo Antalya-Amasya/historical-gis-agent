@@ -4,10 +4,10 @@ from collections import defaultdict
 from dataclasses import dataclass
 import math, re
 from typing import Any
-from .evidence_ranking import normalized_tokens
+from backend.app.rag.query_roles import analyze_query, normalized_tokens
 
 _SENTENCE = re.compile(r"[^.!?\n]+(?:[.!?]+|$)", re.MULTILINE)
-_ACTIONS = frozenset({"assassination", "assassinate", "assassinated", "murder", "murdered", "slain", "killed", "stabbed"})
+_GENERIC_TERM_WEIGHT = 0.25
 
 @dataclass(frozen=True)
 class LexicalCandidate:
@@ -39,13 +39,27 @@ class LexicalEvidenceIndex:
                 for term in normalized_tokens(p.text+" "+str(p.metadata.get("heading",""))): postings[term][p.id]=1
         self._documents,self._postings,self.passage_count=documents,dict(postings),len(documents)
     def query(self, query: str, top_k: int, filters: dict[str,str]|None=None)->list[LexicalCandidate]:
-        self._build(); terms=normalized_tokens(query)
-        if terms&_ACTIONS: terms|=_ACTIONS
+        self._build()
+        roles = analyze_query(query)
         scores=defaultdict(float); total=len(self._documents)
-        for term in terms:
+        def idf(term: str) -> float:
             post=self._postings.get(term,{})
-            weight=math.log(1+(total+.5)/(len(post)+.5)) if post else 0
-            for ident in post: scores[ident]+=weight
+            return math.log(1+(total+.5)/(len(post)+.5)) if post else 0.0
+        core = roles.person_terms | roles.location_match_terms | roles.action_terms
+        for term in core:
+            weight=idf(term)
+            for ident in self._postings.get(term, {}): scores[ident]+=weight
+        for term in roles.generic_terms:
+            weight=_GENERIC_TERM_WEIGHT * idf(term)
+            for ident in self._postings.get(term, {}): scores[ident]+=weight
+        if roles.person_terms:
+            person_postings = [set(self._postings.get(term, {})) for term in roles.person_terms]
+            person_ids = set().union(*person_postings) if person_postings else set()
+            for term in roles.expanded_action_terms:
+                weight=idf(term)
+                for ident in self._postings.get(term, {}):
+                    if ident in person_ids:
+                        scores[ident]+=weight
         out=[]
         for ident,score in scores.items():
             p=self._documents[ident]

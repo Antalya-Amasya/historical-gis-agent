@@ -1,5 +1,6 @@
 from backend.app.models import Evidence
-from backend.app.rag.evidence_ranking import normalized_tokens, rerank_evidence
+from backend.app.rag.evidence_ranking import is_navigation_or_heading, normalized_tokens, rerank_evidence
+from backend.app.rag.query_roles import analyze_query
 from backend.app.rag.retriever import ChromaHistoricalRetriever
 from backend.app.rag.lexical_index import LexicalEvidenceIndex
 
@@ -184,3 +185,79 @@ def test_classical_orthography_and_generic_violent_action_equivalence_preserved(
 def test_chinese_text_does_not_raise_in_ranking_path():
     item = evidence("zh", "总督在议会中被阴谋者杀害。", .1, semantic_candidate=True, vector_rank=1)
     assert len(rerank_evidence("总督遭到刺杀", [item])) == 1
+
+
+def test_query_roles_separate_person_location_action_and_generic():
+    spain = analyze_query("Scipio military actions in Spain")
+    assert spain.person_terms == frozenset({"scipio"})
+    assert spain.location_terms == frozenset({"spain"})
+    assert {"military", "actions"} <= spain.generic_terms
+    assert not (spain.person_terms & {"military", "actions", "spain"})
+    caesar = analyze_query("assassination of Julius Caesar")
+    assert caesar.person_terms == frozenset({"julius", "caesar"})
+    assert caesar.action_terms == frozenset({"assassination"})
+    assert "murdered" in caesar.expanded_action_terms
+
+
+def test_action_only_wrong_person_does_not_match_correct_person_action_support():
+    correct = evidence("correct", "Julius Caesar was slain by conspirators in the senate.", .1, lexical_candidate=True, lexical_score=8)
+    wrong = evidence("wrong", "The sailors stabbed the captives after the wreck.", .1, lexical_candidate=True, lexical_score=20)
+    ranked = rerank_evidence("assassination of Julius Caesar", [wrong, correct])
+    details = {item.id: item.metadata["retrieval_ranking"] for item in ranked}
+    assert ranked[0].id == "correct"
+    assert details["correct"]["action_support"] > details["wrong"]["action_support"]
+    assert details["wrong"]["person_support"] == 0
+
+
+def test_generic_only_military_actions_do_not_beat_person_and_location():
+    generic = evidence("generic", "These military actions were discussed in the assembly.", .1, lexical_candidate=True, lexical_score=20)
+    grounded = evidence("grounded", "Scipio renewed military operations in Spain after taking New Carthage.", .1, lexical_candidate=True, lexical_score=8)
+    assert rerank_evidence("Scipio military actions in Spain", [generic, grounded])[0].id == "grounded"
+
+
+def test_person_plus_location_outranks_person_at_unrelated_place():
+    spain = evidence("spain", "Scipio trained the army in Spain throughout the winter.", .1, lexical_candidate=True, lexical_score=10)
+    egypt = evidence("egypt", "Scipio reviewed the army in Egypt throughout the winter.", .1, lexical_candidate=True, lexical_score=10)
+    ranked = rerank_evidence("Scipio military actions in Spain", [egypt, spain])
+    assert ranked[0].id == "spain"
+    assert ranked[0].metadata["retrieval_ranking"]["location_support"] > ranked[1].metadata["retrieval_ranking"]["location_support"]
+
+
+def test_epub3_nav_alone_does_not_mark_historical_prose_as_navigation():
+    prose = evidence(
+        "prose",
+        "The consul marched at dawn and the army joined battle near the river.",
+        0.5,
+        navigation_source="epub3_nav",
+    )
+    assert not is_navigation_or_heading(prose)
+    assert rerank_evidence("assassination of the consul", [prose])[0].metadata["retrieval_ranking"]["navigation_penalty"] == 0
+
+
+def test_epub3_nav_with_chapter_listing_is_navigation():
+    listing = evidence(
+        "listing",
+        "How the consul was murdered (chapters 19-22). About the burial (chapters 23-34).",
+        0.5,
+        navigation_source="epub3_nav",
+    )
+    prose = evidence("prose", "The consul was murdered in the senate after a long debate among the conspirators.", 0.5, navigation_source="epub3_nav")
+    assert is_navigation_or_heading(listing)
+    assert not is_navigation_or_heading(prose)
+    ranked = rerank_evidence("assassination of the consul", [listing, prose])
+    assert ranked[0].id == "prose"
+    assert ranked[1].metadata["retrieval_ranking"]["navigation_penalty"] > 0
+
+
+def test_contents_and_index_metadata_remain_navigation():
+    contents = evidence("contents", "Book one names the consuls of the year.", 0.5, navigation_source="contents")
+    index = evidence("index", "Book one names the consuls of the year.", 0.5, navigation_source="index")
+    assert is_navigation_or_heading(contents) and is_navigation_or_heading(index)
+
+
+def test_conflicting_praenomen_is_not_full_person_identity():
+    julius = evidence("julius", "Julius Caesar was slain by conspirators in the senate.", .1, lexical_candidate=True, lexical_score=10)
+    lucius = evidence("lucius", "Lucius Caesar was slain during the street fighting in the city.", .1, lexical_candidate=True, lexical_score=10)
+    details = {item.id: item.metadata["retrieval_ranking"] for item in rerank_evidence("assassination of Julius Caesar", [lucius, julius])}
+    assert details["julius"]["person_support"] > details["lucius"]["person_support"]
+    assert rerank_evidence("assassination of Julius Caesar", [lucius, julius])[0].id == "julius"

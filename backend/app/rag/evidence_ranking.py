@@ -8,13 +8,19 @@ from __future__ import annotations
 
 import re
 import statistics
-import unicodedata
 
 from backend.app.models import Evidence
+from backend.app.rag.query_roles import (
+    action_support as role_action_support,
+    analyze_query,
+    generic_support as role_generic_support,
+    location_support as role_location_support,
+    normalized_tokens,
+    person_support as role_person_support,
+)
 
-
-_WORD = re.compile(r"[a-z0-9]+")
-_STOP_WORDS = frozenset({"a", "an", "and", "at", "battle", "by", "for", "in", "of", "on", "the", "to", "with"})
+_STRONG_NAV_SOURCES = frozenset({"toc", "contents", "navigation", "index"})
+_NAV_SOURCE_HINTS = frozenset({"epub3_nav", "epub_nav", "ncx", "nav"})
 _NAVIGATION_STARTS = (
     "the following is contained",
     "table of contents",
@@ -23,41 +29,42 @@ _NAVIGATION_STARTS = (
 )
 _CONTENTS_LEAD = re.compile(r"^\s*(?:\d+\s+)?the following is contained\b", re.IGNORECASE)
 _NUMBERED_BOOK_LIST = re.compile(r"^\s*book\s+[ivxlcdm0-9]+\.?\s+(?:\d+\s+){8,}", re.IGNORECASE)
-_ACTION_GROUPS = (
-    frozenset({"assassination", "assassinate", "assassinated", "murder", "murdered", "slain", "killed", "stabbed"}),
-    frozenset({"battle", "battled", "fought", "fight", "defeated", "defeat", "vanquished", "victory", "victorious"}),
+_CHAPTER_TOC = re.compile(
+    r"^\s*(?:how|about)\b.{0,160}\(chapters?\s+[ivxlcdm0-9]+(?:\s*[-–]\s*[ivxlcdm0-9]+)?\)",
+    re.IGNORECASE | re.DOTALL,
+)
+_FRONT_MATTER = re.compile(
+    r"(?is)(?:this ebook is for the use|^\s*title:\s|\*\*\*\s*start of (?:the )?project gutenberg)",
 )
 
 
-def normalized_tokens(text: str) -> frozenset[str]:
-    """Case-fold and remove classical diacritics (Cæsar -> caesar)."""
-    normalized = unicodedata.normalize("NFKD", text).replace("æ", "ae").replace("Æ", "AE")
-    return frozenset(_WORD.findall(normalized.casefold()))
+def _text_is_navigation(text: str) -> bool:
+    stripped = (text or "").lstrip()
+    folded = stripped.casefold()
+    return (
+        folded.startswith(_NAVIGATION_STARTS)
+        or bool(_CONTENTS_LEAD.match(stripped))
+        or bool(_NUMBERED_BOOK_LIST.match(stripped))
+        or bool(_CHAPTER_TOC.match(stripped))
+        or bool(_FRONT_MATTER.search(stripped[:500]))
+    )
 
 
 def is_navigation_or_heading(evidence: Evidence) -> bool:
-    """Recognize only explicit navigation artefacts, never ordinary prose headings."""
-    metadata = evidence.metadata
-    source = str(metadata.get("navigation_source", "")).casefold()
-    if source in {"toc", "contents", "navigation", "index"}:
+    """TOC/index metadata or navigational text; structural EPUB hints are not enough."""
+    source = str(evidence.metadata.get("navigation_source", "")).casefold()
+    if source in _STRONG_NAV_SOURCES:
         return True
-    text = (evidence.text or "").lstrip().casefold()
-    return text.startswith(_NAVIGATION_STARTS) or bool(_CONTENTS_LEAD.match(text)) or bool(_NUMBERED_BOOK_LIST.match(text))
-
-
-def _action_support(query_tokens: frozenset[str], text_tokens: frozenset[str]) -> bool:
-    return any(query_tokens & group and text_tokens & group for group in _ACTION_GROUPS)
+    return _text_is_navigation(evidence.text or "")
 
 
 def rerank_evidence(query: str, evidence: list[Evidence]) -> list[Evidence]:
     """Return the same evidence with transparent, deterministic ordering data.
 
-    Score components intentionally remain modest: vector similarity is still
-    the primary signal; explicit TOC/navigation material is demoted only when
-    it competes with a statement-bearing primary-source passage.
+    Score components remain modest: vector similarity is still the primary
+    semantic signal; role-aware supports only order a bounded candidate set.
     """
-    query_tokens = normalized_tokens(query)
-    entity_tokens = query_tokens - _STOP_WORDS - frozenset().union(*_ACTION_GROUPS)
+    roles = analyze_query(query)
     semantic_items = [item for item in evidence if item.metadata.get("semantic_candidate")]
     lexical_items = [item for item in evidence if item.metadata.get("lexical_candidate")]
     semantic_order = {item.id: rank for rank, item in enumerate(sorted(semantic_items, key=lambda item: item.metadata.get("vector_rank", 0)), 1)}
@@ -70,25 +77,29 @@ def rerank_evidence(query: str, evidence: list[Evidence]) -> list[Evidence]:
     for item in evidence:
         text_tokens = normalized_tokens(item.text or "")
         parent_semantic_prior = percentile(semantic_order.get(item.id), len(semantic_items))
-        lexical_score = float(item.metadata.get("lexical_score", 0.0))
-        entity_support = min(0.08, 0.04 * len(entity_tokens & text_tokens))
-        # Action vocabulary is only a supporting signal when the candidate
-        # also carries a substantive query entity.  This prevents generic
-        # words such as "battle" from promoting an unrelated battle passage.
-        action_support = 0.12 if entity_support and _action_support(query_tokens, text_tokens) else 0.0
-        statement_bonus = 0.04 if action_support and len(text_tokens) >= 20 else 0.0
-        local_support = min(1.0, (entity_support / 0.08) * 0.45 + (action_support / 0.12) * 0.45 + (statement_bonus / 0.04) * 0.10)
-        # Parent ANN rank is a prior only.  A weak child cannot inherit a
-        # near-perfect relevance merely because its source chunk ranked first.
+        person = role_person_support(roles, text_tokens)
+        location = role_location_support(roles, text_tokens)
+        action = role_action_support(roles, text_tokens, person=person, location=location)
+        generic = role_generic_support(roles, text_tokens)
+        statement_bonus = 0.04 if action >= 0.12 and len(text_tokens) >= 20 else 0.0
+        joint = 0.04 if person > 0 and location > 0 else 0.0
+        entity_support = person
+        local_support = min(1.0, (person / 0.08) * 0.40 + (action / 0.12) * 0.40 + (location / 0.06) * 0.10 + (statement_bonus / 0.04) * 0.10) if (person or action or location or statement_bonus) else 0.0
         semantic_relevance = parent_semantic_prior * (0.20 + 0.80 * local_support) if item.metadata.get("semantic_candidate") else 0.0
         lexical_rank_relevance = percentile(lexical_order.get(item.id), len(lexical_items))
         lexical_score = float(item.metadata.get("lexical_score", 0.0))
         lexical_score_relevance = lexical_score / (lexical_score + lexical_median) if lexical_score > 0 and lexical_median > 0 else 0.0
-        lexical_support = 0.60 * lexical_score_relevance + 0.40 * lexical_rank_relevance if item.metadata.get("lexical_candidate") else 0.0
+        role_parts = []
+        if roles.person_terms:
+            role_parts.append(person / 0.08)
+        if roles.location_terms:
+            role_parts.append(location / 0.06)
+        coverage = sum(role_parts) / len(role_parts) if role_parts else 1.0
+        lexical_support = (0.60 * lexical_score_relevance + 0.40 * lexical_rank_relevance) * (0.35 + 0.65 * coverage) if item.metadata.get("lexical_candidate") else 0.0
         passage_relevance = max(semantic_relevance, lexical_support)
         channel_confidence = 0.02 if item.metadata.get("semantic_candidate") and item.metadata.get("lexical_candidate") else 0.0
         navigation_penalty = 0.32 if is_navigation_or_heading(item) else 0.0
-        final_score = passage_relevance + channel_confidence + entity_support + action_support + statement_bonus - navigation_penalty
+        final_score = passage_relevance + channel_confidence + entity_support + location + action + generic + joint + statement_bonus - navigation_penalty
         metadata = dict(item.metadata)
         metadata["retrieval_ranking"] = {
             "base_vector_score": round(parent_semantic_prior, 6),
@@ -101,7 +112,11 @@ def rerank_evidence(query: str, evidence: list[Evidence]) -> list[Evidence]:
             "passage_relevance": round(passage_relevance, 6),
             "channel_confidence": round(channel_confidence, 6),
             "entity_support": round(entity_support, 6),
-            "action_support": round(action_support, 6),
+            "person_support": round(person, 6),
+            "location_support": round(location, 6),
+            "generic_support": round(generic, 6),
+            "joint_support": round(joint, 6),
+            "action_support": round(action, 6),
             "statement_bonus": round(statement_bonus, 6),
             "navigation_penalty": round(navigation_penalty, 6),
             "final_score": round(final_score, 6),
