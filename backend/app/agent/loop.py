@@ -2,7 +2,7 @@ from __future__ import annotations
 import json, logging
 from time import perf_counter
 from backend.app.agent.prompts import SYSTEM_PROMPT
-from backend.app.agent.evidence_support import assess_evidence_support, assess_final_answer_provenance
+from backend.app.agent.evidence_support import assess_evidence_support, assess_final_answer_provenance, validate_evidence_citations
 from backend.app.models import AgentState, AgentToolHistoryEntry
 
 logger = logging.getLogger(__name__)
@@ -35,9 +35,14 @@ def _model_result(tool_name: str, payload: dict, state: AgentState, remaining_se
         result = payload.get("result", {})
         if result.get("status") == "search_budget_exhausted":
             return {**result, "accumulated_evidence_count": len(state.historical_evidence), "remaining_search_budget": remaining_search_budget}
+        visible_evidence = state.historical_evidence[:8]
+        visible_ids = {item.id for item in visible_evidence}
         events = []
         for event in state.historical_events[:8]:
             serialized = event.model_dump(mode="json")
+            refs = set(serialized.get("evidence_refs", []))
+            if not refs or not refs <= visible_ids:
+                continue
             events.append({
                 "id": serialized["id"],
                 "name": serialized["name"],
@@ -62,7 +67,7 @@ def _model_result(tool_name: str, payload: dict, state: AgentState, remaining_se
             "relevant_evidence_count": state.relevant_evidence_count,
             "matched_subject_terms": state.matched_subject_terms,
             "missing_subject_terms": state.missing_subject_terms,
-            "evidence": [{"id": item.id, "author": item.author, "work": item.work, "locator": item.locator, "excerpt": item.excerpt[:360]} for item in state.historical_evidence[:8]],
+            "evidence": [{"id": item.id, "author": item.author, "work": item.work, "locator": item.locator, "excerpt": item.excerpt[:360]} for item in visible_evidence],
             "historical_events": events,
         }
     if tool_name == "build_historical_route":
@@ -97,6 +102,12 @@ class BoundedAgentLoop:
         state.matched_subject_terms = list(assessment.matched_subject_terms)
         state.missing_subject_terms = list(assessment.missing_subject_terms)
         return assessment
+
+    @staticmethod
+    def _has_audited_geography(state: AgentState) -> bool:
+        return any(entry.success and entry.tool_name in {
+            "resolve_ancient_place", "calculate_distance", "get_elevation", "get_elevation_profile",
+        } for entry in state.tool_history)
 
     @staticmethod
     def _record_grounding_assessment(state: AgentState, assessment) -> None:
@@ -181,8 +192,9 @@ class BoundedAgentLoop:
             logger.info("llm_response_received step=%s finish_reason=%s tool_call_count=%s", step, response.finish_reason, len(response.tool_calls))
             if not response.tool_calls:
                 self._refresh_evidence_support(state)
-                if state.requested_output == "answer":
-                    if not state.historical_evidence:
+                if state.requested_output in {"answer", "geography_fact"}:
+                    has_geography = self._has_audited_geography(state)
+                    if not state.historical_evidence and not has_geography:
                         if grounding_corrections < self.max_grounding_corrections and step < self.max_steps:
                             grounding_corrections += 1
                             state.grounding_corrections += 1
@@ -190,8 +202,9 @@ class BoundedAgentLoop:
                             messages.append({
                                 "role": "user",
                                 "content": (
-                                    "No Evidence has been supplied. Before answering this historical question, "
-                                    "call search_historical_evidence. Do not answer from model knowledge."
+                                    "No audited factual source has been supplied. Before answering, call "
+                                    "search_historical_evidence or an appropriate audited geography tool. "
+                                    "Do not answer from model knowledge."
                                 ),
                             })
                             logger.info("answer_evidence_correction_started count=%s", grounding_corrections)
@@ -217,8 +230,18 @@ class BoundedAgentLoop:
                             started,
                         )
                     self._record_grounding_assessment(state, answer_assessment)
+                    citation_issues = validate_evidence_citations(
+                        response.content,
+                        state.historical_evidence,
+                        require_citation=(
+                            state.requested_output == "answer"
+                            and not _explicitly_insufficient(response.content)
+                        ),
+                    )
+                    if citation_issues:
+                        state.warnings.extend(citation_issues)
                     if (
-                        answer_assessment.status == "unsupported_fact"
+                        (answer_assessment.status == "unsupported_fact" or citation_issues)
                         and grounding_corrections < self.max_grounding_corrections
                         and step < self.max_steps
                     ):
@@ -229,7 +252,8 @@ class BoundedAgentLoop:
                             "role": "user",
                             "content": (
                                 "Revise the answer using only facts and named entities present in the supplied "
-                                "Evidence. Cite the supporting Evidence identifiers and source metadata. Remove "
+                                "Evidence. Every factual answer needs valid [Evidence: id — author, work, locator] "
+                                "citations copied from the supplied Evidence. Remove "
                                 "unsupported dates, people, places, events, and routes. If the Evidence does not "
                                 "answer the question, say that it is insufficient."
                             ),
@@ -240,7 +264,7 @@ class BoundedAgentLoop:
                             ",".join(answer_assessment.unsupported_fact_terms),
                         )
                         continue
-                    if answer_assessment.status == "unsupported_fact":
+                    if answer_assessment.status == "unsupported_fact" or citation_issues:
                         state.status = "completed_with_guardrail"
                         state.final_grounding_status = "guardrail_fallback"
                         state.warnings.append("unsupported_historical_answer_discarded")

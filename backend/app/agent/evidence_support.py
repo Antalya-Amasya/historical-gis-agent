@@ -396,3 +396,30 @@ def assess_final_answer_provenance(answer: str | None, user_query: str, evidence
     if suggestions:
         return FinalGroundingAssessment("grounded_with_unverified_suggestions", provenance, assessments, (), ignored, work_titles, False, candidate_explosion, "model-only phrases were explicitly limited to research suggestions")
     return FinalGroundingAssessment("grounded", provenance, assessments, (), ignored, work_titles, False, candidate_explosion, "final answer stayed within query and Evidence-grounded phrases")
+
+
+_EVIDENCE_CITATION = re.compile(
+    r"\[Evidence:\s*(?P<id>.+?)\s+\N{EM DASH}\s*(?P<author>[^,\]]+),\s*(?P<work>[^,\]]+),\s*(?P<locator>[^\]]+)\]",
+    re.IGNORECASE,
+)
+
+
+def validate_evidence_citations(answer: str | None, evidence: list, *, require_citation: bool) -> tuple[str, ...]:
+    """Validate only the compact, tool-visible Evidence citation contract."""
+    citations = list(_EVIDENCE_CITATION.finditer(answer or ""))
+    if require_citation and not citations:
+        return ("missing_evidence_citation",)
+    by_id = {str(item.id): item for item in evidence}
+    issues: list[str] = []
+    for citation in citations:
+        identifier = citation.group("id").strip()
+        item = by_id.get(identifier)
+        if item is None:
+            issues.append(f"unknown_evidence_id:{identifier}")
+            continue
+        for field in ("author", "work", "locator"):
+            expected = _normalize(str(getattr(item, field, "") or "")).strip(" .;:")
+            actual = _normalize(citation.group(field)).strip(" .;:")
+            if actual != expected:
+                issues.append(f"mismatched_evidence_{field}:{identifier}")
+    return tuple(issues)

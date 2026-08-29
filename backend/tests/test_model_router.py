@@ -60,7 +60,7 @@ def test_router_does_not_depend_on_historical_person_names():
 
 
 def test_agent_uses_one_selected_model_for_all_continuations():
-    scripted = ScriptedLLMProvider([tool_call(), AgentModelResponse(content="Grounded answer.")])
+    scripted = ScriptedLLMProvider([tool_call(), AgentModelResponse(content="Grounded answer. [Evidence: one — Polybius, Histories, Book III]")])
     selected_ids = []
     def provider_factory(model_id):
         selected_ids.append(model_id)

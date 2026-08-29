@@ -1,7 +1,9 @@
 from backend.app.agent.agent import HistoricalGisAgent
+from backend.app.agent.evidence_support import validate_evidence_citations
+from backend.app.agent.loop import _model_result
 from backend.app.agent.llm.fake import ScriptedLLMProvider
 from backend.app.agent.tools import AgentToolRegistry
-from backend.app.models import AgentModelResponse, AgentState, AgentToolCall, Evidence
+from backend.app.models import AgentModelResponse, AgentState, AgentToolCall, Evidence, HistoricalEvent, HistoricalEventType
 from backend.app.rag.retriever import HistoricalRetriever
 
 class Retriever(HistoricalRetriever):
@@ -64,10 +66,10 @@ def test_insufficient_evidence_never_builds_route():
 
 def test_exact_successful_call_is_cached_and_provider_can_finish_after_duplicate():
     retriever=Retriever([ev("one","Alps")])
-    script=[call("search_historical_evidence",{"query":"Alps","top_k":3},"one"),call("search_historical_evidence",{"top_k":3,"query":"Alps"},"two"),AgentModelResponse(content="Used cached evidence.")]
+    script=[call("search_historical_evidence",{"query":"Alps","top_k":3},"one"),call("search_historical_evidence",{"top_k":3,"query":"Alps"},"two"),AgentModelResponse(content="Used cached evidence. [Evidence: one — Polybius, Histories, Book III]")]
     subject=HistoricalGisAgent(ScriptedLLMProvider(script),retriever,Geo(),max_steps=4)
     reply,state=subject.respond("x",AgentState(session_id="dedup"))
-    assert reply=="Used cached evidence." and len(retriever.calls)==1
+    assert reply.startswith("Used cached evidence.") and len(retriever.calls)==1
     assert [entry.outcome for entry in state.tool_history]==["success","duplicate"]
     assert state.tool_execution_stats["duplicate_tool_calls"]==1 and state.tool_execution_stats["actual_tool_executions"]==1
 
@@ -93,10 +95,10 @@ def test_duplicate_does_not_consume_budget_and_new_call_is_rejected_at_budget():
 
 
 def test_rag_search_budget_rejects_new_search_and_agent_can_finish():
-    provider=ScriptedLLMProvider([call("search_historical_evidence",{"query":"first"},"one"),call("search_historical_evidence",{"query":"second"},"two"),call("search_historical_evidence",{"query":"third"},"three"),AgentModelResponse(content="Used existing evidence.")])
+    provider=ScriptedLLMProvider([call("search_historical_evidence",{"query":"first"},"one"),call("search_historical_evidence",{"query":"second"},"two"),call("search_historical_evidence",{"query":"third"},"three"),AgentModelResponse(content="Used existing evidence. [Evidence: one — Polybius, Histories, Book III]")])
     subject=HistoricalGisAgent(provider,Retriever([ev("one","Alps")]),Geo(),max_rag_search_executions=2)
     reply,state=subject.respond("x",AgentState(session_id="search-budget"))
-    assert reply=="Used existing evidence." and state.tool_execution_stats["actual_tool_executions"]==2
+    assert reply.startswith("Used existing evidence.") and state.tool_execution_stats["actual_tool_executions"]==2
     assert [entry.outcome for entry in state.tool_history]==["success","success","search_budget_rejected"]
     assert state.tool_execution_stats["rag_search_executions"]==2 and state.tool_execution_stats["rag_search_budget_rejected"]==1
     import json
@@ -134,7 +136,7 @@ def test_search_tool_result_has_sufficiency_summary_and_remaining_budget():
 def test_search_context_exposes_bounded_evidence_provenance_and_events_to_answer_step():
     provider=ScriptedLLMProvider([
         call("search_historical_evidence",{"query":"Hannibal marched"},"one"),
-        AgentModelResponse(content="Polybius records that Hannibal's army marched from New Carthage to the Rhone."),
+        AgentModelResponse(content="Polybius records that Hannibal's army marched from New Carthage to the Rhone. [Evidence: move — Polybius, Histories, Book III]"),
     ])
     subject=HistoricalGisAgent(provider,Retriever(route_ev()),Geo())
     subject.respond("What did Hannibal do?",AgentState(session_id="grounded-context"))
@@ -166,7 +168,7 @@ def test_ordinary_qa_unsupported_entity_is_corrected_against_evidence():
     provider=ScriptedLLMProvider([
         call("search_historical_evidence",{"query":"Hannibal"},"one"),
         AgentModelResponse(content="Atlantis was the decisive location."),
-        AgentModelResponse(content="Polybius records that Hannibal's army marched from New Carthage to the Rhone."),
+        AgentModelResponse(content="Polybius records that Hannibal's army marched from New Carthage to the Rhone. [Evidence: move — Polybius, Histories, Book III]"),
     ])
     reply,state=HistoricalGisAgent(provider,Retriever(route_ev()),Geo()).respond(
         "What did Hannibal do?",AgentState(session_id="answer-grounding")
@@ -175,6 +177,58 @@ def test_ordinary_qa_unsupported_entity_is_corrected_against_evidence():
     assert "Polybius" in reply
     assert state.grounding_corrections == 1
     assert state.final_grounding_status == "provenance_corrected"
+
+
+def test_invalid_evidence_citation_is_corrected_then_validated():
+    provider = ScriptedLLMProvider([
+        call("search_historical_evidence", {"query": "Hannibal"}),
+        AgentModelResponse(content="Polybius records Hannibal. [Evidence: fabricated-999 — Polybius, Histories, Book III]"),
+        AgentModelResponse(content="Polybius records Hannibal. [Evidence: one — Polybius, Histories, Book III]"),
+    ])
+    reply, state = HistoricalGisAgent(provider, Retriever([ev("one", "Hannibal marched")]), Geo()).respond("What did Hannibal do?", AgentState(session_id="citation-correct"))
+    assert "fabricated-999" not in reply and state.final_grounding_status == "provenance_corrected"
+
+
+def test_repeated_invalid_evidence_citation_fails_closed():
+    provider = ScriptedLLMProvider([
+        call("search_historical_evidence", {"query": "Hannibal"}),
+        AgentModelResponse(content="Polybius records Hannibal. [Evidence: fabricated-999 — Polybius, Histories, Book III]"),
+        AgentModelResponse(content="Polybius records Hannibal. [Evidence: fabricated-998 — Polybius, Histories, Book III]"),
+    ])
+    reply, state = HistoricalGisAgent(provider, Retriever([ev("one", "Hannibal marched")]), Geo()).respond("What did Hannibal do?", AgentState(session_id="citation-reject"))
+    assert state.status == "completed_with_guardrail" and "fabricated" not in reply
+
+
+def test_citation_metadata_must_match_the_visible_evidence_record():
+    item = ev("one", "Hannibal marched")
+    valid = "[Evidence: one — Polybius, Histories, Book III]"
+    assert validate_evidence_citations(valid, [item], require_citation=True) == ()
+    assert validate_evidence_citations("[Evidence: one — Livy, Histories, Book III]", [item], require_citation=True) == ("mismatched_evidence_author:one",)
+    assert validate_evidence_citations("[Evidence: one — Polybius, Annals, Book III]", [item], require_citation=True) == ("mismatched_evidence_work:one",)
+    assert validate_evidence_citations("[Evidence: one — Polybius, Histories, Book IV]", [item], require_citation=True) == ("mismatched_evidence_locator:one",)
+
+
+def test_event_context_requires_all_event_evidence_to_be_visible():
+    state = AgentState(session_id="event-context")
+    state.historical_evidence = [ev(str(index), "Hannibal marched") for index in range(9)]
+    state.historical_events = [
+        HistoricalEvent(id="visible", name="Visible", summary="visible", event_type=HistoricalEventType.MOVEMENT, evidence_refs=["0"]),
+        HistoricalEvent(id="hidden", name="Hidden", summary="hidden", event_type=HistoricalEventType.MOVEMENT, evidence_refs=["8"]),
+        HistoricalEvent(id="mixed", name="Mixed", summary="mixed", event_type=HistoricalEventType.MOVEMENT, evidence_refs=["0", "8"]),
+    ]
+    result = _model_result("search_historical_evidence", {"result": {"result_count": 9}}, state)
+    assert [event["id"] for event in result["historical_events"]] == ["visible"]
+
+
+def test_geography_fact_requires_audited_source():
+    reply, state = agent([AgentModelResponse(content="Alesia is in Gaul.")]).respond("What are the coordinates of Alesia?", AgentState(session_id="geo-closed"))
+    assert state.final_grounding_status == "insufficient_evidence" and "Alesia" not in reply
+
+
+def test_geography_fact_allows_audited_geography_tool_result():
+    subject = agent([call("resolve_ancient_place", {"name": "Carthago Nova"}), AgentModelResponse(content="Carthago Nova is resolved by the audited geography source.")])
+    reply, state = subject.respond("What are the coordinates of Carthago Nova?", AgentState(session_id="geo-audited"))
+    assert state.status == "completed" and "Carthago Nova" in reply
 
 
 def test_route_final_without_route_triggers_one_completion_correction():
@@ -217,7 +271,7 @@ def test_route_safeguard_refuses_when_builder_has_no_grounded_edge():
 
 
 def test_non_route_questions_do_not_require_builder():
-    subject=agent([call("search_historical_evidence",{"query":"Polybius"}),AgentModelResponse(content="Grounded answer.")],[ev("one","Alps")])
+    subject=agent([call("search_historical_evidence",{"query":"Polybius"}),AgentModelResponse(content="Grounded answer. [Evidence: one — Polybius, Histories, Book III]")],[ev("one","Alps")])
     _,state=subject.respond("What does Polybius describe?",AgentState(session_id="ordinary-question"))
     assert state.requested_output=="answer" and state.status=="completed"
     assert state.tool_execution_stats["completion_corrections"]==0
@@ -334,7 +388,7 @@ def test_sufficient_hannibal_support_still_triggers_route_correction():
 
 
 def test_ordinary_question_is_not_subject_to_route_support_gate():
-    subject=agent([call("search_historical_evidence",{"query":"Caesar"}),AgentModelResponse(content="Grounded answer.")],[ev("one","Hannibal crossed the Alps")])
+    subject=agent([call("search_historical_evidence",{"query":"Caesar"}),AgentModelResponse(content="Grounded answer. [Evidence: one — Polybius, Histories, Book III]")],[ev("one","Hannibal crossed the Alps")])
     _,state=subject.respond("What does Polybius describe?",AgentState(session_id="ordinary-support"))
     assert state.requested_output=="answer" and state.status=="completed"
 
