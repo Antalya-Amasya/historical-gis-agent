@@ -100,6 +100,12 @@ def test_alias_boundary_safety_and_duplicate_entity_bindings_preserve_refs():
     assert all(event.place_bindings[0].place and event.place_bindings[0].place.id == "roma" for event in result)
 
 
+def test_caesar_actor_is_not_extracted_as_an_event_site():
+    candidates = events(evidence("caesar", "The battle was fought at Caesar."))
+    assert len(candidates) == 1
+    assert all(mention.raw_text != "Caesar" for mention in candidates[0].place_mentions)
+
+
 def test_duplicate_mentions_in_one_event_are_deduplicated_without_losing_evidence_refs():
     event = HistoricalEvent(
         id="duplicate", name="Battle", summary="fixture", event_type=HistoricalEventType.BATTLE,

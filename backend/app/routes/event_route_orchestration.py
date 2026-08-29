@@ -2,8 +2,8 @@
 
 Historical order must be proven by an approved ordering authority.  Retrieval
 rank, list order, narrative order, coordinates, roads, and terrain never
-establish it, and an unprovable connection fails closed instead of being
-bridged.
+establish it.  The resulting ordered waypoints constrain later GIS
+reconstruction; their schematic connections are not documentary path proof.
 """
 from __future__ import annotations
 
@@ -56,7 +56,16 @@ class AnchorOrderingRelation:
     evidence_refs: tuple[str, ...]
 
     def as_provenance(self) -> dict[str, object]:
-        return {"earlier": self.earlier, "later": self.later, "rule": self.rule.value, "event_ids": list(self.event_ids), "evidence_refs": list(self.evidence_refs)}
+        direct_movement = self.rule is OrderingRule.SAME_MOVEMENT_EVENT
+        return {
+            "earlier": self.earlier,
+            "later": self.later,
+            "rule": self.rule.value,
+            "event_ids": list(self.event_ids),
+            "evidence_refs": list(self.evidence_refs),
+            "historical_authority": "ATTESTED_MOVEMENT_ORDERING" if direct_movement else "EVIDENCE_GROUNDED_WAYPOINT_ORDERING",
+            "connection_semantics": "ALGORITHMIC_GIS_RECONSTRUCTION_REQUIRED",
+        }
 
 
 @dataclass(frozen=True)
@@ -226,18 +235,27 @@ class EventAnchorRouteBuilder:
 
     @staticmethod
     def _route(chain: list[str], places: dict[str, list[EventAnchor]], used: tuple[AnchorOrderingRelation, ...], events_by_id: dict[str, HistoricalEvent], evidence_by_id: dict[str, Evidence], *, event_id: str, name: str, period: str) -> HistoricalRoute:
-        claims = [
-            HistoricalClaim(
-                id=f"{event_id}-ordering-{index}", claim_type="ORDERING",
-                text=f"{relation.earlier} precedes {relation.later} by {relation.rule.value}.",
-                textual_basis=relation.rule.value, source_place=relation.earlier, destination_place=relation.later,
-                movement_relation=relation.rule.value, sequence_status="explicit",
+        claims: list[HistoricalClaim] = []
+        for index, relation in enumerate(used, start=1):
+            direct_movement = relation.rule is OrderingRule.SAME_MOVEMENT_EVENT
+            text = (
+                f"{relation.earlier} precedes {relation.later} within the same attested movement event."
+                if direct_movement
+                else f"{relation.earlier} is an evidence-grounded waypoint before {relation.later} by {relation.rule.value}; no direct movement is asserted."
+            )
+            claims.append(HistoricalClaim(
+                id=f"{event_id}-ordering-{index}",
+                claim_type="ORDERING" if direct_movement else "WAYPOINT_ORDERING",
+                text=text,
+                textual_basis=relation.rule.value,
+                source_place=relation.earlier,
+                destination_place=relation.later,
+                movement_relation=relation.rule.value if direct_movement else None,
+                sequence_status="explicit",
                 supporting_evidence_ids=list(relation.evidence_refs),
                 source_documents=sorted({str(evidence_by_id[ref].metadata.get("document_id") or evidence_by_id[ref].source_file or evidence_by_id[ref].author) for ref in relation.evidence_refs if ref in evidence_by_id}),
                 confidence=_RULE_CONFIDENCE[relation.rule],
-            )
-            for index, relation in enumerate(used, start=1)
-        ]
+            ))
         points: list[HistoricalRoutePoint] = []
         limitations = {"Historical reconstruction only; not an exact march track or road route.", "Geometry is a schematic connection between ordered historical anchors, not path evidence."}
         for position, place_name in enumerate(chain, start=1):
@@ -258,7 +276,10 @@ class EventAnchorRouteBuilder:
             id=f"{event_id}-event-anchor-route", event_id=event_id, name=name, period=period,
             ordered_points=points, geometry=GeoJsonLineString(coordinates=[(point.historical_place.longitude, point.historical_place.latitude) for point in points]),
             evidence_refs=sorted({ref for point in points for ref in point.evidence_refs}),
-            assumptions=["Anchor order is taken only from proven historical ordering relations, never from geography or retrieval order."],
+            assumptions=[
+                "Anchor order is taken only from proven historical ordering relations, never from geography or retrieval order.",
+                "Connections between consecutive waypoints are inputs to later algorithmic GIS reconstruction and do not by themselves assert direct historical movement.",
+            ],
             limitations=sorted(limitations),
             historical_confidence=round(sum(point.confidence for point in points) / len(points), 2),
             claims=claims,

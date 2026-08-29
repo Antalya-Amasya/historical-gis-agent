@@ -58,6 +58,10 @@ class EvidenceGroundedHistoricalEventExtractor:
         "assassination": "violent_death", "assassinated": "violent_death", "murder": "violent_death",
         "murdered": "violent_death", "slain": "violent_death", "killed": "violent_death",
     }
+    # A narrow corpus-observed false positive: the prepositional place pattern
+    # once interpreted the author/actor Caesar as an EVENT_SITE.  This is an
+    # exact exclusion, not a general person/entity inference layer.
+    _NON_PLACE_PROPER_NAMES = frozenset({"caesar"})
 
     def __init__(self, mention_extractor: HistoricalPlaceMentionExtractor | None = None,
                  temporal_resolver: EvidenceTemporalResolver | None = None) -> None:
@@ -109,6 +113,8 @@ class EvidenceGroundedHistoricalEventExtractor:
         alias_by_span = {(alias.lower(), position): place for position, place, alias in aliases}
         for match in self._PLACE_PATTERN.finditer(sentence):
             raw = match.group("place")
+            if raw.casefold() in self._NON_PLACE_PROPER_NAMES:
+                continue
             place = alias_by_span.get((raw.lower(), match.start("place")))
             values.append(HistoricalEventPlaceMention(
                 raw_text=raw,

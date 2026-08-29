@@ -23,7 +23,6 @@ HISTORICAL_PLACE_ALIASES = tuple(HistoricalPlaceAlias(name, values, provenance) 
     HistoricalPlaceAlias("Melodunum", ("melodunum",), "frozen_corpus_observed"),
     HistoricalPlaceAlias("Lutetia", ("lutetia",), "frozen_corpus_observed"),
     HistoricalPlaceAlias("Gergovia", ("gergovia",), "frozen_corpus_observed"),
-    HistoricalPlaceAlias("Alesia", ("alesia",), "frozen_corpus_observed"),
     HistoricalPlaceAlias("Rubico", ("rubico", "rubicon"), "frozen_corpus_observed"),
     HistoricalPlaceAlias("Sequana", ("sequana", "seine"), "frozen_corpus_observed"),
 )

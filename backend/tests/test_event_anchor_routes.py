@@ -63,7 +63,12 @@ def test_same_movement_event_orders_origin_before_destination_and_keeps_provenan
     outcome = build([movement("march", "Genava", "Lutetia", ["a"])], [evidence("a")])
     assert names(outcome) == ["Genava", "Lutetia"]
     assert [relation.rule for relation in outcome.relations] == [OrderingRule.SAME_MOVEMENT_EVENT]
-    assert outcome.diagnostics["ordering_provenance"] == [{"earlier": "Genava", "later": "Lutetia", "rule": "SAME_MOVEMENT_EVENT", "event_ids": ["march"], "evidence_refs": ["a"]}]
+    assert outcome.diagnostics["ordering_provenance"] == [{
+        "earlier": "Genava", "later": "Lutetia", "rule": "SAME_MOVEMENT_EVENT",
+        "event_ids": ["march"], "evidence_refs": ["a"],
+        "historical_authority": "ATTESTED_MOVEMENT_ORDERING",
+        "connection_semantics": "ALGORITHMIC_GIS_RECONSTRUCTION_REQUIRED",
+    }]
     claim = outcome.route.claims[0]
     assert (claim.claim_type, claim.source_place, claim.destination_place) == ("ORDERING", "Genava", "Lutetia")
     assert claim.supporting_evidence_ids == ["a"] and outcome.diagnostics["reason_codes"] == []
@@ -82,7 +87,8 @@ def test_two_unrelated_anchors_without_ordering_authority_fail_closed():
 
 def test_single_event_site_is_not_a_route():
     outcome = build([site("battle", "Alesia", ["a"])], [evidence("a")])
-    assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["INSUFFICIENT_PLACES"]
+    assert outcome.route is None and outcome.diagnostics["anchor_count"] == 1
+    assert outcome.diagnostics["reason_codes"] == ["INSUFFICIENT_PLACES"]
 
 
 def test_multiple_event_sites_are_not_chained_by_their_existence():
@@ -96,6 +102,11 @@ def test_comparable_evidence_grounded_temporal_values_order_separate_events():
     outcome = build(events, [evidence("a"), evidence("b")])
     assert names(outcome) == ["Genava", "Lutetia"]
     assert [relation.rule for relation in outcome.relations] == [OrderingRule.TEMPORAL_ORDER]
+    claim = outcome.route.claims[0]
+    assert claim.claim_type == "WAYPOINT_ORDERING" and claim.movement_relation is None
+    assert "no direct movement is asserted" in claim.text
+    assert outcome.diagnostics["ordering_provenance"][0]["historical_authority"] == "EVIDENCE_GROUNDED_WAYPOINT_ORDERING"
+    assert outcome.diagnostics["ordering_provenance"][0]["connection_semantics"] == "ALGORITHMIC_GIS_RECONSTRUCTION_REQUIRED"
 
 
 def test_overlapping_temporal_values_do_not_force_an_order():
@@ -127,6 +138,14 @@ def test_list_order_alone_never_establishes_a_route():
 def test_geographic_proximity_never_establishes_a_route():
     near = [site("one", "Alesia", ["a"]), site("two", "Bibracte", ["b"])]
     outcome = build(near, [evidence("a", document="x"), evidence("b", document="y")])
+    assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["INSUFFICIENT_ORDERING"]
+
+
+def test_roman_road_metadata_never_establishes_waypoints_or_chronology():
+    first, second = evidence("a", document="x"), evidence("b", document="y")
+    first.metadata["roman_road"] = "audited-road-a"
+    second.metadata["roman_road"] = "audited-road-a"
+    outcome = build([site("one", "Genava", ["a"]), site("two", "Lutetia", ["b"])], [first, second])
     assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["INSUFFICIENT_ORDERING"]
 
 
