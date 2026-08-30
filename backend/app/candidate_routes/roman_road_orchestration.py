@@ -13,6 +13,12 @@ from pydantic import BaseModel, Field
 
 from backend.app.models import GeoJsonLineString, HistoricalRoute, HistoricalRoutePoint
 
+from .barrier_crossings import (
+    BarrierCrossingService,
+    BarrierCrossingStatus,
+    CrossingCandidate,
+    is_broad_mountain_constraint,
+)
 from .geographic import GeographicCandidateRouteService
 from .models import ArmyProfile, CandidateRoute
 from .roman_roads import (
@@ -51,6 +57,9 @@ class RomanRoadRouteLeg(BaseModel):
     failure_status: str | None = None
     candidate: RomanRoadCandidateRoute | None = None
     terrain_candidate: CandidateRoute | None = None
+    crossing_candidate: CrossingCandidate | None = None
+    barrier_anchor_id: str | None = None
+    barrier_evidence_refs: list[str] = Field(default_factory=list)
     reconstruction_method: str = "UNAVAILABLE"
     ordering_provenance: list[dict[str, object]] = Field(default_factory=list)
     limitation: str | None = None
@@ -89,6 +98,11 @@ class RomanRoadRouteOrchestrator:
         self.candidate_service = candidate_service
         self.terrain_route_service = terrain_route_service
         self.terrain_profile = terrain_profile or ArmyProfile(name="terrain_fallback")
+        self.barrier_crossing_service = BarrierCrossingService(
+            candidate_service,
+            terrain_route_service=terrain_route_service,
+            terrain_profile=self.terrain_profile,
+        )
 
     def build_roman_road_candidates(self, historical_route: HistoricalRoute) -> RomanRoadRouteResult:
         points = historical_route.ordered_points
@@ -100,13 +114,39 @@ class RomanRoadRouteOrchestrator:
             )
         legs: list[RomanRoadRouteLeg] = []
         geometry_segments: list[RomanRoadRouteGeometrySegment] = []
-        for index, (source, destination) in enumerate(zip(points, points[1:]), start=1):
+        point_index = 0
+        leg_index = 1
+        while point_index < len(points) - 1:
+            source, destination = points[point_index], points[point_index + 1]
+            if is_broad_mountain_constraint(destination):
+                if point_index + 2 >= len(points):
+                    leg = self._missing_exit_leg(leg_index, source, destination, historical_route)
+                    legs.append(leg)
+                    geometry_segments.extend(self._geometry(leg_index, source, destination, leg))
+                    break
+                exit_point = points[point_index + 2]
+                crossing = self.barrier_crossing_service.build(source, destination, exit_point)
+                leg = self._barrier_leg(leg_index, source, destination, exit_point, crossing, historical_route)
+                legs.append(leg)
+                geometry_segments.extend(self._geometry(leg_index, source, exit_point, leg))
+                point_index += 2
+                leg_index += 1
+                continue
+            if is_broad_mountain_constraint(source):
+                leg = self._missing_approach_leg(leg_index, source, destination, historical_route)
+                legs.append(leg)
+                geometry_segments.extend(self._geometry(leg_index, source, destination, leg))
+                point_index += 1
+                leg_index += 1
+                continue
             result = self.candidate_service.build(source, destination)
-            leg = self._leg(index, source, destination, result, historical_route)
+            leg = self._leg(leg_index, source, destination, result, historical_route)
             if leg.candidate is None and self.terrain_route_service is not None:
                 leg = self._terrain_fallback(leg, source, destination)
             legs.append(leg)
-            geometry_segments.extend(self._geometry(index, source, destination, leg))
+            geometry_segments.extend(self._geometry(leg_index, source, destination, leg))
+            point_index += 1
+            leg_index += 1
         successes = sum(leg.candidate is not None or leg.terrain_candidate is not None for leg in legs)
         status = RomanRoadRouteStatus.COMPLETE if successes == len(legs) else RomanRoadRouteStatus.PARTIAL if successes else RomanRoadRouteStatus.UNAVAILABLE
         return RomanRoadRouteResult(
@@ -118,6 +158,69 @@ class RomanRoadRouteOrchestrator:
                 "Failed legs remain explicit gaps. Terrain fallback, when configured, is attempted only for the same supplied adjacent anchors; no OSM, straight-line, or cross-leg fallback is used.",
                 "Road chronology and certainty are preserved as source metadata and are not converted into historical movement claims.",
             ],
+        )
+
+    @staticmethod
+    def _barrier_leg(index, source, barrier, exit_point, result, historical_route) -> RomanRoadRouteLeg:
+        available = result.status is BarrierCrossingStatus.AVAILABLE
+        return RomanRoadRouteLeg(
+            leg_index=index,
+            source_anchor_id=source.historical_place.id,
+            destination_anchor_id=exit_point.historical_place.id,
+            source_evidence_refs=list(source.evidence_refs),
+            destination_evidence_refs=list(exit_point.evidence_refs),
+            status=RomanRoadCandidateStatus.AVAILABLE if available else RomanRoadCandidateStatus.DISCONNECTED,
+            failure_status=None if available else result.failure_reason,
+            candidate=result.road_candidate,
+            terrain_candidate=result.terrain_candidate,
+            crossing_candidate=result.crossing,
+            barrier_anchor_id=barrier.historical_place.id,
+            barrier_evidence_refs=list(barrier.evidence_refs),
+            reconstruction_method=(
+                "ANCIENT_ROAD_BARRIER_CROSSING" if result.road_candidate is not None
+                else "TERRAIN_BARRIER_CROSSING" if result.terrain_candidate is not None
+                else "UNAVAILABLE"
+            ),
+            ordering_provenance=[
+                *RomanRoadRouteOrchestrator._ordering_provenance(source, barrier, historical_route),
+                *RomanRoadRouteOrchestrator._ordering_provenance(barrier, exit_point, historical_route),
+            ],
+            limitation=(
+                "Broad mountain-region coordinate is a search reference only; the selected crossing is an algorithmic GIS artifact."
+                if available else "No defensible crossing was generated; the historical mountain constraint remains an explicit gap."
+            ),
+        )
+
+    @staticmethod
+    def _missing_exit_leg(index, source, barrier, historical_route) -> RomanRoadRouteLeg:
+        return RomanRoadRouteLeg(
+            leg_index=index,
+            source_anchor_id=source.historical_place.id,
+            destination_anchor_id=barrier.historical_place.id,
+            source_evidence_refs=list(source.evidence_refs),
+            destination_evidence_refs=list(barrier.evidence_refs),
+            status=RomanRoadCandidateStatus.DESTINATION_ACCESS_FAILED,
+            failure_status="BARRIER_EXIT_CONSTRAINT_UNAVAILABLE",
+            barrier_anchor_id=barrier.historical_place.id,
+            barrier_evidence_refs=list(barrier.evidence_refs),
+            ordering_provenance=RomanRoadRouteOrchestrator._ordering_provenance(source, barrier, historical_route),
+            limitation="Broad mountain constraint has no trusted onward waypoint; its representative coordinate is not used as an exact route destination.",
+        )
+
+    @staticmethod
+    def _missing_approach_leg(index, barrier, exit_point, historical_route) -> RomanRoadRouteLeg:
+        return RomanRoadRouteLeg(
+            leg_index=index,
+            source_anchor_id=barrier.historical_place.id,
+            destination_anchor_id=exit_point.historical_place.id,
+            source_evidence_refs=list(barrier.evidence_refs),
+            destination_evidence_refs=list(exit_point.evidence_refs),
+            status=RomanRoadCandidateStatus.SOURCE_ACCESS_FAILED,
+            failure_status="BARRIER_APPROACH_CONSTRAINT_UNAVAILABLE",
+            barrier_anchor_id=barrier.historical_place.id,
+            barrier_evidence_refs=list(barrier.evidence_refs),
+            ordering_provenance=RomanRoadRouteOrchestrator._ordering_provenance(barrier, exit_point, historical_route),
+            limitation="Broad mountain constraint has no trusted approach waypoint; its representative coordinate is not used as an exact route origin.",
         )
 
     @staticmethod

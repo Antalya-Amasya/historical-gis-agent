@@ -22,9 +22,12 @@ class RomanRoadPresentationService:
 
     def present(self, historical_route: HistoricalRoute, result: RomanRoadRouteResult) -> RomanRoadPresentation:
         terrain_fallback_used = any(leg.terrain_candidate is not None for leg in result.legs)
+        barrier_crossing_used = any(leg.crossing_candidate is not None for leg in result.legs)
         route_method = result.generation_method
         interpretation = (
-            "Roman-road-preferred candidate reconstruction with terrain A* fallback only for unavailable adjacent road legs; it is not proof of an exact historical track."
+            "An algorithmic mountain crossing was selected from the trusted neighboring route constraints using an ancient-road or terrain path; it is not an attested historical pass."
+            if barrier_crossing_used
+            else "Roman-road-preferred candidate reconstruction with terrain A* fallback only for unavailable adjacent road legs; it is not proof of an exact historical track."
             if terrain_fallback_used
             else "Partial Roman-road candidate reconstruction where available; it is not proof of an exact historical track."
         )
@@ -37,17 +40,23 @@ class RomanRoadPresentationService:
                 "leg_index": segment.leg_index, "source_anchor_id": segment.source_anchor_id,
                 "destination_anchor_id": segment.destination_anchor_id, "failure_status": segment.failure_status,
             }})
+        crossing_features = [
+            self._crossing_feature(leg.crossing_candidate)
+            for leg in result.legs
+            if leg.crossing_candidate is not None
+        ]
         road_network = {
             "source": "Itiner-e — The Digital Atlas of Ancient Roads" if result.aggregate.successful_leg_count and any(leg.candidate is not None for leg in result.legs) else "offline terrain A* fallback",
             "route_status": result.status.value,
             "terrain_fallback_used": terrain_fallback_used,
+            "barrier_crossing_used": barrier_crossing_used,
             "aggregate": result.aggregate.model_dump(mode="json"),
             "legs": [leg.model_dump(mode="json") for leg in result.legs],
             "limitations": list(result.limitations),
         }
         return RomanRoadPresentation(
             route={"route_id": historical_route.id, "route_name": historical_route.name, "period": historical_route.period, "confidence": historical_route.historical_confidence, "generation_method": result.generation_method, "route_status": result.status.value},
-            geojson={"type": "FeatureCollection", "features": [*anchor_features, *segment_features]},
+            geojson={"type": "FeatureCollection", "features": [*anchor_features, *crossing_features, *segment_features]},
             road_network=road_network, knowledge_panels=[self._anchor_panel(point) for point in historical_route.ordered_points],
             presentation_summary={
                 "title": historical_route.name, "route_method": route_method, "route_status": result.status.value,
@@ -55,6 +64,22 @@ class RomanRoadPresentationService:
                 "limitations": list(result.limitations),
             },
         )
+
+    @staticmethod
+    def _crossing_feature(candidate) -> dict[str, object]:
+        return {"type": "Feature", "geometry": {"type": "Point", "coordinates": list(candidate.coordinate)}, "properties": {
+            "layer_type": "reconstructed_crossing",
+            "name": f"{candidate.barrier_name} algorithmic crossing",
+            "barrier_id": candidate.barrier_id,
+            "approach_anchor_id": candidate.approach_anchor_id,
+            "exit_anchor_id": candidate.exit_anchor_id,
+            "candidate_source": candidate.source.value,
+            "road_support": candidate.road_support,
+            "terrain_support": candidate.terrain_support,
+            "reconstruction_cost": candidate.reconstruction_cost,
+            "authority": candidate.authority,
+            "limitations": list(candidate.limitations),
+        }}
 
     @staticmethod
     def _anchor_feature(point) -> dict[str, object]:

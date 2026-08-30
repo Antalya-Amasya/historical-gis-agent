@@ -30,11 +30,21 @@ from backend.app.models import Evidence, HistoricalRoute, HistoricalRouteIntent
 from backend.app.rag.campaign_ontology import HistoricalCampaignOntology
 from backend.app.candidate_routes.grid import GridPoint
 from backend.app.candidate_routes.terrain import TerrainOverride
+from backend.app.candidate_routes.barrier_crossings import (
+    CrossingCandidateSource,
+    barrier_reference_is_between,
+    is_broad_mountain_constraint,
+    select_crossing_candidate,
+)
 from backend.app.core.config import settings
 
 
 class RouteOrchestrationError(ValueError):
     """The supplied evidence-grounded route cannot be reconstructed safely."""
+
+
+class BarrierCrossingConstraintError(RouteOrchestrationError):
+    """A broad mountain constraint lacks a defensible algorithmic crossing."""
 
 
 @dataclass(frozen=True)
@@ -191,7 +201,7 @@ class HistoricalRouteOrchestrator:
     ) -> HistoricalRouteResponse:
         if intent.intent != "historical_route":
             raise RouteOrchestrationError("only historical_route intents can be reconstructed")
-        reviewed = self._reviewed_waypoints(historical_route)
+        reviewed, barrier_context = self._reconstruction_plan(historical_route)
         terrain_graph_provider = self._terrain_graph_provider_for(intent)
         effective_cell_size_m = self.cell_size_m if cell_size_m is None else cell_size_m
         if effective_cell_size_m <= 0:
@@ -203,6 +213,23 @@ class HistoricalRouteOrchestrator:
             reviewed, graph, route_id=f"{intent.campaign_id}-terrain-candidate",
         )
         route = self._merge_candidate_paths(reconstruction.candidate_paths, reconstruction.route_id)
+        crossing = None
+        if barrier_context is not None:
+            approach, barrier, exit_point = barrier_context
+            crossing = select_crossing_candidate(
+                list(route.geometry.coordinates),
+                approach,
+                barrier,
+                exit_point,
+                source=CrossingCandidateSource.TERRAIN_DERIVED_CROSSING,
+                elevation_provider=lambda coordinate: graph.grid.cell(
+                    graph.spec.geographic_to_grid(*coordinate)
+                ).elevation_m,
+            )
+            if crossing is None:
+                raise BarrierCrossingConstraintError(
+                    "terrain path does not provide a crossing within the audited mountain-region search area"
+                )
         evaluation = evaluate_route(route, source_ids=self._source_ids(evidence, historical_route))
         waypoint_graph, resolver, summaries = self._waypoint_graph(historical_route, evidence)
         presentation = self.presentation_service.present(
@@ -217,6 +244,13 @@ class HistoricalRouteOrchestrator:
             intent, historical_route, evidence, terrain_source=reconstruction.terrain_source,
             applied_constraints=list(graph.applied_constraints),
         )
+        if crossing is not None:
+            display_summary = display_summary.model_copy(update={
+                "route_method": "terrain_barrier_crossing_reconstruction",
+                "route_interpretation": "Terrain A* connects trusted neighboring constraints and selects an algorithmic mountain crossing; the crossing is not a HistoricalWaypoint or an attested pass.",
+                "geographic_constraints": [*display_summary.geographic_constraints, "audited_broad_mountain_constraint"],
+                "limitations": [*display_summary.limitations, *crossing.limitations],
+            })
         presentation = presentation.model_copy(update={
             "route_name": display_summary.operation or presentation.route_name,
         })
@@ -229,10 +263,12 @@ class HistoricalRouteOrchestrator:
             "explanation": "Terrain-aware candidate connection between evidence-backed, MCP-resolved anchors; not an exact historical march path.",
             "route_quality": self._route_quality(route, graph, reconstruction, reviewed, historical_route),
             "applied_constraints": list(graph.applied_constraints),
+            "barrier_crossing": crossing.model_dump(mode="json") if crossing is not None else None,
         })
         route_geojson["properties"] = route_properties
         geojson = dict(presentation.geojson)
-        geojson["features"] = [route_geojson, *presentation.geojson["features"][1:], *self._corridor_features(intent)]
+        crossing_features = [self._crossing_feature(crossing)] if crossing is not None else []
+        geojson["features"] = [route_geojson, *presentation.geojson["features"][1:], *crossing_features, *self._corridor_features(intent)]
         presentation = presentation.model_copy(update={"route_geojson": route_geojson, "geojson": geojson})
         panels = [
             KnowledgePanelBuilder().build(waypoint, summary_provider=lambda view: summaries.get(view.id))
@@ -256,6 +292,26 @@ class HistoricalRouteOrchestrator:
         if intent.campaign_id == _HANNIBAL_CORRIDOR.campaign_id:
             constraints.extend(["mock_ocean_blocking", "mock_reviewed_corridor_mask", "mock_alpine_terrain_multiplier"])
         return OfflineMockTerrainGraphProvider(self._terrain_constraints_for(intent), applied_constraints=constraints)
+
+    @staticmethod
+    def _crossing_feature(crossing) -> dict[str, object]:
+        return {
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": list(crossing.coordinate)},
+            "properties": {
+                "layer_type": "reconstructed_crossing",
+                "name": f"{crossing.barrier_name} algorithmic crossing",
+                "barrier_id": crossing.barrier_id,
+                "approach_anchor_id": crossing.approach_anchor_id,
+                "exit_anchor_id": crossing.exit_anchor_id,
+                "candidate_source": crossing.source.value,
+                "road_support": crossing.road_support,
+                "terrain_support": crossing.terrain_support,
+                "reconstruction_cost": crossing.reconstruction_cost,
+                "authority": crossing.authority,
+                "limitations": list(crossing.limitations),
+            },
+        }
 
     @staticmethod
     def _terrain_constraints_for(intent: HistoricalRouteIntent) -> Callable[[GridPoint, float, float], TerrainOverride | None]:
@@ -368,6 +424,31 @@ class HistoricalRouteOrchestrator:
                 ),
             ))
         return result
+
+    @classmethod
+    def _reconstruction_plan(cls, route: HistoricalRoute):
+        reviewed = cls._reviewed_waypoints(route)
+        barriers = [
+            (index, point)
+            for index, point in enumerate(route.ordered_points)
+            if is_broad_mountain_constraint(point)
+        ]
+        if not barriers:
+            return reviewed, None
+        if len(barriers) > 1:
+            raise BarrierCrossingConstraintError("V1 supports one audited mountain constraint per route")
+        index, barrier = barriers[0]
+        if index == 0:
+            raise BarrierCrossingConstraintError("mountain constraint has no trusted approach waypoint")
+        if index == len(route.ordered_points) - 1:
+            raise BarrierCrossingConstraintError("mountain constraint has no trusted onward waypoint")
+        approach = route.ordered_points[index - 1]
+        exit_point = route.ordered_points[index + 1]
+        if not barrier_reference_is_between(approach, barrier, exit_point):
+            raise BarrierCrossingConstraintError(
+                "mountain constraint is not between the trusted approach and onward waypoints"
+            )
+        return [*reviewed[:index], *reviewed[index + 1:]], (approach, barrier, exit_point)
 
     @staticmethod
     def _merge_candidate_paths(paths: list[CandidateRoute], route_id: str) -> CandidateRoute:
