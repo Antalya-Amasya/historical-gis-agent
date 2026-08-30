@@ -83,6 +83,14 @@ describe("Phase 33A historical route presentation", () => {
     expect(drawableRouteSegments(sparse)).toEqual([]);
   });
 
+  it("retains long provenance references inside the constrained details panel", () => {
+    const longReference = "https://pleiades.stoa.org/places/148168/with-a-long-provenance-reference";
+    const payload = { ...terrain, knowledge_panels: [{ ...terrain.knowledge_panels![0], source_references: [longReference] }] };
+    const html = renderToStaticMarkup(<RouteDetails payload={payload} />);
+    expect(html).toContain('class="right-panels"');
+    expect(html).toContain(longReference);
+  });
+
   it("does not retain a previous route in a later non-route response", async () => {
     const first = await fetchAgentHistoricalRoutePresentation("route", "s", async () => ({ ok: true, status: 200, json: async () => ({ reply: "route", state: { historical_route_presentation: terrain } }) }));
     const second = await fetchAgentHistoricalRoutePresentation("ordinary", "s", async () => ({ ok: true, status: 200, json: async () => ({ reply: "ordinary", state: { historical_route_presentation: null } }) }));
