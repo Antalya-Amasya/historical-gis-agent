@@ -3,27 +3,27 @@ import { createRoot } from "react-dom/client";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./phase17.css";
-import { type HistoricalRoutePresentationPayload, fetchAgentHistoricalRoutePresentation, markerFeatures, romanRoadSegmentFeatures, routeFeature, toLeafletLineCoordinates } from "./phase10-contract";
+import { type GeoJsonFeature, type HistoricalRoutePresentationPayload, drawableRouteSegments, fetchAgentHistoricalRoutePresentation, markerFeatures, routeFeature, toLeafletLineCoordinates, waypointPopupMetadata } from "./phase10-contract";
 import { AnswerResult } from "./answer-result";
+import { RouteDetails } from "./historical-route-details";
 
 function HistoricalMap({ payload }: { payload: HistoricalRoutePresentationPayload }) {
   const container = useRef<HTMLDivElement | null>(null); const map = useRef<L.Map | null>(null); const layer = useRef<L.LayerGroup | null>(null);
   useEffect(() => { if (!container.current || map.current) return; map.current = L.map(container.current).setView([42, 5], 4); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap contributors" }).addTo(map.current); layer.current = L.layerGroup().addTo(map.current); return () => { map.current?.remove(); map.current = null; layer.current = null; }; }, []);
-  useEffect(() => { if (!map.current || !layer.current) return; layer.current.clearLayers(); const bounds = L.latLngBounds([]); const draw = (coordinates: [number, number][], style: L.PolylineOptions) => { if (coordinates.length < 2) return; const line = L.polyline(coordinates, style).addTo(layer.current!); bounds.extend(line.getBounds()); };
-    if (payload.road_network) for (const feature of romanRoadSegmentFeatures(payload)) { if (feature.geometry?.type !== "LineString") continue; const role = String(feature.properties.segment_role); draw(toLeafletLineCoordinates(feature), role === "roman_road" ? { color: "#a34422", weight: 4 } : { color: "#786f65", weight: 2, dashArray: "5 7" }); }
-    else draw(toLeafletLineCoordinates(routeFeature(payload)), { color: "#1e4f79", weight: 5, dashArray: "11 8" });
-    for (const [index, feature] of markerFeatures(payload).entries()) { if (feature.geometry?.type !== "Point") continue; const [longitude, latitude] = feature.geometry.coordinates; const marker = L.marker([latitude, longitude], { icon: L.divIcon({ className: `waypoint-number waypoint-tone-${index % 4}`, html: String(index + 1), iconSize: [26, 26], iconAnchor: [13, 13] }) }).bindPopup(String(feature.properties.name ?? "Historical anchor")); marker.addTo(layer.current); bounds.extend(marker.getLatLng()); }
+  useEffect(() => { if (!map.current || !layer.current) return; layer.current.clearLayers(); const bounds = L.latLngBounds([]); const draw = (feature: GeoJsonFeature | undefined, style: L.PolylineOptions, label: string) => { const coordinates = toLeafletLineCoordinates(feature); if (coordinates.length < 2) return; const line = L.polyline(coordinates, style).bindTooltip(label).addTo(layer.current!); bounds.extend(line.getBounds()); };
+    if (payload.road_network) for (const segment of drawableRouteSegments(payload)) { draw(segment.feature, segment.kind === "roman_road" ? { color: "#9a4f2d", weight: 5 } : segment.kind === "terrain" ? { color: "#1e5f78", weight: 5, dashArray: "12 8" } : { color: "#786f65", weight: 2, dashArray: "3 7" }, segment.kind === "roman_road" ? "古罗马道路优先重建" : segment.kind === "terrain" ? "地形算法重建" : "道路接入连接"); }
+    else draw(routeFeature(payload), { color: "#1e5f78", weight: 5, dashArray: "12 8" }, "地形算法重建候选路线");
+    for (const [index, feature] of markerFeatures(payload).entries()) { if (feature.geometry?.type !== "Point") continue; const [longitude, latitude] = feature.geometry.coordinates; const metadata = waypointPopupMetadata(payload, feature); const popup = document.createElement("section"); popup.className = "route-popup"; const title = document.createElement("h3"); title.textContent = `${index + 1}. ${metadata.name}`; const evidence = document.createElement("p"); evidence.textContent = `历史依据：${metadata.evidenceCount} 条证据引用`; const note = document.createElement("p"); note.textContent = metadata.description ?? "史料约束的历史路点"; popup.append(title, evidence, note); const marker = L.marker([latitude, longitude], { icon: L.divIcon({ className: `waypoint-number waypoint-tone-${index % 4}`, html: String(index + 1), iconSize: [28, 28], iconAnchor: [14, 14] }) }).bindPopup(popup); marker.addTo(layer.current); bounds.extend(marker.getLatLng()); }
     if (bounds.isValid()) map.current.fitBounds(bounds, { padding: [42, 42], maxZoom: 7 });
   }, [payload]);
   return <div ref={container} className="historical-map" aria-label="Historical GIS map" />;
 }
 
-function KnowledgePanel({ payload }: { payload: HistoricalRoutePresentationPayload }) { const road = payload.road_network; if (!road) return <aside className="knowledge-panel"><h2>Historical evidence</h2><p>Historical anchors and their evidence are shown on the map when available.</p></aside>; const stats = road.aggregate; return <aside className="knowledge-panel"><h2>Roman-road candidate</h2><p><strong>Status:</strong> {road.route_status}</p><p><strong>Network distance:</strong> {(stats.total_network_distance_m / 1000).toFixed(3)} km</p><p><strong>Access connectors:</strong> {(stats.total_access_connector_distance_m / 1000).toFixed(3)} km</p><p><strong>Legs:</strong> {stats.successful_leg_count} successful / {stats.failed_leg_count} unresolved</p><p><strong>Road source:</strong> {road.source}</p><p>Roman-road infrastructure candidate. Not proof of the exact historical track.</p></aside>; }
-
 function QueryApp() {
   const [query, setQuery] = useState("");
   const [reply, setReply] = useState("");
   const [payload, setPayload] = useState<HistoricalRoutePresentationPayload | null>(null);
+  const [routeSource, setRouteSource] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sessionId = useRef(`historical-gis-${crypto.randomUUID()}`);
@@ -33,10 +33,12 @@ function QueryApp() {
     setError(null);
     setReply("");
     setPayload(null);
+    setRouteSource(null);
     try {
       const result = await fetchAgentHistoricalRoutePresentation(query, sessionId.current);
       setReply(result.reply);
       setPayload(result.payload);
+      setRouteSource(result.routeSource);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Request failed");
     } finally {
@@ -49,7 +51,7 @@ function QueryApp() {
     <section className="controls"><label>Historical question<textarea value={query} onChange={(event) => setQuery(event.target.value)} /></label><button type="button" disabled={loading || !query.trim()} onClick={() => void submit()}>{loading ? "Loading…" : "Ask"}</button></section>
     {error && <p className="error" role="alert">{error}</p>}
     {reply && <AnswerResult reply={reply} routeStatus={payload?.road_network?.route_status} />}
-    {payload && <div className="route-layout"><section className="map-card"><HistoricalMap payload={payload} /><div className="map-legend"><span><i className="legend-marker" /> Historical anchor</span>{payload.road_network && <><span><i className="legend-line" /> Roman-road candidate</span><span>Dashed line: access connector</span><span>Unresolved leg: no line drawn</span></>}</div></section><aside className="right-panels"><KnowledgePanel payload={payload} /></aside></div>}
+    {payload && <div className="route-layout"><section className="map-card"><div className="map-card-header"><div><p className="panel-kicker">Historical Route / 历史路线</p><h2>{payload.presentation_summary?.title ?? payload.route.route_name ?? "历史路线重建"}</h2></div><span className="candidate-badge">候选路线 · 非精确史实轨迹</span></div><HistoricalMap payload={payload} /><div className="map-legend" aria-label="Route map legend"><span><i className="legend-marker" /> 史料约束路点</span><span><i className="legend-line legend-road" /> 古罗马道路重建</span><span><i className="legend-line legend-terrain" /> 地形算法重建</span><span><i className="legend-gap" /> 未重建区段（不连线）</span></div></section><RouteDetails payload={payload} routeSource={routeSource} /></div>}
   </main>;
 }
 
