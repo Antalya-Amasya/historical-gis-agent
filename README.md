@@ -17,6 +17,13 @@ The primary-source corpus is local generated data and deliberately Git-ignored. 
 
 ## Run the query-driven workspace
 
+On the canonical Windows development machine, double-click
+`start_historical_gis.bat` to start the existing Chroma store, backend, and
+frontend, then open the application in a browser. The launcher uses the shared
+runtime and external `.env`; it does not copy secrets or rebuild the collection.
+
+For manual startup, use the commands below.
+
 Start Chroma with the Roman Republic v2 persistence directory:
 
 ```powershell
