@@ -2,7 +2,7 @@ from __future__ import annotations
 import json, logging
 from time import perf_counter
 from backend.app.agent.prompts import SYSTEM_PROMPT
-from backend.app.agent.evidence_support import assess_evidence_support, assess_final_answer_provenance, event_relation_supports_answer, render_evidence_citations, validate_evidence_selection
+from backend.app.agent.evidence_support import assess_evidence_support, assess_final_answer_provenance, event_relation_supports_answer, render_evidence_citations, validate_evidence_citations, validate_evidence_selection
 from backend.app.models import AgentProviderCallTiming, AgentState, AgentToolHistoryEntry
 
 logger = logging.getLogger(__name__)
@@ -311,9 +311,12 @@ class BoundedAgentLoop:
                 if len(response.tool_calls) != 1 or not isinstance(answer, str) or not isinstance(ids, list) or not all(isinstance(item, str) for item in ids):
                     issues.append("malformed_grounded_answer_submission")
                 selected_ids = tuple(ids) if isinstance(ids, list) and all(isinstance(item, str) for item in ids) else ()
-                explicit_insufficient = bool(insufficient) and _explicitly_insufficient(answer if isinstance(answer, str) else None)
-                issues.extend(validate_evidence_selection(selected_ids, state.historical_evidence, require_selection=not explicit_insufficient))
                 assessment = assess_final_answer_provenance(answer if isinstance(answer, str) else None, state.user_query or "", state.historical_evidence)
+                explicit_insufficient = bool(insufficient) and _explicitly_insufficient(answer if isinstance(answer, str) else None)
+                if bool(insufficient) and not explicit_insufficient and assessment.status in {"grounded", "grounded_with_unverified_suggestions"}:
+                    insufficient = False
+                    explicit_insufficient = False
+                issues.extend(validate_evidence_selection(selected_ids, state.historical_evidence, require_selection=not explicit_insufficient))
                 event_supported = event_relation_supports_answer(answer, state.historical_events, state.historical_evidence)
                 if assessment.status == "unsupported_fact" and not event_supported: issues.append("unsupported_fact")
                 if bool(insufficient) and not explicit_insufficient: issues.append("invalid_insufficient_evidence_submission")
@@ -374,7 +377,20 @@ class BoundedAgentLoop:
                         )
                     self._record_grounding_assessment(state, answer_assessment)
                     answer_text = response.content or ""
-                    citation_issues = ("missing_grounded_answer_submission",) if state.requested_output == "answer" and not _explicitly_insufficient(answer_text) else ()
+                    provenance_acceptable = answer_assessment.status in {
+                        "grounded",
+                        "grounded_with_unverified_suggestions",
+                    }
+                    citation_issues = validate_evidence_citations(
+                        answer_text, state.historical_evidence, require_citation=False,
+                    )
+                    if (
+                        not citation_issues
+                        and state.requested_output == "answer"
+                        and not _explicitly_insufficient(answer_text)
+                        and not provenance_acceptable
+                    ):
+                        citation_issues = ("missing_grounded_answer_submission",)
                     if citation_issues:
                         state.warnings.extend(citation_issues)
                     if (

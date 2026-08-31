@@ -370,6 +370,8 @@ def classify_candidate_phrase(phrase: CandidatePhrase, context: str, user_query:
             return CandidateEntityAssessment(phrase.raw_text, phrase.normalized_text, True, phrase.entity_type, "model_only", "unsupported_fact", "model-only work title was used as a factual citation")
         if work_context == "corpus_gap":
             return CandidateEntityAssessment(phrase.raw_text, phrase.normalized_text, True, phrase.entity_type, "model_only", "unverified_suggestion", "model-only work title was explicitly limited to a corpus gap or research suggestion")
+    if phrase.entity_type == "unknown_entity_like" and re.search(rf"\baccording to\s+{re.escape(phrase.raw_text)}\b", context, re.IGNORECASE):
+        return CandidateEntityAssessment(phrase.raw_text, phrase.normalized_text, False, phrase.entity_type, "model_only", "non_claim", "attribution framing is not treated as an independent factual entity")
     if _has_fact_assertion(context, phrase) or has_unsupported_route_pattern(context):
         return CandidateEntityAssessment(phrase.raw_text, phrase.normalized_text, True, phrase.entity_type, "model_only", "unsupported_fact", "model-only phrase used in factual or route context")
     if _is_suggestion_context(context):

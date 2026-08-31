@@ -127,3 +127,13 @@ def test_model_only_work_factual_citations_remain_unsupported():
     mixed = assess("Records of Baz may be worth consulting because it records that the army passed Fooport.")
     assert "annals of bar" in according_to.unsupported_fact_terms
     assert "records of baz" in mixed.unsupported_fact_terms
+
+
+def test_attribution_framing_author_is_not_an_unsupported_fact_entity():
+    result = assess(
+        "According to Plutarch, Tiberius Gracchus began to vindicate the liberty of the people.",
+        "What were the main reforms proposed by Tiberius Gracchus?",
+        [Evidence(id="g1", author="Sallust", work="Catiline + Jugurthine War", locator="section unavailable", excerpt="Tiberius Gracchus began to vindicate the liberty of the people.", text="Tiberius Gracchus began to vindicate the liberty of the people.", book="", page_start=1, page_end=1, source_file="s.epub", source_type="primary_source")],
+    )
+    assert result.status == "grounded"
+    assert "plutarch" not in result.unsupported_fact_terms
