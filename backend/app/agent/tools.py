@@ -33,6 +33,52 @@ TOOL_SCHEMAS = [
  {"name":"build_historical_route","description":"Use when the user requests a historical route or map reconstruction. This is the only tool that produces the audited HistoricalRoute from accumulated Evidence; when configured GIS capability is available, it may add an explicitly algorithmic Roman-road or terrain candidate between those already-established waypoints.","input_schema":{"type":"object","properties":{"event_id":{"type":"string"},"name":{"type":"string"},"period":{"type":"string"}},"required":["event_id","name","period"]}},
 ]
 
+def _retrieval_evidence_count(result_summary: str) -> int:
+    marker = "evidence_count="
+    if marker not in result_summary:
+        return 0
+    value, _, _ = result_summary.partition(marker)[2].partition(" ")
+    return int(value) if value.isdigit() else 0
+
+
+def _cumulative_event_query_contexts(
+    state: AgentState,
+    *,
+    current_query: str,
+    current_evidence_count: int,
+) -> tuple[str, ...]:
+    """Build relevance-filter contexts for accumulated evidence extraction.
+
+    Query strings guide relevance filtering only; they never create events or
+    places.  Only retrievals that actually returned evidence expand context.
+    A sentence is relevant when it matches any retained context.
+    """
+    parts: list[str] = []
+    seen: set[str] = set()
+
+    def _append(value: str) -> None:
+        normalized = value.strip()
+        if not normalized or normalized in seen:
+            return
+        seen.add(normalized)
+        parts.append(normalized)
+
+    if state.user_query:
+        _append(state.user_query)
+    for entry in state.tool_history:
+        if entry.tool_name != "search_historical_evidence" or not entry.success:
+            continue
+        prior_query = entry.arguments.get("query")
+        if not isinstance(prior_query, str):
+            continue
+        if _retrieval_evidence_count(entry.result_summary) <= 0:
+            continue
+        _append(prior_query)
+    if current_evidence_count > 0:
+        _append(current_query)
+    return tuple(parts)
+
+
 class AgentToolRegistry:
     def __init__(self, retriever: HistoricalRetriever, geography_client, *, route_orchestrator=None, campaign_registry=None, roman_road_orchestrator=None):
         self.retriever, self.geography_client = retriever, geography_client
@@ -82,7 +128,18 @@ class AgentToolRegistry:
             accumulated = {item.id: item for item in state.historical_evidence}
             accumulated.update({item.id: item for item in evidence})
             state.historical_evidence = list(accumulated.values())
-            candidates, extraction_diagnostics = self.event_extractor.extract(state.historical_evidence, query=query)
+            # Accumulated evidence is filtered against the user's request and
+            # every evidence-producing retrieval decomposition, not merely the
+            # most recent subquery.
+            event_query_contexts = _cumulative_event_query_contexts(
+                state,
+                current_query=query,
+                current_evidence_count=len(evidence),
+            )
+            candidates, extraction_diagnostics = self.event_extractor.extract(
+                state.historical_evidence,
+                query_contexts=event_query_contexts,
+            )
             consolidated_events, consolidation_diagnostics = self.event_consolidator.consolidate(candidates)
             state.historical_events, place_diagnostics = self.event_place_resolver.resolve(consolidated_events)
             state.historical_event_diagnostics = {

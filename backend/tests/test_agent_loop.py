@@ -9,6 +9,12 @@ from backend.app.rag.retriever import HistoricalRetriever
 class Retriever(HistoricalRetriever):
     def __init__(self, items): self.items=items; self.calls=[]
     def retrieve(self, query, top_k=5, filters=None): self.calls.append((query,top_k,filters)); return self.items
+
+class QueryRetriever(HistoricalRetriever):
+    def __init__(self, mapping): self.mapping=mapping; self.calls=[]
+    def retrieve(self, query, top_k=5, filters=None):
+        self.calls.append((query, top_k, filters))
+        return self.mapping.get(query, [])
 class Geo:
     def __init__(self): self.calls=[]
     def call(self, tool, arguments):
@@ -151,6 +157,72 @@ def test_search_context_exposes_bounded_evidence_provenance_and_events_to_answer
     assert result["historical_events"][0]["event_type"] == "MOVEMENT"
     assert result["historical_events"][0]["evidence_refs"] == ["move"]
     assert result["historical_events"][0]["summary"].endswith("New Carthage to the Rhone.")
+
+
+def test_accumulated_evidence_is_extracted_against_user_request_not_last_search_subquery():
+    item = ev("alesia", "Caesar fought at Alesia during the campaign.")
+    state = AgentState(session_id="event-query", user_query="Caesar campaign")
+    result, _ = AgentToolRegistry(Retriever([item]), Geo()).execute(
+        "search_historical_evidence", {"query": "Rhine bridges"}, state,
+    )
+    assert result["success"]
+    assert [(event.event_type.value, event.place_mentions[0].raw_text) for event in state.historical_events] == [("BATTLE", "Alesia")]
+
+
+def test_sequential_retrievals_keep_prior_evidence_backed_events():
+    alesia = ev("alesia", "Caesar fought at Alesia during the campaign.")
+    rhine = ev("rhine", "Caesar crossed the Rhine with his army.")
+    registry = AgentToolRegistry(
+        QueryRetriever({"Caesar Alesia": [alesia], "Rhine bridges": [rhine]}),
+        Geo(),
+    )
+    state = AgentState(session_id="sequential-retrieval", user_query="Caesar campaign route")
+    registry.execute("search_historical_evidence", {"query": "Caesar Alesia"}, state)
+    assert [(event.place_mentions[0].raw_text, event.event_type.value) for event in state.historical_events] == [("Alesia", "BATTLE")]
+    registry.execute("search_historical_evidence", {"query": "Rhine bridges"}, state)
+    assert [(event.event_type.value, event.place_mentions[0].raw_text if event.place_mentions else None) for event in state.historical_events] == [
+        ("BATTLE", "Alesia"),
+        ("MOVEMENT", None),
+    ]
+
+
+def test_unrelated_subquery_does_not_erase_prior_task_relevant_events():
+    alesia = ev("alesia", "Caesar fought at Alesia during the campaign.")
+    registry = AgentToolRegistry(QueryRetriever({"Caesar Alesia": [alesia], "Rhine bridges": []}), Geo())
+    state = AgentState(session_id="unrelated-subquery", user_query="Caesar campaign route")
+    registry.execute("search_historical_evidence", {"query": "Caesar Alesia"}, state)
+    registry.execute("search_historical_evidence", {"query": "Rhine bridges"}, state)
+    assert [(event.event_type.value, event.place_mentions[0].raw_text) for event in state.historical_events] == [("BATTLE", "Alesia")]
+
+
+def test_query_only_place_without_evidence_does_not_create_event_or_mention():
+    item = ev("march", "The army marched from one camp to another.")
+    state = AgentState(session_id="query-only-place", user_query="Atlantis expedition")
+    _, _ = AgentToolRegistry(Retriever([item]), Geo()).execute(
+        "search_historical_evidence", {"query": "Atlantis expedition"}, state,
+    )
+    assert state.historical_events == []
+    assert all("Atlantis" not in mention.raw_text for event in state.historical_events for mention in event.place_mentions)
+
+
+def test_empty_retrieval_subquery_does_not_expand_filter_context():
+    alesia = ev("alesia", "Caesar fought at Alesia during the campaign.")
+    registry = AgentToolRegistry(QueryRetriever({"Caesar Alesia": [alesia], "empty probe": []}), Geo())
+    state = AgentState(session_id="empty-retrieval", user_query="Caesar campaign route")
+    registry.execute("search_historical_evidence", {"query": "Caesar Alesia"}, state)
+    registry.execute("search_historical_evidence", {"query": "empty probe"}, state)
+    assert [(event.event_type.value, event.place_mentions[0].raw_text) for event in state.historical_events] == [("BATTLE", "Alesia")]
+
+
+def test_cumulative_retrieval_context_is_request_local():
+    alesia = ev("alesia", "Caesar fought at Alesia during the campaign.")
+    registry = AgentToolRegistry(QueryRetriever({"Caesar Alesia": [alesia], "Rhine bridges": []}), Geo())
+    first = AgentState(session_id="first-run", user_query="Caesar campaign")
+    second = AgentState(session_id="second-run", user_query="Caesar campaign")
+    registry.execute("search_historical_evidence", {"query": "Caesar Alesia"}, first)
+    registry.execute("search_historical_evidence", {"query": "Rhine bridges"}, second)
+    assert first.historical_events
+    assert second.historical_events == []
 
 
 def test_ordinary_qa_without_evidence_discards_provider_fact_claim():

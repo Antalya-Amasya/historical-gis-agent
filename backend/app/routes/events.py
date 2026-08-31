@@ -149,7 +149,16 @@ class EvidenceGroundedHistoricalEventExtractor:
                     item.role = role
         return values
 
-    def _eligible(self, sentence: str, event_type: HistoricalEventType, query_terms: set[str] | None) -> bool:
+    @classmethod
+    def _is_relevant_to_query_contexts(cls, sentence: str, contexts: tuple[str, ...] | None) -> bool:
+        if not contexts:
+            return True
+        return any(
+            cls._is_query_relevant(sentence, cls._normalized_terms(context) if context and context.strip() else None)
+            for context in contexts
+        )
+
+    def _eligible(self, sentence: str, event_type: HistoricalEventType, query_contexts: tuple[str, ...] | None) -> bool:
         if event_type is HistoricalEventType.UNKNOWN:
             return False
         if self._NON_COMPLETED.search(sentence) or self._REPORTED_SPEECH.search(sentence) or self._NAVIGATION_HEADING.search(sentence):
@@ -158,20 +167,28 @@ class EvidenceGroundedHistoricalEventExtractor:
         # without requiring a place or a normalized date.
         if not self._proper_tokens(sentence) and not self._ACTOR.search(sentence):
             return False
-        return self._is_query_relevant(sentence, query_terms)
+        return self._is_relevant_to_query_contexts(sentence, query_contexts)
 
     @staticmethod
     def _proper_tokens(value: str) -> set[str]:
         return set(re.findall(r"\b[A-Z][A-Za-zÀ-ÖØ-öø-ÿÆæŒœ']{2,}", value))
 
-    def extract(self, evidence: list[Evidence], *, query: str | None = None) -> tuple[list[HistoricalEvent], dict[str, object]]:
+    def extract(
+        self,
+        evidence: list[Evidence],
+        *,
+        query: str | None = None,
+        query_contexts: tuple[str, ...] | None = None,
+    ) -> tuple[list[HistoricalEvent], dict[str, object]]:
         events: list[HistoricalEvent] = []
         temporal_codes: set[str] = set()
-        query_terms = self._normalized_terms(query) if query and query.strip() else None
+        contexts = query_contexts
+        if contexts is None and query and query.strip():
+            contexts = (query.strip(),)
         for item in evidence:
             for index, sentence in enumerate(self._sentences(self._text(item))):
                 event_type = self._event_type(sentence)
-                if not self._eligible(sentence, event_type, query_terms):
+                if not self._eligible(sentence, event_type, contexts):
                     continue
                 digest = hashlib.sha256(f"{item.id}:{index}:{sentence}".encode("utf-8")).hexdigest()[:12]
                 places = self._places(sentence, item.id)
