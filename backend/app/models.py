@@ -19,6 +19,7 @@ class PlaceSpatialSemantics(str, Enum):
     RIVER = "river"
     MOUNTAIN_REGION = "mountain_region"
     REGION = "region"
+    ISLAND = "island"
     UNKNOWN = "unknown"
 
 
@@ -39,6 +40,7 @@ class HistoricalPlace(BaseModel):
     spatial_semantics_provenance: str | None = None
     authoritative_geometry_available: bool = False
     authoritative_geometry_reference: str | None = None
+    authority_metadata: dict[str, Any] = Field(default_factory=dict)
     alternatives: list["HistoricalPlace"] = Field(default_factory=list)
 
 

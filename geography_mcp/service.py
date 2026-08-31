@@ -1,7 +1,7 @@
 from math import asin, cos, radians, sin, sqrt
 from pydantic import BaseModel, Field
 from backend.app.models import HistoricalPlace
-from geography_mcp.tools import resolve_registry_places
+from backend.app.geography.place_registry import resolve_with_status
 
 
 class GeoPoint(BaseModel):
@@ -47,13 +47,31 @@ class GeographyService:
         else:
             self.elevation_provider = MockElevationProvider()
     def resolve_ancient_place(self, name: str, period: str | None = None) -> HistoricalPlace | None:
-        matches = resolve_registry_places(name)
-        return matches[0] if len(matches) == 1 else None
+        resolution = resolve_with_status(name)
+        return resolution.places[0] if resolution.status in {"CURATED", "UNIQUE"} else None
     def resolve_ancient_place_payload(self, name: str, period: str | None = None) -> dict:
-        matches = resolve_registry_places(name)
-        if len(matches) == 1:
-            return {"found": True, **matches[0].model_dump(mode="json")}
-        return {"found": False, "ambiguous": True} if len(matches) > 1 else {"found": False}
+        resolution = resolve_with_status(name)
+        if resolution.status in {"CURATED", "UNIQUE"} and len(resolution.places) == 1:
+            return {"found": True, **resolution.places[0].model_dump(mode="json")}
+        if resolution.status == "AMBIGUOUS":
+            return {
+                "found": False,
+                "ambiguous": True,
+                "candidate_count": resolution.candidate_count,
+                "candidates": list(resolution.candidates),
+            }
+        if resolution.status == "UNLOCATED":
+            return {
+                "found": False,
+                "authority_status": "UNLOCATED",
+                "candidate_count": resolution.candidate_count,
+                "candidates": list(resolution.candidates),
+            }
+        if resolution.status == "UNAVAILABLE":
+            # Keep the established MCP response contract while the internal
+            # resolver retains the explicit UNAVAILABLE diagnostic.
+            return {"found": False}
+        return {"found": False}
     def calculate_distance(self, point_a: GeoPoint, point_b: GeoPoint) -> DistanceResult:
         lat1,lon1,lat2,lon2=map(radians,(point_a.latitude,point_a.longitude,point_b.latitude,point_b.longitude))
         value=2*6371008.8*asin(sqrt(sin((lat2-lat1)/2)**2+cos(lat1)*cos(lat2)*sin((lon2-lon1)/2)**2))
