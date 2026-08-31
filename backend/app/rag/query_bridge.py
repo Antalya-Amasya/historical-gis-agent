@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 BRIDGE_VERSION = "roman_republic_concept_v1"
 # Frozen in the accepted V1 artifact order. V2 expansion mappings are intentionally absent.
 V1_ENTRIES = (
-    ("凯撒", ("Caesar", "Julius Caesar"), "person"), ("庞培", ("Pompey",), "person"), ("汉尼拔", ("Hannibal",), "person"), ("马略", ("Marius",), "person"), ("苏拉", ("Sulla",), "person"), ("喀提林", ("Catiline",), "person"), ("朱古达", ("Jugurtha",), "person"), ("阿尔卑斯山", ("Alps",), "place"), ("卢比孔河", ("Rubicon",), "place"), ("高卢", ("Gaul",), "place"), ("坦尼", ("Cannae",), "place"), ("第二次布匏战争", ("Second Punic War",), "event_entity"), ("内战", ("civil war",), "concept"), ("阴谋", ("conspiracy",), "concept"), ("战争", ("war",), "concept"), ("会战", ("battle",), "concept"), ("渡过", ("crossing",), "concept"), ("翻越", ("crossing",), "concept"), ("军事行动", ("campaign",), "concept"), ("冲突", ("conflict",), "concept"),
+    ("凯撒", ("Caesar", "Julius Caesar"), "person"), ("庞培", ("Pompey",), "person"), ("汉尼拔", ("Hannibal",), "person"), ("马略", ("Marius",), "person"), ("苏拉", ("Sulla",), "person"), ("喀提林", ("Catiline",), "person"), ("朱古达", ("Jugurtha",), "person"), ("阿尔卑斯山", ("Alps",), "place"), ("卢比孔河", ("Rubicon",), "place"), ("高卢", ("Gaul",), "place"), ("坦尼", ("Cannae",), "place"), ("第二次布匏战争", ("Second Punic War",), "event_entity"), ("内战", ("civil war",), "concept"), ("阴谋", ("conspiracy",), "concept"), ("战争", ("war",), "concept"), ("会战", ("battle",), "concept"), ("渡过", ("crossing",), "concept"), ("翻越", ("crossing",), "concept"), ("军事行动", ("campaign",), "concept"), ("冲突", ("conflict",), "concept"), ("路线", ("route", "march", "movement"), "concept"), ("行军", ("march", "movement"), "concept"),
 )
 
 

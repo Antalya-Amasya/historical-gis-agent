@@ -37,6 +37,14 @@ _FRONT_MATTER = re.compile(
     r"(?is)(?:this ebook is for the use|^\s*title:\s|\*\*\*\s*start of (?:the )?project gutenberg)",
 )
 _STRUCTURAL_HEADING = re.compile(r"^(?:index|contents|table of contents)\.?\s*$", re.IGNORECASE)
+_ROUTE_OR_MOVEMENT_QUERY = re.compile(
+    r"\b(?:route|march(?:ed|ing)?|movement|moved|advance(?:d|ment)?|cross(?:ed|ing)?|journey|expedition)\b|路线|行军|行进|进军",
+    re.IGNORECASE,
+)
+_MOVEMENT_STATEMENT = re.compile(
+    r"\b(?:march(?:ed|ing)?|moved|advance(?:d|ment)?|cross(?:ed|ing)?|arriv(?:ed|ing)|depart(?:ed|ing)?|left|entered|passed|proceeded|travel(?:led|ed|ing)?)\b",
+    re.IGNORECASE,
+)
 
 
 def _is_structural_heading(value: str) -> bool:
@@ -64,6 +72,53 @@ def is_navigation_or_heading(evidence: Evidence) -> bool:
     if _is_structural_heading(heading):
         return True
     return _text_is_navigation(evidence.text or "")
+
+
+def is_route_or_movement_query(query: str) -> bool:
+    """Identify the narrow retrieval mode whose objective includes episode coverage."""
+    return bool(_ROUTE_OR_MOVEMENT_QUERY.search(query or ""))
+
+
+def diversify_route_evidence(query: str, ranked: list[Evidence]) -> list[Evidence]:
+    """Order a route candidate pool for bounded source-family coverage.
+
+    This is selection diversity, not historical ordering: it uses only the
+    existing rank, source-chunk identity, structural noise detection, and an
+    evidence-local movement statement signal.  It never creates evidence or
+    assigns chronology.
+    """
+    if not is_route_or_movement_query(query):
+        return ranked
+
+    def family(item: Evidence) -> str:
+        return str(item.metadata.get("source_chunk_id") or item.id.split(":", 1)[0])
+
+    def useful(item: Evidence) -> bool:
+        return not is_navigation_or_heading(item)
+
+    selected: list[Evidence] = []
+    used: set[str] = set()
+
+    # Take one movement-bearing body passage per source family first.  This
+    # prevents many non-overlapping windows from one retrieved source chunk
+    # from crowding out independent movement-episode evidence.
+    for item in ranked:
+        key = family(item)
+        if key not in used and useful(item) and _MOVEMENT_STATEMENT.search(item.text or ""):
+            selected.append(item)
+            used.add(key)
+    # Preserve source diversity even when a relevant passage has no explicit
+    # verb (for example a compact battle or arrival statement).
+    for item in ranked:
+        key = family(item)
+        if key not in used and useful(item):
+            selected.append(item)
+            used.add(key)
+    # Structural items and additional siblings are only fallback material;
+    # their original deterministic rank remains their order within fallback.
+    selected_ids = {item.id for item in selected}
+    selected.extend(item for item in ranked if item.id not in selected_ids)
+    return selected
 
 
 def rerank_evidence(query: str, evidence: list[Evidence]) -> list[Evidence]:

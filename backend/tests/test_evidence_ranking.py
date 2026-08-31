@@ -1,5 +1,11 @@
 from backend.app.models import Evidence
-from backend.app.rag.evidence_ranking import is_navigation_or_heading, normalized_tokens, rerank_evidence
+from backend.app.rag.evidence_ranking import (
+    diversify_route_evidence,
+    is_navigation_or_heading,
+    is_route_or_movement_query,
+    normalized_tokens,
+    rerank_evidence,
+)
 from backend.app.rag.query_roles import analyze_query
 from backend.app.rag.retriever import ChromaHistoricalRetriever
 from backend.app.rag.lexical_index import LexicalEvidenceIndex
@@ -305,3 +311,46 @@ def test_contents_heading_is_navigation():
     item = evidence("contents", "Book I. The consuls of the year.", 0.5, heading="CONTENTS")
     assert is_navigation_or_heading(item)
     assert rerank_evidence("Battle of Cannae", [item])[0].metadata["retrieval_ranking"]["navigation_penalty"] > 0
+
+
+def test_route_diversification_prevents_one_source_family_from_consuming_budget():
+    concentrated = [
+        evidence(f"a-{index}", f"The army marched onward in episode {index}.", .9 - index / 100,
+                 source_chunk_id="source-a", semantic_candidate=True, vector_rank=index + 1)
+        for index in range(8)
+    ]
+    independent = [
+        evidence("b", "The army crossed the river and arrived at the city.", .4, source_chunk_id="source-b", lexical_candidate=True, lexical_score=4),
+        evidence("c", "The commander moved through the pass with the army.", .3, source_chunk_id="source-c", lexical_candidate=True, lexical_score=3),
+    ]
+    ranked = rerank_evidence("historical army route", [*concentrated, *independent])
+    result = diversify_route_evidence("historical army route", ranked)
+    assert {item.metadata["source_chunk_id"] for item in result[:3]} == {"source-a", "source-b", "source-c"}
+    assert len({item.metadata["source_chunk_id"] for item in result[:3]}) == 3
+
+
+def test_route_diversification_preserves_evidence_and_provenance_without_chronology():
+    route = Evidence(
+        id="route", author="Livy", work="History", locator="Book XXI",
+        excerpt="The army crossed the river and entered the province.",
+        text="The army crossed the river and entered the province.", score=.8,
+        metadata={"document_id": "doc", "source_chunk_id": "route-source", "semantic_candidate": True, "vector_rank": 1},
+    )
+    unrelated = evidence("other", "The senate debated a decree.", .7, source_chunk_id="other-source",
+                         semantic_candidate=True, vector_rank=2)
+    result = diversify_route_evidence("军队路线", rerank_evidence("军队路线", [route, unrelated]))
+    assert result[0].id == "route"
+    assert result[0].author == "Livy" and result[0].work == "History"
+    assert result[0].metadata["source_chunk_id"] == "route-source"
+    assert "sequence" not in result[0].metadata and "chronology" not in result[0].metadata
+
+
+def test_route_diversification_isolated_from_ordinary_qa_and_navigation_is_fallback():
+    prose = evidence("prose", "The senate discussed a treaty with the allies.", .8, source_chunk_id="prose", semantic_candidate=True, vector_rank=1)
+    navigation = evidence("navigation", "The following is contained: treaty with the allies.", .7,
+                          source_chunk_id="navigation", semantic_candidate=True, vector_rank=2)
+    ranked = rerank_evidence("senate treaty", [navigation, prose])
+    assert not is_route_or_movement_query("senate treaty")
+    assert diversify_route_evidence("senate treaty", ranked) == ranked
+    route_ranked = rerank_evidence("army route", [navigation, prose])
+    assert diversify_route_evidence("army route", route_ranked)[0].id == "prose"

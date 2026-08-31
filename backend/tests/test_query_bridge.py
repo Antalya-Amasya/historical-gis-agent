@@ -23,7 +23,13 @@ def test_bridge_applicability_disable_dedup_and_v2_only_term_exclusion():
     assert HistoricalQueryBridge(enabled=False).transform("凯撒与庞培的内战").retrieval_query == "凯撒与庞培的内战"
     result = bridge.transform("汉尼拔翻越阿尔卑斯山")
     assert result.retrieval_query.count("crossing") == 1
-    assert "march" not in bridge.transform("罗马行军").retrieval_query
+    assert "march" in bridge.transform("罗马行军").retrieval_query
+
+
+def test_route_intent_bridge_is_generic_and_contains_no_historical_place_hint():
+    result = HistoricalQueryBridge().transform("展示汉尼拔218 BCE路线")
+    assert result.retrieval_query.endswith("Hannibal route march movement")
+    assert "Alps" not in result.retrieval_query and "Padus" not in result.retrieval_query
 
 
 def test_bridge_failure_falls_back_and_entry_forms_have_no_storage_hints():

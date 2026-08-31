@@ -3,7 +3,7 @@ import logging
 
 from backend.app.models import Evidence
 from .store import ChromaEvidenceStore
-from .evidence_ranking import rerank_evidence
+from .evidence_ranking import diversify_route_evidence, rerank_evidence
 from .lexical_index import derive_passages
 
 logger = logging.getLogger(__name__)
@@ -66,7 +66,8 @@ class ChromaHistoricalRetriever(HistoricalRetriever):
             metadata = {**meta, "document_id": meta.get("document_id"), "lexical_candidate": True, "lexical_score": lexical.lexical_score, "source_chunk_id": meta.get("source_chunk_id", lexical.id.split(":", 1)[0])}
             evidence_by_id[lexical.id] = Evidence(id=lexical.id, author=meta["author"], work=meta["work"], locator=locator, excerpt=lexical.text[:500], text=lexical.text, book=meta.get("book"), chapter=meta.get("chapter"), section=meta.get("section"), page_start=int(page_start) if page_start is not None else None, page_end=int(page_end) if page_end is not None else None, source_file=meta.get("source_file"), source_type=meta.get("source_type"), score=0.0, metadata=metadata)
         selected = []
-        for item in rerank_evidence(query, list(evidence_by_id.values())):
+        ranked = rerank_evidence(query, list(evidence_by_id.values()))
+        for item in diversify_route_evidence(query, ranked):
             source = item.metadata.get("source_chunk_id")
             start, end = item.metadata.get("passage_start"), item.metadata.get("passage_end")
             overlapping = False
