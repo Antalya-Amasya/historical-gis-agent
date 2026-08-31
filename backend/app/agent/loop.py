@@ -3,7 +3,7 @@ import json, logging
 from time import perf_counter
 from backend.app.agent.prompts import SYSTEM_PROMPT
 from backend.app.agent.evidence_support import assess_evidence_support, assess_final_answer_provenance, event_relation_supports_answer, render_evidence_citations, validate_evidence_selection
-from backend.app.models import AgentState, AgentToolHistoryEntry
+from backend.app.models import AgentProviderCallTiming, AgentState, AgentToolHistoryEntry
 
 logger = logging.getLogger(__name__)
 _ROUTE_TERMS = ("route", "路线", "行军", "进军", "绘制", "展示")
@@ -210,6 +210,31 @@ class BoundedAgentLoop:
             return "correct"
         return "failed_contract"
 
+    @staticmethod
+    def _record_provider_timing(
+        state: AgentState, *, request_started: float, call_started: float,
+        call_finished: float, agent_step: int, status: str,
+    ) -> None:
+        """Keep request-local timing only; prompts, responses, and secrets stay out."""
+        timing = AgentProviderCallTiming(
+            call_number=len(state.provider_call_timing) + 1,
+            agent_step=agent_step,
+            started_ms=int((call_started - request_started) * 1000),
+            finished_ms=int((call_finished - request_started) * 1000),
+            elapsed_ms=int((call_finished - call_started) * 1000),
+            status=status,
+        )
+        state.provider_call_timing.append(timing)
+        timings = state.provider_call_timing
+        state.tool_results["provider_timing_summary"] = {
+            "total_calls": len(timings),
+            "successful_calls": sum(item.status == "SUCCESS" for item in timings),
+            "timed_out_calls": sum(item.status == "TIMEOUT" for item in timings),
+            "failed_calls": sum(item.status == "ERROR" for item in timings),
+            "total_wait_ms": sum(item.elapsed_ms for item in timings),
+            "longest_call_ms": max((item.elapsed_ms for item in timings), default=0),
+        }
+
     def run(self, user_message: str, state: AgentState) -> tuple[str, AgentState]:
         started = perf_counter()
         logger.info("agent_request_started")
@@ -223,6 +248,7 @@ class BoundedAgentLoop:
         state.historical_route_presentation = None
         state.historical_route_diagnostics = None
         state.historical_events = []
+        state.provider_call_timing = []
         state.historical_event_diagnostics = None
         state.intent = state.route_intent.intent if state.route_intent else state.requested_output
         state.messages.append({"role": "user", "content": user_message})
@@ -244,13 +270,25 @@ class BoundedAgentLoop:
         for step in range(1, self.max_steps + 1):
             state.step_count = step
             logger.info("llm_%s_started step=%s", "continuation" if step > 1 else "request", step)
+            provider_started = perf_counter()
             try:
                 schemas = self.tools.schemas if state.requested_output == "answer" and state.historical_evidence else [tool for tool in self.tools.schemas if tool["name"] != "submit_grounded_answer"]
                 response = self.provider.complete(messages, schemas)
             except Exception as exc:
+                provider_finished = perf_counter()
+                self._record_provider_timing(
+                    state, request_started=started, call_started=provider_started,
+                    call_finished=provider_finished, agent_step=step,
+                    status="TIMEOUT" if any(term in str(exc).lower() for term in ("timeout", "timed out")) else "ERROR",
+                )
                 state.status = "provider_error"
                 state.warnings.append(f"LLM provider failure: {type(exc).__name__}")
                 return self._finish("The configured language-model provider is unavailable.", state, started)
+            provider_finished = perf_counter()
+            self._record_provider_timing(
+                state, request_started=started, call_started=provider_started,
+                call_finished=provider_finished, agent_step=step, status="SUCCESS",
+            )
             state.tool_execution_stats["llm_api_calls"] += 1
             state.tool_results["llm_api_call_count"] = state.tool_execution_stats["llm_api_calls"]
             if response.http_status is not None:

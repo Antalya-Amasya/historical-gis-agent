@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -297,6 +297,16 @@ class AgentToolHistoryEntry(BaseModel):
     budget_source: str = "general"
 
 
+class AgentProviderCallTiming(BaseModel):
+    """Request-relative, content-free timing for one provider invocation."""
+    call_number: int = Field(ge=1)
+    agent_step: int = Field(ge=1)
+    started_ms: int = Field(ge=0)
+    finished_ms: int = Field(ge=0)
+    elapsed_ms: int = Field(ge=0)
+    status: Literal["SUCCESS", "TIMEOUT", "ERROR"]
+
+
 class AgentState(BaseModel):
     session_id: str
     messages: list[dict[str, str]] = Field(default_factory=list)
@@ -347,6 +357,7 @@ class AgentState(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     final_answer: str | None = None
     tool_execution_stats: dict[str, int] = Field(default_factory=dict)
+    provider_call_timing: list[AgentProviderCallTiming] = Field(default_factory=list)
 
 
 class ChatRequest(BaseModel):
