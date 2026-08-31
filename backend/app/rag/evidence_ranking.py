@@ -45,6 +45,14 @@ _MOVEMENT_STATEMENT = re.compile(
     r"\b(?:march(?:ed|ing)?|moved|advance(?:d|ment)?|cross(?:ed|ing)?|arriv(?:ed|ing)|depart(?:ed|ing)?|left|entered|passed|proceeded|travel(?:led|ed|ing)?)\b",
     re.IGNORECASE,
 )
+_MOVEMENT_PAIR_STATEMENT = re.compile(
+    r"\b(?:march(?:ed|es|ing)?|moved|advance(?:d|ment)?|cross(?:ed|ing)?|"
+    r"arriv(?:ed|ing)|depart(?:ed|ing)?|left|entered|passed|proceeded|"
+    r"travel(?:led|ed|ing)?)\b(?!\s+(?:was|is|were|has|had)\b)"
+    r"[^,;.!?]{0,50}\bfrom\b[^,;.!?]{1,80}"
+    r"\b(?:to|into|toward(?:s)?)\b",
+    re.IGNORECASE,
+)
 
 
 def _is_structural_heading(value: str) -> bool:
@@ -96,8 +104,40 @@ def diversify_route_evidence(query: str, ranked: list[Evidence]) -> list[Evidenc
     def useful(item: Evidence) -> bool:
         return not is_navigation_or_heading(item)
 
+    roles = analyze_query(query)
+
+    def in_query_scope(item: Evidence) -> bool:
+        """Require a pair candidate to retain an available actor/region scope.
+
+        This is only a bounded retrieval-selection gate.  It does not assert
+        that either textual endpoint is historically valid or ordered.
+        """
+        ranking = item.metadata.get("retrieval_ranking") or {}
+        scoped_support = []
+        if roles.person_terms:
+            scoped_support.append(float(ranking.get("person_support", 0.0)))
+        if roles.location_terms:
+            scoped_support.append(float(ranking.get("location_support", 0.0)))
+        return not scoped_support or any(value > 0 for value in scoped_support)
+
     selected: list[Evidence] = []
     used: set[str] = set()
+    pair_used: set[str] = set()
+
+    # Preserve one locally scoped directional-movement passage per source
+    # family before a broader movement sibling consumes that family's slot.
+    # The lexical shape affects retrieval coverage only; extraction remains
+    # the authority for endpoints and movement direction.
+    for item in ranked:
+        key = family(item)
+        if (
+            key not in pair_used
+            and useful(item)
+            and in_query_scope(item)
+            and _MOVEMENT_PAIR_STATEMENT.search(item.text or "")
+        ):
+            selected.append(item)
+            pair_used.add(key)
 
     # Take one movement-bearing body passage per source family first.  This
     # prevents many non-overlapping windows from one retrieved source chunk

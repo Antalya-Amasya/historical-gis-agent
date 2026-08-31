@@ -329,6 +329,49 @@ def test_route_diversification_prevents_one_source_family_from_consuming_budget(
     assert len({item.metadata["source_chunk_id"] for item in result[:3]}) == 3
 
 
+def test_route_diversification_preserves_scoped_directional_movement_before_broad_sibling():
+    broad = evidence(
+        "broad", "Caesar conducted a broad military campaign in Gaul.", .9,
+        source_chunk_id="campaign-source", semantic_candidate=True, vector_rank=1,
+    )
+    directional = evidence(
+        "directional", "Caesar marched from the first camp to the fortified town.", .6,
+        source_chunk_id="movement-source", lexical_candidate=True, lexical_score=2,
+    )
+    unrelated = evidence(
+        "unrelated", "Pompey marched from the port to the city.", .8,
+        source_chunk_id="unrelated-source", semantic_candidate=True, vector_rank=2,
+    )
+    sibling = evidence(
+        "sibling", "Caesar marched onward during the campaign.", .85,
+        source_chunk_id="movement-source", semantic_candidate=True, vector_rank=3,
+    )
+    nominal = evidence(
+        "nominal", "Caesar recorded that the order of the march was different from that reported to the Nervii.", .82,
+        source_chunk_id="nominal-source", semantic_candidate=True, vector_rank=4,
+    )
+
+    result = diversify_route_evidence(
+        "Caesar campaign route", rerank_evidence(
+            "Caesar campaign route", [broad, unrelated, sibling, directional, nominal]
+        )
+    )
+
+    assert result[0].id == "directional"
+    ids = [item.id for item in result]
+    assert ids.index("directional") < ids.index("sibling")
+    assert ids.index("directional") < ids.index("unrelated")
+    assert ids.index("directional") < ids.index("nominal")
+    assert "sibling" in ids
+
+
+def test_directional_movement_coverage_does_not_change_ordinary_qa_order():
+    general = evidence("general", "Caesar governed the province.", .9, source_chunk_id="general")
+    movement = evidence("movement", "Caesar marched from the camp to the town.", .5, source_chunk_id="movement")
+    ranked = rerank_evidence("What did Caesar govern?", [general, movement])
+    assert diversify_route_evidence("What did Caesar govern?", ranked) == ranked
+
+
 def test_route_diversification_preserves_evidence_and_provenance_without_chronology():
     route = Evidence(
         id="route", author="Livy", work="History", locator="Book XXI",
