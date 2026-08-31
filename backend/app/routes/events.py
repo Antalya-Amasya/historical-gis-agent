@@ -50,7 +50,7 @@ class EvidenceGroundedHistoricalEventExtractor:
         re.IGNORECASE,
     )
     _TROOP_PROVENANCE_FROM = re.compile(
-        r"\b(?:archers|horse|cavalry|infantry|soldiers|men|troops|forces|convoys|people|legions?)\s+from\s+(?:the\s+)?$",
+        r"\b(?:archers|horse|cavalry|infantry|soldiers|men|troops|forces|convoys|people|legions?)\s+from\b",
         re.IGNORECASE,
     )
     _MOVEMENT_TO_PREFIX = re.compile(
