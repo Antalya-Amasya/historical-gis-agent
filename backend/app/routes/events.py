@@ -32,7 +32,7 @@ class EvidenceGroundedHistoricalEventExtractor:
         (HistoricalEventType.TREATY, r"\b(?:treaty|peace agreement|concluded peace)\b"),
         (HistoricalEventType.ELECTION, r"\b(?:elected|election|chosen as)\b"),
         (HistoricalEventType.REBELLION, r"\b(?:rebellion|revolt(?:ed)?|uprising|insurrection)\b"),
-        (HistoricalEventType.MOVEMENT, r"\b(?:marched|advanced|proceeded|moved|travelled|traveled|departed|arrived|entered|crossed|withdrew|retreated)\b"),
+        (HistoricalEventType.MOVEMENT, r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|arrived|entered|crossed|withdrew|retreated)\b"),
         (HistoricalEventType.MILITARY, r"\b(?:campaign|army|war|invaded|conquered|captured)\b"),
         (HistoricalEventType.POLITICAL, r"\b(?:senate .*\bdecree|tribune .*\b(?:proposed|elected|opposed)|consul .*\b(?:appointed|elected|sent)|assembly .*\b(?:elected|passed)|issued a decree)\b"),
     )
@@ -140,7 +140,7 @@ class EvidenceGroundedHistoricalEventExtractor:
             role = None
             if re.search(r"\b(?:left|leaving|departed(?:\s+from)?|from)\s+(?:the\s+)?$", prefix, re.IGNORECASE):
                 role = EventPlaceRole.ORIGIN
-            elif re.search(r"\b(?:reached|arrived\s+(?:at|in)|came\s+to|entered|passed\s+into|to|into)\s+(?:the\s+)?$", prefix, re.IGNORECASE):
+            elif re.search(r"\b(?:reached|arrived\s+(?:at|in)|came\s+to|entered|passed\s+into|marched?\s+to|marches\s+to|marching\s+to|march\s+to|to|into)\s+(?:the\s+)?$", prefix, re.IGNORECASE):
                 role = EventPlaceRole.DESTINATION
             if role is None:
                 continue

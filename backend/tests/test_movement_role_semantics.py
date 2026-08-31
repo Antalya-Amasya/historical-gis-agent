@@ -79,6 +79,34 @@ def test_article_prefixed_origin_is_emitted_without_promoting_unresolved_place()
     assert by_raw["B"].role is EventPlaceRole.DESTINATION
 
 
+def test_march_infinitive_preserves_destination_without_inventing_origin():
+    event = EvidenceGroundedHistoricalEventExtractor(extractor()).extract(
+        [evidence("alesia", "The army immediately began to march to Alesia.")]
+    )[0][0]
+    assert event.event_type.value == "MOVEMENT"
+    roles = {item.raw_text: item.role for item in event.place_mentions}
+    assert roles == {"Alesia": EventPlaceRole.DESTINATION}
+    assert EventPlaceRole.ORIGIN not in roles.values()
+
+
+def test_army_at_place_does_not_create_movement_direction():
+    events, _ = EvidenceGroundedHistoricalEventExtractor(extractor()).extract(
+        [evidence("at-b", "The army was at B.")]
+    )
+    assert not any(
+        mention.role in {EventPlaceRole.ORIGIN, EventPlaceRole.DESTINATION}
+        for event in events
+        for mention in event.place_mentions
+    )
+
+
+def test_co_occurring_places_without_movement_do_not_create_direction():
+    events, _ = EvidenceGroundedHistoricalEventExtractor(extractor()).extract(
+        [evidence("ab", "A and B were discussed near C.")]
+    )
+    assert events == []
+
+
 def test_unrelated_mentions_and_external_metadata_cannot_create_direction():
     assert claims("A and B were discussed near C.") == []
     ranked = evidence("ranked", "The army marched from A to B.", rank=999, latitude=91, longitude=999, actor="unrelated")
