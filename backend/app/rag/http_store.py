@@ -1,6 +1,18 @@
 """Read-only HTTP evidence store for the Roman Republic v2 corpus."""
 from __future__ import annotations
 
+from threading import Lock
+
+
+_PROCESS_LEXICAL_INDEXES: dict[str, object] = {}
+_PROCESS_LEXICAL_INDEX_LOCK = Lock()
+
+
+def clear_process_lexical_index_cache() -> None:
+    """Test seam; normal production use keeps one immutable index per process."""
+    with _PROCESS_LEXICAL_INDEX_LOCK:
+        _PROCESS_LEXICAL_INDEXES.clear()
+
 
 def canonical_e5_query(text: str) -> str:
     """Apply the E5 query prefix exactly once."""
@@ -38,7 +50,17 @@ class ChromaHttpEvidenceStore:
         if not hasattr(self.collection, "get"):
             return []
         if self._lexical_index is None:
-            self._lexical_index = LexicalEvidenceIndex(self.collection)
+            key = str(getattr(self.collection, "id", id(self.collection)))
+            with _PROCESS_LEXICAL_INDEX_LOCK:
+                index = _PROCESS_LEXICAL_INDEXES.get(key)
+                if index is None:
+                    candidate = LexicalEvidenceIndex(self.collection)
+                    # Build while protected so a second request cannot create
+                    # a duplicate full-corpus index.  Cache only after success.
+                    candidate.ensure_built()
+                    _PROCESS_LEXICAL_INDEXES[key] = candidate
+                    index = candidate
+                self._lexical_index = index
         return self._lexical_index.query(query, top_k, filters)
 
 
