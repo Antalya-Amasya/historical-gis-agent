@@ -157,6 +157,21 @@ def test_unproven_gap_yields_partial_route_instead_of_a_bridged_itinerary():
     assert outcome.diagnostics["distinct_place_count"] == 3 and outcome.diagnostics["ordered_place_count"] == 2
 
 
+def test_contextual_waypoints_are_counted_but_never_invent_ordering():
+    first = event("first", [binding("Genava", EventPlaceRole.RELATED_PLACE, ["a"])], ["a"])
+    second = event("second", [binding("Lutetia", EventPlaceRole.RELATED_PLACE, ["b"])], ["b"])
+    first.source_statements = ["The campaign concerned Genava."]
+    second.source_statements = ["The campaign concerned Lutetia."]
+    outcome = EventAnchorRouteBuilder().build_with_diagnostics(
+        [first, second], [evidence("a"), evidence("b")], event_id="campaign", name="campaign", period="unspecified",
+        allow_contextual_related_places=True,
+    )
+    assert outcome.route is None
+    assert outcome.diagnostics["strong_anchor_count"] == 0
+    assert outcome.diagnostics["contextual_anchor_count"] == 2
+    assert outcome.diagnostics["reason_codes"] == ["INSUFFICIENT_ORDERING"]
+
+
 def test_accepted_ordering_relation_keeps_event_and_evidence_provenance():
     outcome = build([movement("march", "Genava", "Lutetia", ["a", "b"])], [evidence("a"), evidence("b")])
     relation = outcome.relations[0]

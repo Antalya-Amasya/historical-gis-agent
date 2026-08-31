@@ -107,7 +107,14 @@ class AgentToolRegistry:
                     "presentation": state.historical_route_presentation,
                     "gis_reconstruction": existing_gis,
                 }, f"build_historical_route reused_existing_route route_points={len(state.historical_route.ordered_points)}"
-            event_first = self.event_route_builder.build_with_diagnostics(state.historical_events, state.historical_evidence, event_id=arguments["event_id"], name=arguments["name"], period=arguments["period"])
+            event_first = self.event_route_builder.build_with_diagnostics(
+                state.historical_events,
+                state.historical_evidence,
+                event_id=arguments["event_id"],
+                name=arguments["name"],
+                period=arguments["period"],
+                allow_contextual_related_places=state.requested_output == "historical_route",
+            )
             legacy = None
             if event_first.route is not None:
                 route, diagnostics = event_first.route, dict(event_first.diagnostics)

@@ -119,8 +119,10 @@ def _structural_span(anchors: list[EventAnchor], evidence_by_id: dict[str, Evide
 class EventAnchorRouteBuilder:
     """Build a HistoricalRoute only from anchors whose order is independently proven."""
 
-    def build_with_diagnostics(self, events: list[HistoricalEvent], evidence: list[Evidence], *, event_id: str, name: str, period: str) -> EventRouteOutcome:
-        anchors, projection = project_event_anchors(events, evidence)
+    def build_with_diagnostics(self, events: list[HistoricalEvent], evidence: list[Evidence], *, event_id: str, name: str, period: str, allow_contextual_related_places: bool = False) -> EventRouteOutcome:
+        anchors, projection = project_event_anchors(
+            events, evidence, allow_contextual_related_places=allow_contextual_related_places,
+        )
         diagnostics: dict[str, object] = {
             "route_source": "event_anchor",
             "anchor_count": len(anchors),
@@ -128,6 +130,9 @@ class EventAnchorRouteBuilder:
             "ordering_relation_count": 0,
             "ordered_place_count": 0,
             "route_point_count": 0,
+            "strong_anchor_count": sum(anchor.admission_type != "CONTEXTUAL_WAYPOINT" for anchor in anchors),
+            "contextual_anchor_count": sum(anchor.admission_type == "CONTEXTUAL_WAYPOINT" for anchor in anchors),
+            "contextual_anchor_keys": [f"{anchor.event_id}|{anchor.canonical_name}" for anchor in anchors if anchor.admission_type == "CONTEXTUAL_WAYPOINT"],
             "projection_diagnostics": list(projection),
             "ordering_provenance": [],
             "reason_codes": [],

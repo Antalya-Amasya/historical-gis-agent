@@ -27,12 +27,14 @@ class HistoricalRouteTraceBuilder:
         legacy: RouteBuildOutcome | None, final_route: HistoricalRoute | None, route_source: str,
     ) -> dict[str, object]:
         evidence_by_id = {item.id: item for item in evidence}
+        contextual_keys = set(event_first.diagnostics.get("contextual_anchor_keys", []))
         places: list[dict[str, object]] = []
         for event in events:
             for binding in event.place_bindings:
                 place = binding.place
+                contextual = f"{event.id}|{binding.mention.canonical_hint or binding.mention.raw_text}" in contextual_keys
                 eligible = (
-                    binding.role.value in {"ORIGIN", "DESTINATION", "EVENT_SITE"}
+                    (binding.role.value in {"ORIGIN", "DESTINATION", "EVENT_SITE"} or contextual)
                     and binding.resolution_status.value == "RESOLVED"
                     and place is not None and place.latitude is not None and place.longitude is not None
                 )
@@ -55,6 +57,7 @@ class HistoricalRouteTraceBuilder:
                     "resolved_place_id": place.id if place else None,
                     "spatial_semantics": place.spatial_semantics.value if place else None,
                     "anchor_eligible": eligible,
+                    "waypoint_authority": "CONTEXTUAL_WAYPOINT" if contextual else None,
                     "rejection_reason": rejection,
                 })
 

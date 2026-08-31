@@ -79,6 +79,17 @@ def test_related_place_and_missing_geography_are_explicitly_rejected_in_trace():
     assert by_name["Druentia"]["rejection_reason"] == "GEOGRAPHY_UNRESOLVED"
 
 
+def test_contextual_trace_requires_route_intent_and_keeps_authority_tier():
+    tools = AgentToolRegistry(Retriever([item("context", "The army campaigned near Padus.")]), Geography())
+    state = AgentState(session_id="contextual")
+    state.requested_output = "historical_route"
+    tools.execute("search_historical_evidence", {"query": "army route"}, state)
+    tools.execute("build_historical_route", {"event_id": "trace", "name": "trace", "period": "unspecified"}, state)
+    trace = state.historical_route_diagnostics["provenance_trace"]
+    padus = next(entry for entry in trace["places"] if entry["normalized_name"] == "Padus")
+    assert padus["anchor_eligible"] is True and padus["waypoint_authority"] == "CONTEXTUAL_WAYPOINT"
+
+
 def test_trace_is_generic_and_never_reads_final_answer_prose():
     state, _ = build([item("move", "The army marched from Rhone into Alpes.")])
     trace = state.historical_route_diagnostics["provenance_trace"]
