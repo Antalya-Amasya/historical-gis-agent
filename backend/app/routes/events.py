@@ -36,7 +36,7 @@ class EvidenceGroundedHistoricalEventExtractor:
         (HistoricalEventType.MILITARY, r"\b(?:campaign|army|war|invaded|conquered|captured)\b"),
         (HistoricalEventType.POLITICAL, r"\b(?:senate .*\bdecree|tribune .*\b(?:proposed|elected|opposed)|consul .*\b(?:appointed|elected|sent)|assembly .*\b(?:elected|passed)|issued a decree)\b"),
     )
-    _PLACE_PATTERN = re.compile(r"\b(?P<role>at|in|near|from|to|into)\s+(?P<place>[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*){0,3})")
+    _PLACE_PATTERN = re.compile(r"\b(?P<role>(?i:at|in|near|from|to|into|through))\s+(?:(?i:the)\s+)?(?P<place>[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*){0,3})")
     _RETROSPECTIVE = re.compile(
         r"\b(?:after|following|because of|since)\s+(?:the\s+)?(?:battle|defeat|death|murder|assassination)\b[^,;:.]*[,;:]?\s*",
         re.IGNORECASE,
@@ -133,6 +133,20 @@ class EvidenceGroundedHistoricalEventExtractor:
                 resolution_status=EventPlaceResolutionStatus.NORMALIZED_TEXT_ONLY,
                 alias_provenance=place.provenance,
             ))
+        # Directional verbs attach roles to their immediately following known
+        # place.  This is evidence-local syntax, never list order or geography.
+        for position, place, _alias in aliases:
+            prefix = sentence[:position]
+            role = None
+            if re.search(r"\b(?:left|leaving|departed(?:\s+from)?|from)\s+(?:the\s+)?$", prefix, re.IGNORECASE):
+                role = EventPlaceRole.ORIGIN
+            elif re.search(r"\b(?:reached|arrived\s+(?:at|in)|came\s+to|entered|passed\s+into|to|into)\s+(?:the\s+)?$", prefix, re.IGNORECASE):
+                role = EventPlaceRole.DESTINATION
+            if role is None:
+                continue
+            for item in values:
+                if item.canonical_hint == place.canonical_name:
+                    item.role = role
         return values
 
     def _eligible(self, sentence: str, event_type: HistoricalEventType, query_terms: set[str] | None) -> bool:

@@ -56,16 +56,18 @@ def test_legacy_trace_records_exact_evidence_and_does_not_create_authority():
     assert state.historical_route.evidence_refs == ["cross"]
 
 
-def test_legacy_trace_keeps_each_linked_edge_and_claim_distinguishable():
+def test_event_first_uses_explicit_departure_arrival_roles_without_fusing_prior_traversal():
     state, _ = build([
         item("first", "The army crossed the Rhone and entered Alpes.", document_id="source", spine_index=1, start_offset=10),
         item("second", "The army left Alpes and arrived at Padus.", document_id="source", spine_index=1, start_offset=20),
     ])
     trace = state.historical_route_diagnostics["provenance_trace"]
-    assert [(edge["from"], edge["to"]) for edge in trace["final_edges"]] == [
-        ("Rhodanus", "Alpes"), ("Alpes", "Padus"),
-    ]
-    assert [edge["evidence_ids"] for edge in trace["final_edges"]] == [["first"], ["second"]]
+    # Rhone is a traversal/related place here, not an inferred origin.  The
+    # event-first route therefore uses only the independently explicit
+    # Alpes -> Padus departure/arrival statement and never fuses the two.
+    assert trace["route_source"] == "event_anchor"
+    assert [(edge["from"], edge["to"]) for edge in trace["final_edges"]] == [("Alpes", "Padus")]
+    assert [edge["evidence_ids"] for edge in trace["final_edges"]] == [["second"]]
 
 
 def test_related_place_and_missing_geography_are_explicitly_rejected_in_trace():

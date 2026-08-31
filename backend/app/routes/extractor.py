@@ -71,8 +71,8 @@ class HistoricalPlaceMentionExtractor:
         return [part.strip() for part in re.split(r"(?<=[.!?;])\s+|\n+", text) if part.strip()]
 
     @staticmethod
-    def _place_after(start: int, aliases: list[tuple[int, HistoricalPlaceAlias, str]]) -> HistoricalPlaceAlias | None:
-        candidates = [place for position, place, _ in aliases if position >= start]
+    def _place_after(start: int, aliases: list[tuple[int, HistoricalPlaceAlias, str]], *, before: int | None = None) -> HistoricalPlaceAlias | None:
+        candidates = [place for position, place, _ in aliases if position >= start and (before is None or position < before)]
         return candidates[0] if candidates else None
 
     def movement_claims(self, evidence: list[Evidence], *, event_id: str) -> list[HistoricalClaim]:
@@ -88,24 +88,35 @@ class HistoricalPlaceMentionExtractor:
                 aliases = self.aliases_in(sentence)
                 lower = sentence.lower()
                 relation: tuple[str, HistoricalPlaceAlias, HistoricalPlaceAlias] | None = None
-                from_match = re.search(r"\bfrom\s+", lower)
-                to_match = re.search(r"\b(?:marched|advanced|proceeded|moved|travelled|traveled|returned|withdrew|retreated|hastened|led(?:\s+(?:his|the)\s+army)?)\b.{0,180}?\b(?:to|into|toward|towards)\s+", lower)
-                if from_match and to_match:
-                    source, destination = self._place_after(from_match.end(), aliases), self._place_after(to_match.end(), aliases)
+                movement_from = re.search(r"\b(?:marched|advanced|proceeded|moved|travelled|traveled|returned|withdrew|retreated|hastened|led(?:\s+(?:his|the)\s+army)?)\b.{0,180}?\bfrom\s+", lower)
+                if movement_from:
+                    from_match = re.search(r"\bfrom\s+", lower[movement_from.start():])
+                    from_start = movement_from.start() + from_match.start() if from_match else None
+                    from_end = movement_from.start() + from_match.end() if from_match else None
+                    to_match = re.search(r"\b(?:to|into|toward|towards)\s+", lower[from_end:] if from_end is not None else "")
+                    to_start = from_end + to_match.start() if to_match and from_end is not None else None
+                    to_end = from_end + to_match.end() if to_match and from_end is not None else None
+                else:
+                    from_start = from_end = to_start = to_end = None
+                if from_start is not None and from_end is not None and to_start is not None and to_end is not None:
+                    source = self._place_after(from_end, aliases, before=to_start)
+                    destination = self._place_after(to_end, aliases)
                     if source and destination and source != destination:
                         relation = ("from_to", source, destination)
                 if relation is None:
-                    leave_match = re.search(r"\b(?:left|departed(?:\s+from)?)\s+", lower)
-                    arrive_match = re.search(r"\b(?:reached|arrived\s+(?:at|in)|came\s+to|entered|passed\s+into)\s+", lower)
-                    if leave_match and arrive_match:
-                        source, destination = self._place_after(leave_match.end(), aliases), self._place_after(arrive_match.end(), aliases)
+                    leave_match = re.search(r"\b(?:left|leaving|departed(?:\s+from)?)\s+", lower)
+                    arrive_match = re.search(r"\b(?:reached|arriv(?:ed|ing)\s+(?:at|in)|came\s+to|entered|passed\s+into)\s+", lower)
+                    if leave_match and arrive_match and leave_match.start() < arrive_match.start():
+                        source = self._place_after(leave_match.end(), aliases, before=arrive_match.start())
+                        destination = self._place_after(arrive_match.end(), aliases)
                         if source and destination and source != destination:
                             relation = ("departure_arrival", source, destination)
                 if relation is None:
                     cross_match = re.search(r"\b(?:crossed|crossing|traversed|traversing)\s+(?:the\s+)?", lower)
-                    arrive_match = re.search(r"\b(?:came\s+to|arrived\s+(?:at|in)|entered|passed\s+into)\s+", lower)
-                    if cross_match and arrive_match:
-                        crossed, destination = self._place_after(cross_match.end(), aliases), self._place_after(arrive_match.end(), aliases)
+                    arrive_match = re.search(r"\b(?:came\s+to|arriv(?:ed|ing)\s+(?:at|in)|entered|passed\s+into)\s+", lower)
+                    if cross_match and arrive_match and cross_match.start() < arrive_match.start():
+                        crossed = self._place_after(cross_match.end(), aliases, before=arrive_match.start())
+                        destination = self._place_after(arrive_match.end(), aliases)
                         if crossed and destination and crossed != destination:
                             relation = ("crossing_arrival", crossed, destination)
                 if relation is None:
