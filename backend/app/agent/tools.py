@@ -10,6 +10,7 @@ from backend.app.candidate_routes.terrain import MosaicDEMProvider
 from backend.app.rag.retriever import HistoricalRetriever
 from backend.app.routes.extractor import HistoricalRouteExtractor
 from backend.app.routes.event_route_orchestration import EventAnchorRouteBuilder
+from backend.app.routes.route_provenance import HistoricalRouteTraceBuilder
 from backend.app.routes.events import EvidenceGroundedHistoricalEventExtractor, HistoricalEventConsolidator
 from backend.app.routes.event_places import HistoricalEventPlaceResolver
 from backend.app.route_orchestrator import (
@@ -107,6 +108,7 @@ class AgentToolRegistry:
                     "gis_reconstruction": existing_gis,
                 }, f"build_historical_route reused_existing_route route_points={len(state.historical_route.ordered_points)}"
             event_first = self.event_route_builder.build_with_diagnostics(state.historical_events, state.historical_evidence, event_id=arguments["event_id"], name=arguments["name"], period=arguments["period"])
+            legacy = None
             if event_first.route is not None:
                 route, diagnostics = event_first.route, dict(event_first.diagnostics)
             else:
@@ -114,6 +116,10 @@ class AgentToolRegistry:
                 legacy = self.route_extractor.build_with_diagnostics(state.historical_evidence, event_id=arguments["event_id"], name=arguments["name"], period=arguments["period"])
                 route = legacy.route
                 diagnostics = {**legacy.diagnostics, "route_source": "legacy_movement_claims" if route is not None else "none", "event_anchor_diagnostics": event_first.diagnostics}
+            diagnostics["provenance_trace"] = HistoricalRouteTraceBuilder.build(
+                state.historical_events, state.historical_evidence, event_first, legacy, route,
+                str(diagnostics.get("route_source", "event_anchor")),
+            )
             state.historical_route_diagnostics = diagnostics
             if route is None:
                 return {"route": None, "diagnostics": diagnostics}, "build_historical_route route_points=0 diagnostics=" + ",".join(diagnostics.get("reason_codes", []))
