@@ -53,6 +53,19 @@ class EvidenceGroundedHistoricalEventExtractor:
         r"\b(?:archers|horse|cavalry|infantry|soldiers|men|troops|forces|convoys|people|legions?)\s+from\b",
         re.IGNORECASE,
     )
+    _ANAPHORIC_MOVEMENT_FROM = re.compile(
+        r"^\s*(?:and\s+)?(?:after\s+)?(?:marching|moving|advancing|proceeding|"
+        r"departing|retreating|withdrawing|travelling|traveling)\s+from\s+"
+        r"(?:it|there|that\s+place)\s+(?:to|into|toward(?:s)?)\s+",
+        re.IGNORECASE,
+    )
+    _PRECEDING_REGION = re.compile(
+        r"\b(?:led|leads|entered|moved|marched|advanced|proceeded|returned|"
+        r"retreated|withdrew|came|passed)\b[^;.!?]{0,100}\b(?:in|into|to)\s+"
+        r"(?:the\s+)?(?:country|territor(?:y|ies)|lands?)\s+of\s+(?:the\s+)?"
+        r"(?P<place>[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*){0,3})\s*;\s*$",
+        re.IGNORECASE,
+    )
     _MOVEMENT_TO_PREFIX = re.compile(
         r"(?:\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|arrived|entered|crossed|withdrew|retreated|fled|left|leaving|reached|came|passed)\s+(?:\w+\s+){0,6}(?:to|into)\b"
         r"|\b(?:march|marches|marching)\s+to\b"
@@ -229,6 +242,36 @@ class EvidenceGroundedHistoricalEventExtractor:
                     item.role = role
         return values
 
+    def _anaphoric_origin(
+        self, previous: str | None, sentence: str, evidence_id: str,
+    ) -> HistoricalEventPlaceMention | None:
+        """Resolve only an explicit same-sentence regional antecedent.
+
+        The semicolon and directional ``from it/there/that place`` syntax make
+        the antecedent evidence-local.  No retrieval order, geography, or
+        world knowledge participates in this textual role assignment.
+        """
+        if not previous or not self._ANAPHORIC_MOVEMENT_FROM.search(sentence):
+            return None
+        match = self._PRECEDING_REGION.search(previous)
+        if not match:
+            return None
+        raw = match.group("place")
+        alias = next(
+            (place for _position, place, value in self.mention_extractor.aliases_in(raw) if value.casefold() == raw.casefold()),
+            None,
+        )
+        return HistoricalEventPlaceMention(
+            raw_text=raw,
+            canonical_hint=alias.canonical_name if alias else None,
+            role=EventPlaceRole.ORIGIN,
+            evidence_refs=[evidence_id],
+            resolution_status=(
+                EventPlaceResolutionStatus.NORMALIZED_TEXT_ONLY if alias else EventPlaceResolutionStatus.TEXT_ONLY
+            ),
+            alias_provenance=alias.provenance if alias else None,
+        )
+
     @classmethod
     def _is_relevant_to_query_contexts(cls, sentence: str, contexts: tuple[str, ...] | None) -> bool:
         if not contexts:
@@ -266,21 +309,29 @@ class EvidenceGroundedHistoricalEventExtractor:
         if contexts is None and query and query.strip():
             contexts = (query.strip(),)
         for item in evidence:
-            for index, sentence in enumerate(self._sentences(self._text(item))):
+            sentences = self._sentences(self._text(item))
+            for index, sentence in enumerate(sentences):
                 event_type = self._event_type(sentence)
                 if not self._eligible(sentence, event_type, contexts):
                     continue
-                digest = hashlib.sha256(f"{item.id}:{index}:{sentence}".encode("utf-8")).hexdigest()[:12]
                 places = self._places(sentence, item.id)
-                temporal_readings, codes = self.temporal_resolver.resolve(sentence, item.id)
+                origin = (
+                    self._anaphoric_origin(sentences[index - 1] if index else None, sentence, item.id)
+                    if event_type is HistoricalEventType.MOVEMENT else None
+                )
+                if origin is not None:
+                    places.insert(0, origin)
+                statement = f"{sentences[index - 1]} {sentence}" if origin is not None else sentence
+                digest = hashlib.sha256(f"{item.id}:{index}:{statement}".encode("utf-8")).hexdigest()[:12]
+                temporal_readings, codes = self.temporal_resolver.resolve(statement, item.id)
                 temporal_codes.update(codes)
                 temporal = self.temporal_resolver.primary(temporal_readings, item.id)
                 events.append(HistoricalEvent(
-                    id=f"event-{digest}", name=f"{event_type.value.title()} event", summary=sentence,
+                    id=f"event-{digest}", name=f"{event_type.value.title()} event", summary=statement,
                     period=item.period, event_type=event_type, temporal_grounding=temporal,
                     place_mentions=places, evidence_refs=[item.id], grounding_status=EventGroundingStatus.EVIDENCE_GROUNDED,
                     limitations=["Extracted from one explicit evidence statement; no coordinates, chronology merge, or route inference was performed."],
-                    candidate_ids=[f"event-{digest}"], source_statements=[sentence], temporal_groundings=temporal_readings or [temporal],
+                    candidate_ids=[f"event-{digest}"], source_statements=[statement], temporal_groundings=temporal_readings or [temporal],
                 ))
         reason_codes: list[str] = ["EVENT_EXTRACTED"] if events else ["NO_EVENT_EVIDENCE", "INSUFFICIENT_GROUNDING"]
         if events and any(event.temporal_grounding.status is TemporalGroundingStatus.UNRESOLVED for event in events):

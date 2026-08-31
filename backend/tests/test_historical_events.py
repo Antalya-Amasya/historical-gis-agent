@@ -1,6 +1,6 @@
 from backend.app.agent.agent import HistoricalGisAgent
 from backend.app.agent.llm.fake import ScriptedLLMProvider
-from backend.app.models import AgentModelResponse, AgentState, AgentToolCall, Evidence, HistoricalEventType, TemporalGroundingStatus
+from backend.app.models import AgentModelResponse, AgentState, AgentToolCall, Evidence, EventPlaceRole, HistoricalEventType, TemporalGroundingStatus
 from backend.app.rag.retriever import HistoricalRetriever
 from backend.app.routes.events import EvidenceGroundedHistoricalEventExtractor
 
@@ -43,6 +43,31 @@ def test_movement_event_is_not_a_route_or_coordinate_claim():
     assert [item.raw_text for item in events[0].place_mentions] == ["Place A", "Place B"]
     assert not events[0].places and events[0].evidence == []
     assert "route inference" in events[0].limitations[0]
+
+
+def test_same_sentence_anaphoric_movement_preserves_explicit_regional_origin():
+    events, _ = extract(evidence(
+        "anaphoric-movement",
+        "The commander led his army into the country of the Arverni; "
+        "and after marching from it to Oppidum B, he established a camp.",
+    ))
+
+    movement = next(event for event in events if event.event_type is HistoricalEventType.MOVEMENT)
+    roles = {mention.raw_text: mention.role for mention in movement.place_mentions}
+    assert roles["Arverni"] is EventPlaceRole.ORIGIN
+    assert roles["Oppidum B"] is EventPlaceRole.DESTINATION
+    assert movement.summary.startswith("The commander led his army into the country of the Arverni;")
+
+
+def test_anaphoric_origin_is_not_carried_across_a_sentence_boundary():
+    events, _ = extract(evidence(
+        "separate-movement",
+        "The commander entered the country of the Arverni. "
+        "Later the army marched from it to Oppidum B.",
+    ))
+
+    movement = next(event for event in events if event.event_type is HistoricalEventType.MOVEMENT)
+    assert all(mention.role is not EventPlaceRole.ORIGIN for mention in movement.place_mentions)
 
 
 def test_non_event_evidence_cannot_fabricate_an_event():
