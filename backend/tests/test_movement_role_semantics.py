@@ -114,3 +114,64 @@ def test_unrelated_mentions_and_external_metadata_cannot_create_direction():
     assert (claim.source_place, claim.destination_place) == ("A", "B")
     # Retrieval rank, coordinates, and actor identity are not direction inputs.
     assert claim.text == "The army marched from A to B."
+
+
+def _movement_roles(text: str) -> dict[str, EventPlaceRole]:
+    events, _ = EvidenceGroundedHistoricalEventExtractor(extractor()).extract([evidence("e1", text)])
+    movement = next(event for event in events if event.event_type.value == "MOVEMENT")
+    return {mention.raw_text: mention.role for mention in movement.place_mentions}
+
+
+def test_march_to_narbo_preserves_single_destination():
+    roles = _movement_roles(
+        "Caesar thought that the march to Narbo ought to take the precedence of all his other plans."
+    )
+    assert roles.get("Narbo") is EventPlaceRole.DESTINATION
+    assert EventPlaceRole.ORIGIN not in roles.values()
+
+
+def test_attributive_gallic_custom_does_not_create_destination():
+    roles = _movement_roles(
+        "Archers from the Rutheni, and horse from the Gauls, with a long train of baggage, "
+        "according to the Gallic custom of travelling, had arrived there."
+    )
+    assert "Gallic" not in roles or roles["Gallic"] is not EventPlaceRole.DESTINATION
+    assert EventPlaceRole.DESTINATION not in roles.values()
+
+
+def test_according_to_mannert_does_not_create_destination():
+    events, _ = EvidenceGroundedHistoricalEventExtractor(extractor()).extract([
+        evidence("mannert", "According to Mannert, they derived their origin from the shattered remains of the army.")
+    ])
+    assert not any(
+        mention.role is EventPlaceRole.DESTINATION and mention.raw_text == "Mannert"
+        for event in events
+        for mention in event.place_mentions
+    )
+
+
+def test_command_to_marius_does_not_create_destination():
+    events, _ = EvidenceGroundedHistoricalEventExtractor(extractor()).extract([
+        evidence("marius", "Quintus Cæpio was made equal in command to Marius, and became his colleague.")
+    ])
+    assert not any(
+        mention.role is EventPlaceRole.DESTINATION and mention.raw_text == "Marius"
+        for event in events
+        for mention in event.place_mentions
+    )
+
+
+def test_brought_to_afranius_without_movement_link_does_not_create_destination():
+    roles = _movement_roles(
+        "Intelligence was brought to Afranius that the great convoys, which were on their march to Caesar, had halted at the river."
+    )
+    assert roles.get("Afranius") is not EventPlaceRole.DESTINATION
+
+
+def test_troop_provenance_from_does_not_create_origin():
+    roles = _movement_roles(
+        "Archers from the Rutheni, and horse from the Gauls, with a long train of baggage, "
+        "according to the Gallic custom of travelling, had arrived there."
+    )
+    assert roles.get("Rutheni") is not EventPlaceRole.ORIGIN
+    assert roles.get("Gauls") is not EventPlaceRole.ORIGIN

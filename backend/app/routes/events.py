@@ -37,6 +37,35 @@ class EvidenceGroundedHistoricalEventExtractor:
         (HistoricalEventType.POLITICAL, r"\b(?:senate .*\bdecree|tribune .*\b(?:proposed|elected|opposed)|consul .*\b(?:appointed|elected|sent)|assembly .*\b(?:elected|passed)|issued a decree)\b"),
     )
     _PLACE_PATTERN = re.compile(r"\b(?P<role>(?i:at|in|near|from|to|into|through))\s+(?:(?i:the)\s+)?(?P<place>[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*){0,3})")
+    _MOVEMENT_VERBS = re.compile(
+        r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|arrived|entered|crossed|withdrew|retreated|fled|left|leaving|reached|came|passed)\b",
+        re.IGNORECASE,
+    )
+    _NON_MOVEMENT_TO_CONTEXT = re.compile(
+        r"\b(?:according|equal\s+in\s+command|made\s+equal\s+in\s+command|brought|intelligence\s+was\s+brought|buried|joined|announced)\b",
+        re.IGNORECASE,
+    )
+    _ATTRIBUTIVE_AFTER_PLACE = re.compile(
+        r"\s+(?:custom|war|manner|style|fashion|tradition|practice|people|triumph|riches)\b",
+        re.IGNORECASE,
+    )
+    _TROOP_PROVENANCE_FROM = re.compile(
+        r"\b(?:archers|horse|cavalry|infantry|soldiers|men|troops|forces|convoys|people|legions?)\s+from\s+(?:the\s+)?$",
+        re.IGNORECASE,
+    )
+    _MOVEMENT_TO_PREFIX = re.compile(
+        r"(?:\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|arrived|entered|crossed|withdrew|retreated|fled|left|leaving|reached|came|passed)\s+(?:\w+\s+){0,6}(?:to|into)\b"
+        r"|\b(?:march|marches|marching)\s+to\b"
+        r"|\bbegan\s+to\s+march\s+to\b"
+        r"|\bon\s+(?:their|his|her|its)\s+march\s+to\b"
+        r"|\bfrom\s+(?:the\s+)?[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*){0,3}\s+to\b"
+        r"|\bcame\s+to\b)",
+        re.IGNORECASE,
+    )
+    _MOVEMENT_FROM_PREFIX = re.compile(
+        r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|left|leaving|withdrew|retreated|fled|came)\s+(?:\w+\s+){0,6}from\b",
+        re.IGNORECASE,
+    )
     _RETROSPECTIVE = re.compile(
         r"\b(?:after|following|because of|since)\s+(?:the\s+)?(?:battle|defeat|death|murder|assassination)\b[^,;:.]*[,;:]?\s*",
         re.IGNORECASE,
@@ -107,6 +136,42 @@ class EvidenceGroundedHistoricalEventExtractor:
     def _role(token: str) -> EventPlaceRole:
         return {"at": EventPlaceRole.EVENT_SITE, "from": EventPlaceRole.ORIGIN, "to": EventPlaceRole.DESTINATION, "into": EventPlaceRole.DESTINATION}.get(token, EventPlaceRole.RELATED_PLACE)
 
+    @classmethod
+    def _clause_start(cls, sentence: str, position: int) -> int:
+        return max(sentence.rfind(",", 0, position), sentence.rfind(";", 0, position)) + 1
+
+    @classmethod
+    def _governs_movement_endpoint(cls, sentence: str, endpoint_start: int, place_end: int, role_token: str) -> bool:
+        prefix = sentence[:endpoint_start]
+        local = sentence[cls._clause_start(sentence, endpoint_start):endpoint_start]
+        governed = sentence[cls._clause_start(sentence, endpoint_start):endpoint_start + len(role_token)]
+        if role_token in {"to", "into"}:
+            if re.search(r"\baccording\s+$", prefix, re.IGNORECASE):
+                return False
+            if cls._NON_MOVEMENT_TO_CONTEXT.search(sentence[max(0, endpoint_start - 60):endpoint_start]):
+                return False
+            if cls._ATTRIBUTIVE_AFTER_PLACE.match(sentence[place_end:]):
+                return False
+            return bool(cls._MOVEMENT_TO_PREFIX.search(governed) or cls._MOVEMENT_TO_PREFIX.search(prefix[-80:]))
+        if role_token == "from":
+            from_window = sentence[max(0, endpoint_start - 40):endpoint_start + len(role_token)]
+            if cls._TROOP_PROVENANCE_FROM.search(from_window):
+                return False
+            if cls._MOVEMENT_FROM_PREFIX.search(governed) or cls._MOVEMENT_FROM_PREFIX.search(local):
+                return True
+            return not local.strip() and bool(cls._MOVEMENT_VERBS.search(sentence[place_end:]))
+        return True
+
+    @classmethod
+    def _movement_endpoint_role(cls, sentence: str, match: re.Match[str], role_token: str) -> EventPlaceRole:
+        """Keep ORIGIN/DESTINATION only when a movement predicate locally governs the preposition."""
+        base = cls._role(role_token)
+        if base not in {EventPlaceRole.ORIGIN, EventPlaceRole.DESTINATION}:
+            return base
+        if cls._governs_movement_endpoint(sentence, match.start(), match.end("place"), role_token):
+            return base
+        return EventPlaceRole.RELATED_PLACE
+
     def _places(self, sentence: str, evidence_id: str) -> list[HistoricalEventPlaceMention]:
         values: list[HistoricalEventPlaceMention] = []
         aliases = self.mention_extractor.aliases_in(sentence)
@@ -116,10 +181,11 @@ class EvidenceGroundedHistoricalEventExtractor:
             if raw.casefold() in self._NON_PLACE_PROPER_NAMES:
                 continue
             place = alias_by_span.get((raw.lower(), match.start("place")))
+            role_token = match.group("role").lower()
             values.append(HistoricalEventPlaceMention(
                 raw_text=raw,
                 canonical_hint=place.canonical_name if place else None,
-                role=self._role(match.group("role").lower()),
+                role=self._movement_endpoint_role(sentence, match, role_token),
                 evidence_refs=[evidence_id],
                 resolution_status=EventPlaceResolutionStatus.NORMALIZED_TEXT_ONLY if place else EventPlaceResolutionStatus.TEXT_ONLY,
                 alias_provenance=place.provenance if place else None,
@@ -144,6 +210,20 @@ class EvidenceGroundedHistoricalEventExtractor:
                 role = EventPlaceRole.DESTINATION
             if role is None:
                 continue
+            if role is EventPlaceRole.ORIGIN:
+                from_prep = re.search(r"\bfrom\s+(?:the\s+)?$", prefix, re.IGNORECASE)
+                if from_prep:
+                    from_window = sentence[max(0, from_prep.start() - 40):from_prep.end()]
+                    if self._TROOP_PROVENANCE_FROM.search(from_window) or not self._governs_movement_endpoint(
+                        sentence, from_prep.start(), position, "from"
+                    ):
+                        continue
+            elif role is EventPlaceRole.DESTINATION:
+                to_prep = re.search(r"\b(to|into)\s+(?:the\s+)?$", prefix, re.IGNORECASE)
+                if to_prep and not self._governs_movement_endpoint(
+                    sentence, to_prep.start(), position, to_prep.group(1).lower()
+                ):
+                    continue
             for item in values:
                 if item.canonical_hint == place.canonical_name:
                     item.role = role
