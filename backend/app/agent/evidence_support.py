@@ -16,6 +16,39 @@ SUBJECT_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 
+def _bridge_person_subject_aliases() -> dict[str, tuple[str, ...]]:
+    from backend.app.rag.query_bridge import V1_ENTRIES
+
+    aliases: dict[str, tuple[str, ...]] = {}
+    for chinese, english_forms, entry_type in V1_ENTRIES:
+        if entry_type != "person":
+            continue
+        key = english_forms[0].lower().split()[-1]
+        forms: list[str] = []
+        for form in english_forms:
+            lowered = form.lower()
+            if lowered not in forms:
+                forms.append(lowered)
+        if chinese not in forms:
+            forms.append(chinese)
+        if key in aliases:
+            merged = [*aliases[key], *forms]
+            aliases[key] = tuple(dict.fromkeys(merged))
+        else:
+            aliases[key] = tuple(forms)
+    return aliases
+
+
+def _subject_alias_registry() -> dict[str, tuple[str, ...]]:
+    registry = dict(SUBJECT_ALIASES)
+    for key, forms in _bridge_person_subject_aliases().items():
+        if key in registry:
+            registry[key] = tuple(dict.fromkeys([*registry[key], *forms]))
+        else:
+            registry[key] = forms
+    return registry
+
+
 @dataclass(frozen=True)
 class EvidenceRelevance:
     evidence_id: str
@@ -39,16 +72,19 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").lower())
 
 
-def _aliases_present(text: str, canonical: str) -> bool:
+def _aliases_present(text: str, canonical: str, aliases: dict[str, tuple[str, ...]] | None = None) -> bool:
     normalized = _normalize(text)
-    return any(alias in normalized for alias in SUBJECT_ALIASES[canonical])
+    registry = aliases or _subject_alias_registry()
+    return any(alias in normalized for alias in registry[canonical])
 
 
 def extract_subject_terms(user_query: str) -> tuple[str, ...]:
-    return tuple(term for term in SUBJECT_ALIASES if _aliases_present(user_query, term))
+    registry = _subject_alias_registry()
+    return tuple(term for term in registry if _aliases_present(user_query, term, registry))
 
 
 def assess_evidence_support(user_query: str, requested_output: str, evidence: list) -> EvidenceSupportAssessment:
+    registry = _subject_alias_registry()
     subject_terms = extract_subject_terms(user_query)
     if requested_output != "historical_route":
         return EvidenceSupportAssessment("sufficient", (), 0, len(evidence), (), (), "route support not requested")
@@ -58,7 +94,7 @@ def assess_evidence_support(user_query: str, requested_output: str, evidence: li
     covered: set[str] = set()
     for item in evidence:
         haystack = " ".join(str(getattr(item, field, "") or "") for field in ("author", "work", "book", "locator", "excerpt", "text"))
-        matched = tuple(term for term in subject_terms if _aliases_present(haystack, term))
+        matched = tuple(term for term in subject_terms if _aliases_present(haystack, term, registry))
         relevance = EvidenceRelevance(str(getattr(item, "id", "")), matched, len(matched) * 2, bool(matched))
         relevances.append(relevance)
         covered.update(matched)
@@ -160,8 +196,9 @@ def _explicit_chinese_query_entities(user_query: str) -> set[str]:
     entities: set[str] = set()
     # Bilingual subject normalization and place aliases are explicit entity data.
     normalized = _normalize(user_query)
+    registry = _subject_alias_registry()
     for canonical in extract_subject_terms(user_query):
-        entities.update(SUBJECT_ALIASES[canonical])
+        entities.update(registry[canonical])
     for alias in _alias_terms():
         if alias in normalized:
             entities.add(alias)
@@ -179,8 +216,9 @@ def _explicit_chinese_evidence_entities(item) -> set[str]:
         if value and re.fullmatch("[\u4e00-\u9fff]{2,24}", value):
             entities.add(value.lower())
     source = _text_of(item)
+    registry = _subject_alias_registry()
     for canonical in extract_subject_terms(source):
-        entities.update(alias.lower() for alias in SUBJECT_ALIASES[canonical])
+        entities.update(alias.lower() for alias in registry[canonical])
     normalized = _normalize(source)
     for alias in _alias_terms():
         if alias in normalized:

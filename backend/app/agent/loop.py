@@ -8,6 +8,16 @@ from backend.app.models import AgentProviderCallTiming, AgentState, AgentToolHis
 logger = logging.getLogger(__name__)
 _ROUTE_TERMS = ("route", "路线", "行军", "进军", "绘制", "展示")
 _GEOGRAPHY_TERMS = ("distance", "elevation", "coordinate", "距离", "高程", "坐标")
+_MOVEMENT_VERBS = (
+    "move", "moved", "moving", "march", "marched", "marching", "sail", "sailed", "sailing",
+    "travel", "traveled", "travelled", "traveling", "travelling", "advance", "advanced", "advancing",
+    "proceed", "proceeded", "withdraw", "withdrew", "retreat", "retreated", "hasten", "hastened",
+)
+_TRANSIT_VERBS = ("cross", "crossed", "crossing", "traverse", "traversed", "traversing")
+_DIRECTIONAL_MARKERS = (
+    " from ", " into ", " across ", " between ", " through ", " toward", " towards", " onto ", " over ",
+    "从", "到", "进入", "越过", "翻越",
+)
 _INSUFFICIENT_TERMS = ("insufficient", "cannot build", "unable to build", "evidence is not enough", "证据不足", "无法生成", "不能生成")
 COMPLETION_TOOL_BY_OUTPUT = {"historical_route": "build_historical_route"}
 
@@ -16,9 +26,25 @@ def _fingerprint(name: str, arguments: dict) -> str:
     return f"{name}:{json.dumps(arguments, sort_keys=True, separators=(',', ':'), ensure_ascii=False)}"
 
 
+def _has_movement_intent(normalized: str) -> bool:
+    """Detect general movement questions without requiring the literal word 'route'."""
+    padded = f" {normalized} "
+    if any(verb in normalized for verb in _TRANSIT_VERBS) and (
+        padded.startswith("how ") or " how " in padded or padded.startswith("where ") or " where " in padded
+    ):
+        return True
+    if not any(verb in normalized for verb in _MOVEMENT_VERBS):
+        return False
+    if any(marker in padded for marker in _DIRECTIONAL_MARKERS):
+        return True
+    return " from " in padded and " to " in padded
+
+
 def infer_requested_output(user_message: str) -> str:
     normalized = user_message.lower()
     if any(term in normalized for term in _ROUTE_TERMS):
+        return "historical_route"
+    if _has_movement_intent(normalized):
         return "historical_route"
     if any(term in normalized for term in _GEOGRAPHY_TERMS):
         return "geography_fact"
