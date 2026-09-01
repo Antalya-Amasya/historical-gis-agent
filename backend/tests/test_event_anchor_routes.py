@@ -15,7 +15,12 @@ from backend.app.models import (
 )
 from backend.app.routes.event_route_orchestration import EventAnchorRouteBuilder, OrderingRule
 
-COORDINATES = {"Genava": (46.2, 6.1), "Lutetia": (48.9, 2.35), "Alesia": (47.5, 4.5), "Bibracte": (46.9, 4.0)}
+COORDINATES = {
+    "Genava": (46.2, 6.1), "Lutetia": (48.9, 2.35), "Alesia": (47.5, 4.5), "Bibracte": (46.9, 4.0),
+    "Alpha": (45.0, 5.0), "Beta": (45.5, 5.5), "Gamma": (46.0, 6.0), "Delta": (46.5, 6.5),
+    "Helvetii": (47.0, 7.0), "Bituriges Cubi": (47.2, 2.4), "Gergovia": (45.7, 3.1),
+    "Charlie": (44.0, 4.0),
+}
 
 
 def evidence(identifier, document="caesar_gallic_war", spine=None, offset=None):

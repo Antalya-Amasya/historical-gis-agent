@@ -7,6 +7,7 @@ reconstruction; their schematic connections are not documentary path proof.
 """
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 
@@ -17,6 +18,8 @@ from backend.app.models import (
     HistoricalClaim,
     HistoricalEvent,
     HistoricalRoute,
+    HistoricalRouteBranchRelation,
+    HistoricalRouteComponent,
     HistoricalRoutePoint,
     TemporalGroundingStatus,
     TemporalPrecision,
@@ -69,6 +72,16 @@ class AnchorOrderingRelation:
 
 
 @dataclass(frozen=True)
+class RouteAssembly:
+  """Deterministic decomposition of conflict-safe relations into linear components and branches."""
+
+  components: tuple[tuple[str, ...], tuple[tuple[str, str], ...], ...]
+  branch_pairs: tuple[tuple[str, str], ...]
+  usable: dict[tuple[str, str], AnchorOrderingRelation]
+  contradictory: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
 class EventRouteOutcome:
     route: HistoricalRoute | None
     relations: tuple[AnchorOrderingRelation, ...]
@@ -116,6 +129,92 @@ def _structural_span(anchors: list[EventAnchor], evidence_by_id: dict[str, Evide
     return min(keys), max(keys)
 
 
+def _weakly_connected_components(usable: dict[tuple[str, str], AnchorOrderingRelation]) -> list[set[str]]:
+    parent: dict[str, str] = {}
+
+    def find(node: str) -> str:
+        parent.setdefault(node, node)
+        if parent[node] != node:
+            parent[node] = find(parent[node])
+        return parent[node]
+
+    def union(left: str, right: str) -> None:
+        root_left, root_right = find(left), find(right)
+        if root_left != root_right:
+            parent[root_right] = root_left
+
+    for earlier, later in usable:
+        union(earlier, later)
+    groups: dict[str, set[str]] = defaultdict(set)
+    for earlier, later in usable:
+        root = find(earlier)
+        groups[root].update({earlier, later})
+    return sorted(groups.values(), key=lambda nodes: sorted(nodes))
+
+
+def _can_chain_relations(left: AnchorOrderingRelation, right: AnchorOrderingRelation) -> bool:
+    """Allow adjacent chaining only when ordering authority supports the junction."""
+    if left.later != right.earlier:
+        return False
+    if set(left.event_ids) & set(right.event_ids):
+        return True
+  # Cross-event chaining requires an explicit temporal or structural bridge relation.
+    if right.rule in {OrderingRule.TEMPORAL_ORDER, OrderingRule.SOURCE_STRUCTURAL_ORDER}:
+        return True
+    if left.rule in {OrderingRule.TEMPORAL_ORDER, OrderingRule.SOURCE_STRUCTURAL_ORDER}:
+        return True
+    return False
+
+
+def _path_from_edges(
+    edges: list[tuple[str, str]],
+    usable: dict[tuple[str, str], AnchorOrderingRelation],
+) -> list[str]:
+    if not edges:
+        return []
+    path = [edges[0][0], edges[0][1]]
+    for earlier, later in edges[1:]:
+        if path[-1] == earlier:
+            path.append(later)
+        elif path[0] == later:
+            path.insert(0, earlier)
+        else:
+            path.extend([earlier, later])
+    return path
+
+
+def _edge_degrees(usable: dict[tuple[str, str], AnchorOrderingRelation]) -> tuple[dict[str, int], dict[str, int]]:
+    incoming: dict[str, int] = defaultdict(int)
+    outgoing: dict[str, int] = defaultdict(int)
+    for earlier, later in usable:
+        outgoing[earlier] += 1
+        incoming[later] += 1
+    return incoming, outgoing
+
+
+def _is_branch_edge(
+    pair: tuple[str, str],
+    incoming: dict[str, int],
+    outgoing: dict[str, int],
+) -> bool:
+    earlier, later = pair
+    return outgoing.get(earlier, 0) > 1 or incoming.get(later, 0) > 1
+
+
+def _branch_kind(
+    pair: tuple[str, str],
+    usable: dict[tuple[str, str], AnchorOrderingRelation],
+) -> str:
+    earlier, later = pair
+    incoming = sum(1 for left, right in usable if right == later)
+    outgoing = sum(1 for left, right in usable if left == earlier)
+    if incoming > 1:
+        return "incoming_hub"
+    if outgoing > 1:
+        return "outgoing_branch"
+    return "isolated"
+
+
 class EventAnchorRouteBuilder:
     """Build a HistoricalRoute only from anchors whose order is independently proven."""
 
@@ -130,6 +229,10 @@ class EventAnchorRouteBuilder:
             "ordering_relation_count": 0,
             "ordered_place_count": 0,
             "route_point_count": 0,
+            "component_count": 0,
+            "branch_relation_count": 0,
+            "retained_relation_count": 0,
+            "contradictory_relation_count": 0,
             "strong_anchor_count": sum(anchor.admission_type != "CONTEXTUAL_WAYPOINT" for anchor in anchors),
             "contextual_anchor_count": sum(anchor.admission_type == "CONTEXTUAL_WAYPOINT" for anchor in anchors),
             "contextual_anchor_keys": [f"{anchor.event_id}|{anchor.canonical_name}" for anchor in anchors if anchor.admission_type == "CONTEXTUAL_WAYPOINT"],
@@ -153,18 +256,38 @@ class EventAnchorRouteBuilder:
             return EventRouteOutcome(None, (), diagnostics)
         relations = self._relations(events, anchors, {item.id: item for item in evidence})
         diagnostics["ordering_relation_count"] = len(relations)
-        chain, edges = self._chain(relations)
-        if len(chain) < 2:
+        if not relations:
             diagnostics["reason_codes"] = ["INSUFFICIENT_ORDERING"]
-            return EventRouteOutcome(None, tuple(relations), diagnostics)
-        used = tuple(edges[(chain[index], chain[index + 1])] for index in range(len(chain) - 1))
-        diagnostics["ordering_provenance"] = [relation.as_provenance() for relation in used]
-        diagnostics["ordered_place_count"] = len(chain)
-        diagnostics["route_point_count"] = len(chain)
-        if len(chain) < len(places):
+            return EventRouteOutcome(None, (), diagnostics)
+        assembly = self._assemble(relations)
+        events_by_id = {event.id: event for event in events}
+        evidence_by_id = {item.id: item for item in evidence}
+        route, retained, main_chain = self._route_from_assembly(
+            assembly, places, events_by_id, evidence_by_id,
+            event_id=event_id, name=name, period=period,
+        )
+        diagnostics["retained_relation_count"] = len(retained)
+        diagnostics["contradictory_relation_count"] = len(assembly.contradictory)
+        diagnostics["component_count"] = len(route.route_components)
+        diagnostics["branch_relation_count"] = len(route.branch_relations)
+        diagnostics["ordering_provenance"] = [relation.as_provenance() for relation in retained]
+        diagnostics["ordered_place_count"] = len(main_chain)
+        diagnostics["route_point_count"] = len(route.ordered_points)
+        represented_places = {
+            point.historical_place.canonical_name
+            for component in route.route_components
+            for point in component.ordered_points
+        }
+        represented_places.update({branch.earlier for branch in route.branch_relations})
+        represented_places.update({branch.later for branch in route.branch_relations})
+        if (
+            len(route.route_components) > 1
+            or route.branch_relations
+            or len(represented_places) < len(places)
+            or not route.ordered_points
+        ):
             diagnostics["reason_codes"] = ["PARTIAL_ROUTE"]
-        route = self._route(chain, places, used, {event.id: event for event in events}, {item.id: item for item in evidence}, event_id=event_id, name=name, period=period)
-        return EventRouteOutcome(route, used, diagnostics)
+        return EventRouteOutcome(route, tuple(retained), diagnostics)
 
     def _relations(self, events: list[HistoricalEvent], anchors: list[EventAnchor], evidence_by_id: dict[str, Evidence]) -> list[AnchorOrderingRelation]:
         events_by_id = {event.id: event for event in events}
@@ -197,7 +320,7 @@ class EventAnchorRouteBuilder:
                 return first, second, OrderingRule.TEMPORAL_ORDER
             if second_time[1] < first_time[0]:
                 return second, first, OrderingRule.TEMPORAL_ORDER
-            return None  # comparable evidence-grounded values that overlap actively fail to separate the events
+            return None
         first_span, second_span = _structural_span(by_event[first], evidence_by_id), _structural_span(by_event[second], evidence_by_id)
         if first_span is None or second_span is None or first_span[0][0] != second_span[0][0]:
             return None
@@ -208,84 +331,254 @@ class EventAnchorRouteBuilder:
         return None
 
     @staticmethod
-    def _chain(relations: list[AnchorOrderingRelation]) -> tuple[list[str], dict[tuple[str, str], AnchorOrderingRelation]]:
-        """Reduce proven relations to one unambiguous continuous chain, or nothing."""
+    def _assemble(relations: list[AnchorOrderingRelation]) -> RouteAssembly:
         best: dict[tuple[str, str], AnchorOrderingRelation] = {}
         for relation in relations:
             key = (relation.earlier, relation.later)
             if key not in best or _RULE_PRIORITY[relation.rule] < _RULE_PRIORITY[best[key].rule]:
                 best[key] = relation
-        contradictory = {pair for pair in best if (pair[1], pair[0]) in best}
+        contradictory = tuple(sorted(pair for pair in best if (pair[1], pair[0]) in best))
         usable = {pair: relation for pair, relation in best.items() if pair not in contradictory}
-        outgoing: dict[str, set[str]] = {}
-        incoming: dict[str, set[str]] = {}
-        for earlier, later in usable:
-            outgoing.setdefault(earlier, set()).add(later)
-            incoming.setdefault(later, set()).add(earlier)
-        edges = {(earlier, later): relation for (earlier, later), relation in usable.items() if len(outgoing[earlier]) == 1 and len(incoming[later]) == 1}
-        successor = {earlier: later for earlier, later in edges}
-        targets = set(successor.values())
-        chains: list[list[str]] = []
-        for start in (node for node in successor if node not in targets):
-            chain, seen = [start], {start}
-            while chain[-1] in successor and successor[chain[-1]] not in seen:
-                chain.append(successor[chain[-1]])
-                seen.add(chain[-1])
-            chains.append(chain)
-        if not chains:
-            return [], edges
-        longest = max(len(chain) for chain in chains)
-        candidates = [chain for chain in chains if len(chain) == longest]
-        return (candidates[0] if len(candidates) == 1 else []), edges
+        components: list[tuple[tuple[str, ...], tuple[tuple[str, str], ...]]] = []
+        branch_pairs: list[tuple[str, str]] = []
+        for node_group in _weakly_connected_components(usable):
+            subgraph = {
+                pair: relation
+                for pair, relation in usable.items()
+                if pair[0] in node_group and pair[1] in node_group
+            }
+            incoming, outgoing = _edge_degrees(subgraph)
+            subgraph_branches = sorted(pair for pair in subgraph if _is_branch_edge(pair, incoming, outgoing))
+            branch_pairs.extend(subgraph_branches)
+            linear_edges = {
+                pair: relation
+                for pair, relation in subgraph.items()
+                if pair not in subgraph_branches
+            }
+            used_edges: set[tuple[str, str]] = set()
+            for start_pair in sorted(linear_edges):
+                if start_pair in used_edges:
+                    continue
+                chain_edges = [start_pair]
+                used_edges.add(start_pair)
+                while True:
+                    right_candidates = sorted(
+                        pair for pair in linear_edges
+                        if pair not in used_edges and _can_chain_relations(linear_edges[chain_edges[-1]], linear_edges[pair])
+                    )
+                    if len(right_candidates) != 1:
+                        break
+                    chain_edges.append(right_candidates[0])
+                    used_edges.add(right_candidates[0])
+                while True:
+                    left_candidates = sorted(
+                        pair for pair in linear_edges
+                        if pair not in used_edges and _can_chain_relations(linear_edges[pair], linear_edges[chain_edges[0]])
+                    )
+                    if len(left_candidates) != 1:
+                        break
+                    chain_edges.insert(0, left_candidates[0])
+                    used_edges.add(left_candidates[0])
+                path = _path_from_edges(chain_edges, linear_edges)
+                if len(path) >= 2:
+                    components.append((tuple(path), tuple(chain_edges)))
+            for pair in sorted(subgraph):
+                if pair not in used_edges and pair not in branch_pairs:
+                    components.append(((pair[0], pair[1]), (pair,)))
+                    used_edges.add(pair)
+        branch_pairs = sorted(set(branch_pairs))
+        components.sort(key=lambda item: (-len(item[0]), item[0]))
+        return RouteAssembly(tuple(components), tuple(branch_pairs), usable, contradictory)
 
     @staticmethod
-    def _route(chain: list[str], places: dict[str, list[EventAnchor]], used: tuple[AnchorOrderingRelation, ...], events_by_id: dict[str, HistoricalEvent], evidence_by_id: dict[str, Evidence], *, event_id: str, name: str, period: str) -> HistoricalRoute:
+    def _chain(relations: list[AnchorOrderingRelation]) -> tuple[list[str], dict[tuple[str, str], AnchorOrderingRelation]]:
+        """Backward-compatible view of the unique main linear chain, if one exists."""
+        assembly = EventAnchorRouteBuilder._assemble(relations)
+        if len(assembly.components) == 1 and not assembly.branch_pairs:
+            path, edges = assembly.components[0]
+            return list(path), {edge: assembly.usable[edge] for edge in edges}
+        lengths = [len(path) for path, _ in assembly.components]
+        if lengths:
+            max_len = max(lengths)
+            longest = [path for path, _ in assembly.components if len(path) == max_len]
+            if len(longest) == 1:
+                path = longest[0]
+                edge_map = {
+                    (path[index], path[index + 1]): assembly.usable[(path[index], path[index + 1])]
+                    for index in range(len(path) - 1)
+                    if (path[index], path[index + 1]) in assembly.usable
+                }
+                if len(edge_map) == len(path) - 1:
+                    return list(path), edge_map
+        return [], dict(assembly.usable)
+
+    def _route_from_assembly(
+        self,
+        assembly: RouteAssembly,
+        places: dict[str, list[EventAnchor]],
+        events_by_id: dict[str, HistoricalEvent],
+        evidence_by_id: dict[str, Evidence],
+        *,
+        event_id: str,
+        name: str,
+        period: str,
+    ) -> tuple[HistoricalRoute, list[AnchorOrderingRelation], list[str]]:
+        retained: list[AnchorOrderingRelation] = []
         claims: list[HistoricalClaim] = []
-        for index, relation in enumerate(used, start=1):
-            direct_movement = relation.rule is OrderingRule.SAME_MOVEMENT_EVENT
-            text = (
-                f"{relation.earlier} precedes {relation.later} within the same attested movement event."
-                if direct_movement
-                else f"{relation.earlier} is an evidence-grounded waypoint before {relation.later} by {relation.rule.value}; no direct movement is asserted."
+        claim_index = 0
+        component_models: list[HistoricalRouteComponent] = []
+        for component_number, (path, edges) in enumerate(assembly.components, start=1):
+            component_relations = [assembly.usable[edge] for edge in edges]
+            retained.extend(component_relations)
+            component_claim_ids: list[str] = []
+            for relation in component_relations:
+                claim_index += 1
+                claim = self._claim_for_relation(relation, event_id=event_id, index=claim_index, evidence_by_id=evidence_by_id)
+                claims.append(claim)
+                component_claim_ids.append(claim.id)
+            points = self._points_for_path(
+                list(path), places, component_relations, claims, events_by_id, evidence_by_id, period=period,
             )
-            claims.append(HistoricalClaim(
-                id=f"{event_id}-ordering-{index}",
-                claim_type="ORDERING" if direct_movement else "WAYPOINT_ORDERING",
-                text=text,
-                textual_basis=relation.rule.value,
-                source_place=relation.earlier,
-                destination_place=relation.later,
-                movement_relation=relation.rule.value if direct_movement else None,
-                sequence_status="explicit",
-                supporting_evidence_ids=list(relation.evidence_refs),
-                source_documents=sorted({str(evidence_by_id[ref].metadata.get("document_id") or evidence_by_id[ref].source_file or evidence_by_id[ref].author) for ref in relation.evidence_refs if ref in evidence_by_id}),
-                confidence=_RULE_CONFIDENCE[relation.rule],
+            component_models.append(HistoricalRouteComponent(
+                component_id=f"{event_id}-component-{component_number}",
+                ordered_points=points,
+                relation_claim_ids=component_claim_ids,
+                evidence_refs=sorted({ref for point in points for ref in point.evidence_refs}),
+                status="PROVEN_LINEAR",
             ))
-        points: list[HistoricalRoutePoint] = []
-        limitations = {"Historical reconstruction only; not an exact march track or road route.", "Geometry is a schematic connection between ordered historical anchors, not path evidence."}
-        for position, place_name in enumerate(chain, start=1):
-            group = places[place_name]
-            anchor = group[0]
-            refs = sorted({ref for item in group for ref in item.evidence_refs})
-            source_events = [events_by_id[item.event_id] for item in group if item.event_id in events_by_id]
-            limitations.update(limitation for item in group for limitation in item.limitations)
-            points.append(HistoricalRoutePoint(
-                sequence=position, historical_place=anchor.place,
-                event_summary=source_events[0].summary if source_events else place_name,
-                date_or_period=anchor.period or period, evidence_refs=refs,
-                confidence=anchor.place.confidence, coordinate_role=anchor.coordinate_role,
-                source_support=sorted({evidence_by_id[ref].author for ref in refs if ref in evidence_by_id}),
-                claim_ids=[claim.id for claim in claims if place_name in (claim.source_place, claim.destination_place)],
+
+        branch_models: list[HistoricalRouteBranchRelation] = []
+        for pair in assembly.branch_pairs:
+            relation = assembly.usable[pair]
+            retained.append(relation)
+            claim_index += 1
+            claim = self._claim_for_relation(relation, event_id=event_id, index=claim_index, evidence_by_id=evidence_by_id)
+            claims.append(claim)
+            branch_models.append(HistoricalRouteBranchRelation(
+                earlier=relation.earlier,
+                later=relation.later,
+                rule=relation.rule.value,
+                event_ids=list(relation.event_ids),
+                evidence_refs=list(relation.evidence_refs),
+                branch_kind=_branch_kind(pair, assembly.usable),
             ))
-        return HistoricalRoute(
-            id=f"{event_id}-event-anchor-route", event_id=event_id, name=name, period=period,
-            ordered_points=points, geometry=GeoJsonLineString(coordinates=[(point.historical_place.longitude, point.historical_place.latitude) for point in points]),
-            evidence_refs=sorted({ref for point in points for ref in point.evidence_refs}),
+
+        main_chain = self._main_chain_places(component_models)
+        main_points = (
+            self._points_for_path(
+                main_chain, places,
+                [assembly.usable[(main_chain[index], main_chain[index + 1])] for index in range(len(main_chain) - 1)],
+                claims, events_by_id, evidence_by_id, period=period,
+            )
+            if len(main_chain) >= 2 else []
+        )
+        limitations = {
+            "Historical reconstruction only; not an exact march track or road route.",
+            "Geometry is a schematic connection between ordered historical anchors, not path evidence.",
+        }
+        if len(component_models) > 1:
+            limitations.add("Multiple evidence-backed route components are present; component order is not asserted.")
+        if branch_models:
+            limitations.add("Some proven relations form branches or hubs and are not placed in a unique linear traversal.")
+        all_points = main_points or [point for component in component_models for point in component.ordered_points]
+        confidence = round(sum(point.confidence for point in all_points) / len(all_points), 2) if all_points else 0.0
+        route = HistoricalRoute(
+            id=f"{event_id}-event-anchor-route",
+            event_id=event_id,
+            name=name,
+            period=period,
+            ordered_points=main_points,
+            geometry=GeoJsonLineString(coordinates=[(point.historical_place.longitude, point.historical_place.latitude) for point in main_points]),
+            evidence_refs=sorted({ref for point in all_points for ref in point.evidence_refs}),
             assumptions=[
                 "Anchor order is taken only from proven historical ordering relations, never from geography or retrieval order.",
                 "Connections between consecutive waypoints are inputs to later algorithmic GIS reconstruction and do not by themselves assert direct historical movement.",
             ],
             limitations=sorted(limitations),
-            historical_confidence=round(sum(point.confidence for point in points) / len(points), 2),
+            historical_confidence=confidence,
             claims=claims,
+            route_components=component_models,
+            branch_relations=branch_models,
         )
+        return route, retained, main_chain
+
+    @staticmethod
+    def _main_chain_places(components: list[HistoricalRouteComponent]) -> list[str]:
+        if len(components) == 1 and components[0].ordered_points:
+            return [point.historical_place.canonical_name for point in components[0].ordered_points]
+        lengths = [len(component.ordered_points) for component in components if component.ordered_points]
+        if not lengths:
+            return []
+        max_len = max(lengths)
+        longest = [
+            component for component in components
+            if len(component.ordered_points) == max_len
+        ]
+        if len(longest) != 1:
+            return []
+        return [point.historical_place.canonical_name for point in longest[0].ordered_points]
+
+    @staticmethod
+    def _claim_for_relation(
+        relation: AnchorOrderingRelation,
+        *,
+        event_id: str,
+        index: int,
+        evidence_by_id: dict[str, Evidence],
+    ) -> HistoricalClaim:
+        direct_movement = relation.rule is OrderingRule.SAME_MOVEMENT_EVENT
+        text = (
+            f"{relation.earlier} precedes {relation.later} within the same attested movement event."
+            if direct_movement
+            else f"{relation.earlier} is an evidence-grounded waypoint before {relation.later} by {relation.rule.value}; no direct movement is asserted."
+        )
+        return HistoricalClaim(
+            id=f"{event_id}-ordering-{index}",
+            claim_type="ORDERING" if direct_movement else "WAYPOINT_ORDERING",
+            text=text,
+            textual_basis=relation.rule.value,
+            source_place=relation.earlier,
+            destination_place=relation.later,
+            movement_relation=relation.rule.value if direct_movement else None,
+            sequence_status="explicit",
+            supporting_evidence_ids=list(relation.evidence_refs),
+            source_documents=sorted({
+                str(evidence_by_id[ref].metadata.get("document_id") or evidence_by_id[ref].source_file or evidence_by_id[ref].author)
+                for ref in relation.evidence_refs if ref in evidence_by_id
+            }),
+            confidence=_RULE_CONFIDENCE[relation.rule],
+        )
+
+    @staticmethod
+    def _points_for_path(
+        chain: list[str],
+        places: dict[str, list[EventAnchor]],
+        path_relations: list[AnchorOrderingRelation],
+        claims: list[HistoricalClaim],
+        events_by_id: dict[str, HistoricalEvent],
+        evidence_by_id: dict[str, Evidence],
+        *,
+        period: str,
+    ) -> list[HistoricalRoutePoint]:
+        relation_evidence: dict[str, set[str]] = defaultdict(set)
+        for relation in path_relations:
+            relation_evidence[relation.earlier].update(relation.evidence_refs)
+            relation_evidence[relation.later].update(relation.evidence_refs)
+        points: list[HistoricalRoutePoint] = []
+        for position, place_name in enumerate(chain, start=1):
+            group = places[place_name]
+            anchor = group[0]
+            refs = sorted({ref for item in group for ref in item.evidence_refs} | relation_evidence.get(place_name, set()))
+            source_events = [events_by_id[item.event_id] for item in group if item.event_id in events_by_id]
+            points.append(HistoricalRoutePoint(
+                sequence=position,
+                historical_place=anchor.place,
+                event_summary=source_events[0].summary if source_events else place_name,
+                date_or_period=anchor.period or period,
+                evidence_refs=refs,
+                confidence=anchor.place.confidence,
+                coordinate_role=anchor.coordinate_role,
+                source_support=sorted({evidence_by_id[ref].author for ref in refs if ref in evidence_by_id}),
+                claim_ids=[claim.id for claim in claims if place_name in (claim.source_place, claim.destination_place)],
+            ))
+        return points

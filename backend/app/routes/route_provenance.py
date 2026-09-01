@@ -66,6 +66,9 @@ class HistoricalRouteTraceBuilder:
             for claim in (final_route.claims if final_route else [])
             if claim.source_place and claim.destination_place
         }
+        if final_route is not None:
+            for branch in final_route.branch_relations:
+                final_edges.setdefault((branch.earlier, branch.later), None)
         legacy_claims: list[dict[str, object]] = []
         if legacy and legacy.route:
             for claim in legacy.route.claims:
@@ -82,8 +85,32 @@ class HistoricalRouteTraceBuilder:
                     "accepted": accepted,
                     "rejection_reason": None if accepted else "NOT_IN_FINAL_ROUTE_CHAIN",
                 })
-        edges = [
-            {
+        edges = []
+        for (source, destination), claim in final_edges.items():
+            if claim is None and final_route is not None:
+                branch = next(
+                    (
+                        item for item in final_route.branch_relations
+                        if item.earlier == source and item.later == destination
+                    ),
+                    None,
+                )
+                if branch is None:
+                    continue
+                edges.append({
+                    "from": source,
+                    "to": destination,
+                    "route_source": route_source,
+                    "claim_id": None,
+                    "evidence_ids": list(branch.evidence_refs),
+                    "sources": _source(evidence_by_id, list(branch.evidence_refs)),
+                    "ordering_authority": branch.rule,
+                    "representation": "branch_relation",
+                })
+                continue
+            if claim is None:
+                continue
+            edges.append({
                 "from": source,
                 "to": destination,
                 "route_source": route_source,
@@ -91,9 +118,7 @@ class HistoricalRouteTraceBuilder:
                 "evidence_ids": list(claim.supporting_evidence_ids),
                 "sources": _source(evidence_by_id, list(claim.supporting_evidence_ids)),
                 "ordering_authority": claim.movement_relation or "NONE",
-            }
-            for (source, destination), claim in final_edges.items()
-        ]
+            })
         return {
             "route_source": route_source,
             "event_first": {

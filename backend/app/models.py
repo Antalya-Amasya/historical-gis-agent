@@ -229,6 +229,27 @@ class HistoricalRoutePoint(BaseModel):
     claim_ids: list[str] = Field(default_factory=list)
 
 
+class HistoricalRouteBranchRelation(BaseModel):
+    """A proven ordering relation that cannot be placed in a unique linear traversal."""
+
+    earlier: str
+    later: str
+    rule: str
+    event_ids: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    branch_kind: Literal["outgoing_branch", "incoming_hub", "isolated"] = "isolated"
+
+
+class HistoricalRouteComponent(BaseModel):
+    """One evidence-backed linear route fragment. Components are not ordered relative to each other."""
+
+    component_id: str
+    ordered_points: list[HistoricalRoutePoint] = Field(default_factory=list)
+    relation_claim_ids: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    status: str = "PROVEN_LINEAR"
+
+
 class HistoricalRoute(BaseModel):
     id: str
     event_id: str
@@ -243,6 +264,8 @@ class HistoricalRoute(BaseModel):
     unresolved_mentions: list[ExtractedHistoricalPlaceMention] = Field(default_factory=list)
     source_disagreements: list[str] = Field(default_factory=list)
     claims: list[HistoricalClaim] = Field(default_factory=list)
+    route_components: list[HistoricalRouteComponent] = Field(default_factory=list)
+    branch_relations: list[HistoricalRouteBranchRelation] = Field(default_factory=list)
 
 
 class RouteMetrics(BaseModel):
