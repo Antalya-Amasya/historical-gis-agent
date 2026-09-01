@@ -186,7 +186,7 @@ def test_sulla_sailed_for_greece_thence_passed_on_to_italy_creates_explicit_edge
         [evidence("sulla-sail", text)], event_id="sulla",
     )[0]
     assert (claim.source_place, claim.destination_place, claim.movement_relation) == (
-        "Greece", "Italy", "thence_passed_on_to",
+        "Hellas", "Italia", "thence_passed_on_to",
     )
     assert claim.sequence_status == "explicit"
     assert claim.supporting_evidence_ids == ["sulla-sail"]
@@ -213,30 +213,18 @@ def test_march_on_rome_remains_unsupported_for_movement_claims():
     ) == []
 
 
-def test_sulla_thence_clause_builds_route_skeleton_when_geography_resolves():
+def test_sulla_thence_clause_builds_route_skeleton_with_audited_toponym_normalization():
+    from backend.app.models import PlaceSpatialSemantics
     from backend.app.routes.extractor import HistoricalRouteExtractor
+    from geography_mcp.service import GeographyService
 
-    class Geography:
-        coordinates = {
-            "Greece": (39.0, 22.0, "regional_centroid"),
-            "Italy": (42.5, 12.5, "regional_centroid"),
-        }
-
+    class RegistryGeography:
         def call(self, tool, arguments):
-            name = arguments["name"]
-            if name not in self.coordinates:
+            if tool != "resolve_ancient_place":
                 return {"found": False}
-            latitude, longitude, coordinate_role = self.coordinates[name]
-            return {
-                "found": True,
-                "id": name.lower(),
-                "canonical_name": name,
-                "latitude": latitude,
-                "longitude": longitude,
-                "source": "test registry",
-                "confidence": 0.8,
-                "coordinate_role": coordinate_role,
-            }
+            return GeographyService().resolve_ancient_place_payload(
+                arguments["name"], arguments.get("period"),
+            )
 
     text = (
         "Sulla left them and sailed for Greece, and thence passed on to Italy "
@@ -249,12 +237,21 @@ def test_sulla_thence_clause_builds_route_skeleton_when_geography_resolves():
         spine_index=369,
         start_offset=1101,
     )
-    route = HistoricalRouteExtractor(Geography()).build(
+    route = HistoricalRouteExtractor(RegistryGeography()).build(
         [item], event_id="sulla", name="Sulla eastern campaign", period="roman-republic",
     )
     assert route is not None
     assert len(route.ordered_points) == 2
     assert [point.historical_place.canonical_name for point in route.ordered_points] == [
-        "Greece", "Italy",
+        "Hellas", "Italia",
     ]
+    assert [point.historical_place.source_id for point in route.ordered_points] == [
+        "1001896", "1052",
+    ]
+    assert all(
+        point.historical_place.spatial_semantics is PlaceSpatialSemantics.REGION
+        and point.historical_place.coordinate_role == "regional_centroid"
+        and point.historical_place.uncertain is True
+        for point in route.ordered_points
+    )
     assert all(point.evidence_refs == ["sulla-sail"] for point in route.ordered_points)

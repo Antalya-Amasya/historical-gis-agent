@@ -101,3 +101,33 @@ def test_unknown_and_unavailable_are_explicit(gazetteer, monkeypatch, tmp_path):
 def test_generic_fallback_never_claims_exact_site(gazetteer):
     for name in ("Roma", "Orchomenus", "Pontus"):
         assert place_registry.resolve_with_status(name).places[0].coordinate_role != "exact_site"
+
+
+@pytest.mark.parametrize("name", ["Greece", "Graecia"])
+def test_greece_exonyms_resolve_to_audited_hellas_authority(name):
+    result = place_registry.resolve_with_status(name)
+    place = result.places[0]
+    assert result.status == "CURATED"
+    assert place.canonical_name == "Hellas"
+    assert place.source_id == "1001896"
+    assert place.spatial_semantics is PlaceSpatialSemantics.REGION
+    assert place.coordinate_role == "regional_centroid"
+    assert place.uncertain is True
+
+
+@pytest.mark.parametrize("name", ["Italy", "Italia"])
+def test_italy_exonyms_resolve_to_audited_italia_authority(name):
+    result = place_registry.resolve_with_status(name)
+    place = result.places[0]
+    assert result.status == "CURATED"
+    assert place.canonical_name == "Italia"
+    assert place.source_id == "1052"
+    assert place.spatial_semantics is PlaceSpatialSemantics.REGION
+    assert place.coordinate_role == "regional_centroid"
+    assert place.uncertain is True
+    assert place.source_id != "992073"
+
+
+def test_italia_curated_disambiguation_beats_pleiades_diocese(gazetteer):
+    assert place_registry.resolve_with_status("Italia").status == "CURATED"
+    assert place_registry.resolve_with_status("Italia").places[0].source_id == "1052"
