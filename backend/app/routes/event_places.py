@@ -8,6 +8,7 @@ from backend.app.models import (
     HistoricalEvent,
     HistoricalEventPlaceBinding,
     HistoricalPlace,
+    PlaceMentionValidationClass,
     PlaceSpatialSemantics,
 )
 
@@ -43,7 +44,7 @@ class HistoricalEventPlaceResolver:
             "place_mention_count": 0, "resolved_place_count": 0, "unresolved_place_count": 0,
             "unlocated_place_count": 0, "unavailable_place_count": 0,
             "exact_site_count": 0, "representative_point_count": 0, "regional_count": 0,
-            "ambiguous_count": 0, "reason_codes": [],
+            "ambiguous_count": 0, "non_place_validated_count": 0, "reason_codes": [],
         }
         resolved_events: list[HistoricalEvent] = []
         for event in events:
@@ -51,6 +52,26 @@ class HistoricalEventPlaceResolver:
             seen: dict[tuple[str, str], HistoricalEventPlaceBinding] = {}
             for mention in event.place_mentions:
                 diagnostics["place_mention_count"] += 1
+                if mention.validation_class is PlaceMentionValidationClass.NON_PLACE_HIGH_CONFIDENCE:
+                    diagnostics["non_place_validated_count"] += 1
+                    binding = HistoricalEventPlaceBinding(
+                        mention=mention,
+                        place=None,
+                        role=mention.role,
+                        resolution_status=EventPlaceResolutionStatus.TEXT_ONLY,
+                        evidence_refs=list(mention.evidence_refs),
+                        limitations=[
+                            f"Broad mention retained for audit; geography skipped ({mention.validation_reason or 'high-confidence non-place'}).",
+                        ],
+                    )
+                    marker = ((mention.canonical_hint or mention.raw_text).casefold(), mention.role.value)
+                    existing = seen.get(marker)
+                    if existing is None:
+                        bindings.append(binding)
+                        seen[marker] = binding
+                    else:
+                        existing.evidence_refs = list(dict.fromkeys([*existing.evidence_refs, *binding.evidence_refs]))
+                    continue
                 lookup = mention.canonical_hint or mention.raw_text
                 if lookup not in cache:
                     try:
@@ -115,6 +136,8 @@ class HistoricalEventPlaceResolver:
             codes.append("PLACE_UNAVAILABLE")
         if diagnostics["ambiguous_count"]:
             codes.append("PLACE_AMBIGUOUS")
+        if diagnostics["non_place_validated_count"]:
+            codes.append("PLACE_NON_GEOGRAPHIC_VALIDATED")
         if diagnostics["representative_point_count"] or diagnostics["regional_count"]:
             codes.append("NON_EXACT_SPATIAL_SEMANTICS")
         if any(binding.place and binding.place.spatial_semantics is PlaceSpatialSemantics.UNKNOWN for event in resolved_events for binding in event.place_bindings):

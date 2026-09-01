@@ -14,10 +14,12 @@ from backend.app.models import (
     HistoricalEventPlaceMention,
     HistoricalEventTemporalGrounding,
     HistoricalEventType,
+    PlaceMentionValidationClass,
     TemporalGroundingStatus,
     TemporalPrecision,
 )
 from backend.app.routes.extractor import HistoricalPlaceMentionExtractor
+from backend.app.routes.place_mention_validation import validate_broad_place_mention
 from backend.app.routes.temporal import EvidenceTemporalResolver
 
 
@@ -195,6 +197,9 @@ class EvidenceGroundedHistoricalEventExtractor:
                 continue
             place = alias_by_span.get((raw.lower(), match.start("place")))
             role_token = match.group("role").lower()
+            validation = validate_broad_place_mention(
+                raw, sentence, match, canonical_hint=place.canonical_name if place else None,
+            )
             values.append(HistoricalEventPlaceMention(
                 raw_text=raw,
                 canonical_hint=place.canonical_name if place else None,
@@ -202,6 +207,8 @@ class EvidenceGroundedHistoricalEventExtractor:
                 evidence_refs=[evidence_id],
                 resolution_status=EventPlaceResolutionStatus.NORMALIZED_TEXT_ONLY if place else EventPlaceResolutionStatus.TEXT_ONLY,
                 alias_provenance=place.provenance if place else None,
+                validation_class=validation.validation_class,
+                validation_reason=validation.reason,
             ))
         for position, place, alias in aliases:
             if any(item.canonical_hint == place.canonical_name for item in values):
@@ -211,6 +218,7 @@ class EvidenceGroundedHistoricalEventExtractor:
                 role=EventPlaceRole.RELATED_PLACE, evidence_refs=[evidence_id],
                 resolution_status=EventPlaceResolutionStatus.NORMALIZED_TEXT_ONLY,
                 alias_provenance=place.provenance,
+                validation_class=PlaceMentionValidationClass.GEOGRAPHIC_PLACE_CANDIDATE,
             ))
         # Directional verbs attach roles to their immediately following known
         # place.  This is evidence-local syntax, never list order or geography.

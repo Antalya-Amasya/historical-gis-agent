@@ -113,6 +113,12 @@ class EventPlaceResolutionStatus(str, Enum):
     AMBIGUOUS = "AMBIGUOUS"
 
 
+class PlaceMentionValidationClass(str, Enum):
+    GEOGRAPHIC_PLACE_CANDIDATE = "GEOGRAPHIC_PLACE_CANDIDATE"
+    NON_PLACE_HIGH_CONFIDENCE = "NON_PLACE_HIGH_CONFIDENCE"
+    UNKNOWN = "UNKNOWN"
+
+
 class EventGroundingStatus(str, Enum):
     EVIDENCE_GROUNDED = "EVIDENCE_GROUNDED"
     INSUFFICIENT_GROUNDING = "INSUFFICIENT_GROUNDING"
@@ -139,6 +145,8 @@ class HistoricalEventPlaceMention(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
     resolution_status: EventPlaceResolutionStatus = EventPlaceResolutionStatus.TEXT_ONLY
     alias_provenance: str | None = None
+    validation_class: PlaceMentionValidationClass = PlaceMentionValidationClass.UNKNOWN
+    validation_reason: str | None = None
 
 
 class HistoricalEventPlaceBinding(BaseModel):
