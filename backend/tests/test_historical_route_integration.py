@@ -5,7 +5,11 @@ from backend.app.rag.retriever import HistoricalRetriever
 
 class FakeRetriever(HistoricalRetriever):
     def retrieve(self, query: str, top_k: int = 5, filters=None) -> list[Evidence]:
-        return [Evidence(id="nova", author="Polybius", work="Histories", locator="III", excerpt="New Carthage"), Evidence(id="rhone", author="Polybius", work="Histories", locator="III", excerpt="Rhone"), Evidence(id="po", author="Polybius", work="Histories", locator="III", excerpt="Po Valley")]
+        return [
+            Evidence(id="nova", author="Polybius", work="Histories", locator="III", excerpt="The army marched from New Carthage to the Rhone.", text="The army marched from New Carthage to the Rhone."),
+            Evidence(id="rhone", author="Polybius", work="Histories", locator="III", excerpt="Rhone", text="Rhone"),
+            Evidence(id="po", author="Polybius", work="Histories", locator="III", excerpt="Po Valley", text="Po Valley"),
+        ]
 
 
 class FakeMcpClient:

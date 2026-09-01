@@ -75,6 +75,31 @@ def test_unknown_and_ambiguous_places_never_receive_coordinates():
     assert diagnostics["unresolved_place_count"] == diagnostics["ambiguous_count"] == 1
 
 
+def test_unlocated_and_unavailable_statuses_are_preserved():
+    class StatusGeography:
+        def call(self, tool: str, arguments: dict) -> dict:
+            name = arguments["name"]
+            if name == "Unlocated Q":
+                return {"found": False, "status": "UNLOCATED", "candidate_count": 1, "candidates": []}
+            if name == "Broken Index":
+                return {"found": False, "status": "UNAVAILABLE", "reason": "index missing"}
+            return {"found": False, "status": "NOT_FOUND"}
+
+    result, diagnostics = HistoricalEventPlaceResolver(StatusGeography()).resolve(events(
+        evidence("unlocated", "The army halted at Unlocated Q."),
+        evidence("unavailable", "The army halted at Broken Index."),
+        evidence("missing", "The army halted at Missing Q."),
+    ))
+    statuses = {binding.mention.raw_text: binding.resolution_status for event in result for binding in event.place_bindings}
+    assert statuses["Unlocated Q"] is EventPlaceResolutionStatus.UNLOCATED
+    assert statuses["Broken Index"] is EventPlaceResolutionStatus.UNAVAILABLE
+    assert statuses["Missing Q"] is EventPlaceResolutionStatus.UNRESOLVED
+    assert diagnostics["unlocated_place_count"] == 1
+    assert diagnostics["unavailable_place_count"] == 1
+    assert diagnostics["unresolved_place_count"] == 1
+    assert {"PLACE_UNLOCATED", "PLACE_UNAVAILABLE", "PLACE_UNRESOLVED"}.issubset(set(diagnostics["reason_codes"]))
+
+
 def test_multiple_origin_destination_bindings_remain_distinct_and_create_no_route():
     geo = Geography({
         "Place A": place("a", "Place A", PlaceSpatialSemantics.SETTLEMENT),

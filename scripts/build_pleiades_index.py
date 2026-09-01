@@ -6,10 +6,16 @@ import hashlib
 import json
 import re
 import sqlite3
-import unicodedata
+import sys
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from backend.app.geography.normalization import normalize_name
 
 DATASET_VERSION = "4.1"
 DATASET_RELEASE_DATE = "2025-05-28"
@@ -17,12 +23,9 @@ OFFICIAL_SOURCE = "https://zenodo.org/records/15540082"
 LICENSE = "CC BY 3.0"
 EXPECTED_SHA256 = "94c5c337d27a07f1a5fa231b6513e40e6d3cf7d5ad7b8c010f8e8bfd9159cd85"
 EXPECTED_PLACE_COUNT = 41_480
-INDEX_SCHEMA_VERSION = "1"
-IMPORTER_VERSION = "1"
-
-
-def normalize_name(value: str) -> str:
-    return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", value).casefold().strip())
+INDEX_SCHEMA_VERSION = "2"
+IMPORTER_VERSION = "2"
+_DERIVED_TITLE_DISAMBIGUATOR = re.compile(r"^(.+?)\s+\([^)]+\)\s*$")
 
 
 def sha256(path: Path) -> str:
@@ -43,6 +46,10 @@ def _schema(connection: sqlite3.Connection) -> None:
             place_types_json TEXT NOT NULL,
             representative_lon REAL,
             representative_lat REAL,
+            bbox_min_lon REAL,
+            bbox_min_lat REAL,
+            bbox_max_lon REAL,
+            bbox_max_lat REAL,
             uri TEXT,
             provenance TEXT,
             review_state TEXT
@@ -55,7 +62,17 @@ def _schema(connection: sqlite3.Connection) -> None:
             name_resource_id TEXT,
             language TEXT,
             name_type TEXT,
+            name_start INTEGER,
+            name_end INTEGER,
             provenance TEXT
+        );
+        CREATE TABLE name_attestations (
+            row_id INTEGER PRIMARY KEY,
+            name_row_id INTEGER NOT NULL,
+            time_period TEXT,
+            time_period_uri TEXT,
+            confidence TEXT,
+            confidence_uri TEXT
         );
         CREATE TABLE locations (
             row_id INTEGER PRIMARY KEY,
@@ -68,8 +85,22 @@ def _schema(connection: sqlite3.Connection) -> None:
         );
         CREATE INDEX names_normalized_name_idx ON names(normalized_name);
         CREATE INDEX locations_pleiades_id_idx ON locations(pleiades_id);
+        CREATE INDEX name_attestations_name_row_id_idx ON name_attestations(name_row_id);
         """
     )
+
+
+def _romanized_forms(romanized: object) -> list[str]:
+    values: list[str] = []
+    if isinstance(romanized, str):
+        parts = [part.strip() for part in romanized.split(",")] if "," in romanized else [romanized]
+        values.extend(part for part in parts if part)
+    elif isinstance(romanized, list):
+        for value in romanized:
+            if isinstance(value, str):
+                parts = [part.strip() for part in value.split(",")] if "," in value else [value]
+                values.extend(part for part in parts if part)
+    return values
 
 
 def _name_forms(name: dict) -> list[str]:
@@ -77,12 +108,101 @@ def _name_forms(name: dict) -> list[str]:
     attested = name.get("attested")
     if isinstance(attested, str) and attested.strip():
         values.append(attested)
-    romanized = name.get("romanized")
-    if isinstance(romanized, str):
-        values.append(romanized)
-    elif isinstance(romanized, list):
-        values.extend(value for value in romanized if isinstance(value, str))
+    values.extend(_romanized_forms(name.get("romanized")))
     return list(dict.fromkeys(value.strip() for value in values if value.strip()))
+
+
+def _derived_title_search_forms(title: str) -> list[str]:
+    forms = [title.strip()]
+    match = _DERIVED_TITLE_DISAMBIGUATOR.match(title.strip())
+    if match:
+        clean = match.group(1).strip()
+        if clean and clean not in forms:
+            forms.append(clean)
+    return forms
+
+
+def _insert_name(
+    connection: sqlite3.Connection,
+    *,
+    pleiades_id: str,
+    original: str,
+    name: dict,
+    name_type: str | None,
+    seen_names: set[tuple[str, str | None]],
+) -> int:
+    resource_id = str(name.get("id")) if name.get("id") is not None else None
+    key = (original, resource_id)
+    if key in seen_names:
+        return 0
+    seen_names.add(key)
+    cursor = connection.execute(
+        """INSERT INTO names
+           (normalized_name, original_name, pleiades_id, name_resource_id,
+            language, name_type, name_start, name_end, provenance)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            normalize_name(original),
+            original,
+            pleiades_id,
+            resource_id,
+            name.get("language"),
+            name_type or name.get("nameType"),
+            name.get("start"),
+            name.get("end"),
+            name.get("provenance"),
+        ),
+    )
+    name_row_id = cursor.lastrowid
+    for attestation in name.get("attestations") or []:
+        connection.execute(
+            """INSERT INTO name_attestations
+               (name_row_id, time_period, time_period_uri, confidence, confidence_uri)
+               VALUES (?, ?, ?, ?, ?)""",
+            (
+                name_row_id,
+                attestation.get("timePeriod"),
+                attestation.get("timePeriodURI"),
+                attestation.get("confidence"),
+                attestation.get("confidenceURI"),
+            ),
+        )
+    return 1
+
+
+def _insert_derived_title_names(
+    connection: sqlite3.Connection,
+    *,
+    pleiades_id: str,
+    title: str,
+    provenance: str | None,
+    indexed_forms: set[str],
+    seen_names: set[tuple[str, str | None]],
+) -> int:
+    inserted = 0
+    synthetic = {
+        "id": None,
+        "language": None,
+        "nameType": "derived_title",
+        "provenance": provenance,
+        "attestations": [],
+        "start": None,
+        "end": None,
+    }
+    for form in _derived_title_search_forms(title):
+        normalized = normalize_name(form)
+        if normalized in indexed_forms:
+            continue
+        indexed_forms.add(normalized)
+        inserted += _insert_name(
+            connection,
+            pleiades_id=pleiades_id,
+            original=form,
+            name={**synthetic, "attested": form},
+            name_type="derived_title",
+            seen_names=seen_names,
+        )
+    return inserted
 
 
 def build_index(
@@ -99,7 +219,7 @@ def build_index(
     if temporary.exists():
         temporary.unlink()
     output.parent.mkdir(parents=True, exist_ok=True)
-    place_count = name_count = location_count = 0
+    place_count = name_count = location_count = attestation_count = 0
     try:
         connection = sqlite3.connect(temporary)
         try:
@@ -116,57 +236,82 @@ def build_index(
                     point = place.get("reprPoint") or []
                     longitude = point[0] if len(point) >= 2 else None
                     latitude = point[1] if len(point) >= 2 else None
+                    bbox = place.get("bbox") or []
+                    bbox_min_lon = bbox[0] if len(bbox) >= 4 else None
+                    bbox_min_lat = bbox[1] if len(bbox) >= 4 else None
+                    bbox_max_lon = bbox[2] if len(bbox) >= 4 else None
+                    bbox_max_lat = bbox[3] if len(bbox) >= 4 else None
                     place_types = place.get("placeTypes") or []
                     connection.execute(
-                        "INSERT INTO places VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        """INSERT INTO places
+                           (pleiades_id, title, place_types_json, representative_lon,
+                            representative_lat, bbox_min_lon, bbox_min_lat, bbox_max_lon,
+                            bbox_max_lat, uri, provenance, review_state)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
-                            pleiades_id, place.get("title") or pleiades_id,
+                            pleiades_id,
+                            place.get("title") or pleiades_id,
                             json.dumps(place_types, ensure_ascii=False, separators=(",", ":")),
-                            longitude, latitude, place.get("uri"), place.get("provenance"),
+                            longitude,
+                            latitude,
+                            bbox_min_lon,
+                            bbox_min_lat,
+                            bbox_max_lon,
+                            bbox_max_lat,
+                            place.get("uri"),
+                            place.get("provenance"),
                             place.get("review_state"),
                         ),
                     )
                     seen_names: set[tuple[str, str | None]] = set()
-                    raw_names = list(place.get("names") or [])
                     indexed_forms = {
                         normalize_name(form)
-                        for item in raw_names for form in _name_forms(item)
+                        for item in (place.get("names") or [])
+                        for form in _name_forms(item)
                     }
-                    title = place.get("title")
-                    if isinstance(title, str) and normalize_name(title) not in indexed_forms:
-                        raw_names.append({
-                            "attested": title, "id": None, "language": None,
-                            "nameType": "canonical", "provenance": place.get("provenance"),
-                        })
-                    for name in raw_names:
+                    for name in place.get("names") or []:
                         for original in _name_forms(name):
-                            resource_id = str(name.get("id")) if name.get("id") is not None else None
-                            key = (original, resource_id)
-                            if key in seen_names:
-                                continue
-                            seen_names.add(key)
-                            connection.execute(
-                                """INSERT INTO names
-                                   (normalized_name, original_name, pleiades_id, name_resource_id,
-                                    language, name_type, provenance) VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                                (normalize_name(original), original, pleiades_id, resource_id,
-                                 name.get("language"), name.get("nameType"), name.get("provenance")),
+                            name_count += _insert_name(
+                                connection,
+                                pleiades_id=pleiades_id,
+                                original=original,
+                                name=name,
+                                name_type=None,
+                                seen_names=seen_names,
                             )
-                            name_count += 1
+                    title = place.get("title")
+                    if isinstance(title, str) and title.strip():
+                        name_count += _insert_derived_title_names(
+                            connection,
+                            pleiades_id=pleiades_id,
+                            title=title,
+                            provenance=place.get("provenance"),
+                            indexed_forms=indexed_forms,
+                            seen_names=seen_names,
+                        )
                     for location in place.get("locations") or []:
                         geometry = location.get("geometry") or {}
                         connection.execute(
                             """INSERT INTO locations
-                               (pleiades_id, location_id, geometry_type, accuracy, accuracy_value, provenance)
+                               (pleiades_id, location_id, geometry_type, accuracy,
+                                accuracy_value, provenance)
                                VALUES (?, ?, ?, ?, ?, ?)""",
-                            (pleiades_id, str(location.get("id") or ""), geometry.get("type"),
-                             location.get("accuracy"), location.get("accuracy_value"),
-                             location.get("provenance")),
+                            (
+                                pleiades_id,
+                                str(location.get("id") or ""),
+                                geometry.get("type"),
+                                location.get("accuracy"),
+                                location.get("accuracy_value"),
+                                location.get("provenance"),
+                            ),
                         )
                         location_count += 1
                     place_count += 1
             if place_count != expected_place_count:
                 raise ValueError(f"Pleiades place-count mismatch: {place_count}")
+            attestation_count = connection.execute(
+                "SELECT COUNT(*) FROM name_attestations"
+            ).fetchone()[0]
             metadata = {
                 "dataset_version": DATASET_VERSION,
                 "dataset_release_date": DATASET_RELEASE_DATE,
@@ -177,6 +322,9 @@ def build_index(
                 "index_schema_version": INDEX_SCHEMA_VERSION,
                 "importer_version": IMPORTER_VERSION,
                 "place_count": str(place_count),
+                "name_count": str(name_count),
+                "attestation_count": str(attestation_count),
+                "location_count": str(location_count),
             }
             connection.executemany("INSERT INTO metadata VALUES (?, ?)", metadata.items())
             connection.commit()
@@ -188,9 +336,14 @@ def build_index(
             temporary.unlink()
         raise
     return {
-        "output": str(output), "place_count": place_count,
-        "name_count": name_count, "location_count": location_count,
-        "sha256": actual_sha256, "size": output.stat().st_size,
+        "output": str(output),
+        "place_count": place_count,
+        "name_count": name_count,
+        "attestation_count": attestation_count,
+        "location_count": location_count,
+        "sha256": actual_sha256,
+        "size": output.stat().st_size,
+        "index_schema_version": INDEX_SCHEMA_VERSION,
     }
 
 

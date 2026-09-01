@@ -16,16 +16,22 @@ def gazetteer(tmp_path, monkeypatch):
         CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE places (pleiades_id TEXT PRIMARY KEY, title TEXT NOT NULL,
           place_types_json TEXT NOT NULL, representative_lon REAL, representative_lat REAL,
+          bbox_min_lon REAL, bbox_min_lat REAL, bbox_max_lon REAL, bbox_max_lat REAL,
           uri TEXT, provenance TEXT, review_state TEXT);
         CREATE TABLE names (row_id INTEGER PRIMARY KEY, normalized_name TEXT NOT NULL,
           original_name TEXT NOT NULL, pleiades_id TEXT NOT NULL, name_resource_id TEXT,
-          language TEXT, name_type TEXT, provenance TEXT);
+          language TEXT, name_type TEXT, name_start INTEGER, name_end INTEGER, provenance TEXT);
+        CREATE TABLE name_attestations (row_id INTEGER PRIMARY KEY, name_row_id INTEGER NOT NULL,
+          time_period TEXT, time_period_uri TEXT, confidence TEXT, confidence_uri TEXT);
         CREATE TABLE locations (row_id INTEGER PRIMARY KEY, pleiades_id TEXT NOT NULL,
           location_id TEXT, geometry_type TEXT, accuracy TEXT, accuracy_value REAL,
           provenance TEXT);
+        CREATE INDEX names_normalized_name_idx ON names(normalized_name);
+        CREATE INDEX locations_pleiades_id_idx ON locations(pleiades_id);
+        CREATE INDEX name_attestations_name_row_id_idx ON name_attestations(name_row_id);
         """)
         connection.executemany("INSERT INTO metadata VALUES (?, ?)", {
-            "index_schema_version": "1", "dataset_version": "4.1",
+            "index_schema_version": "2", "dataset_version": "4.1",
             "dataset_release_date": "2025-05-28", "official_source": "official",
             "sha256": "abc",
         }.items())
@@ -40,15 +46,21 @@ def gazetteer(tmp_path, monkeypatch):
             ("606283", "Chios", ["unknown"], None, None),
         ]
         for identifier, title, types, lon, lat in places:
-            connection.execute("INSERT INTO places VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (identifier, title, json.dumps(types), lon, lat,
+            connection.execute("INSERT INTO places VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (identifier, title, json.dumps(types), lon, lat, None, None, None, None,
                  f"https://pleiades.stoa.org/places/{identifier}", "fixture", "published"))
-            connection.execute("INSERT INTO names (normalized_name, original_name, pleiades_id, name_resource_id, language, name_type, provenance) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (place_registry.normalize_name(title), title, identifier, f"name-{identifier}", "la", "geographic", "fixture"))
+            connection.execute("""INSERT INTO names
+                (normalized_name, original_name, pleiades_id, name_resource_id, language,
+                 name_type, name_start, name_end, provenance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (place_registry.normalize_name(title), title, identifier, f"name-{identifier}", "la",
+                 "geographic", None, None, "fixture"))
             if lon is not None:
                 connection.execute("INSERT INTO locations (pleiades_id, location_id, geometry_type, accuracy, accuracy_value, provenance) VALUES (?, ?, ?, ?, ?, ?)",
                     (identifier, f"loc-{identifier}", "Point", "rough", 1000, "fixture"))
     monkeypatch.setenv("PLEIADES_GAZETTEER_PATH", str(path))
+    place_registry.records.cache_clear()
+    place_registry.places.cache_clear()
+    place_registry.aliases.cache_clear()
     return path
 
 

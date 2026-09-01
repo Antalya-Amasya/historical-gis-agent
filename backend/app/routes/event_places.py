@@ -41,6 +41,7 @@ class HistoricalEventPlaceResolver:
         cache: dict[str, dict] = {}
         diagnostics = {
             "place_mention_count": 0, "resolved_place_count": 0, "unresolved_place_count": 0,
+            "unlocated_place_count": 0, "unavailable_place_count": 0,
             "exact_site_count": 0, "representative_point_count": 0, "regional_count": 0,
             "ambiguous_count": 0, "reason_codes": [],
         }
@@ -74,7 +75,15 @@ class HistoricalEventPlaceResolver:
                         diagnostics["representative_point_count"] += 1
                     elif place.coordinate_role == "regional_centroid":
                         diagnostics["regional_count"] += 1
-                elif result.get("ambiguous") or result.get("alternatives"):
+                elif result.get("status") == "UNLOCATED":
+                    status = EventPlaceResolutionStatus.UNLOCATED
+                    limitations = ["Authority candidate exists but no safe coordinate is available."]
+                    diagnostics["unlocated_place_count"] += 1
+                elif result.get("status") == "UNAVAILABLE":
+                    status = EventPlaceResolutionStatus.UNAVAILABLE
+                    limitations = [result.get("reason") or "Geographic authority infrastructure is unavailable."]
+                    diagnostics["unavailable_place_count"] += 1
+                elif result.get("ambiguous") or result.get("alternatives") or result.get("status") == "AMBIGUOUS":
                     status = EventPlaceResolutionStatus.AMBIGUOUS
                     limitations = ["Resolver returned no single safe historical-place identity."]
                     diagnostics["ambiguous_count"] += 1
@@ -100,6 +109,10 @@ class HistoricalEventPlaceResolver:
             codes.append("PLACE_RESOLVED")
         if diagnostics["unresolved_place_count"]:
             codes.append("PLACE_UNRESOLVED")
+        if diagnostics["unlocated_place_count"]:
+            codes.append("PLACE_UNLOCATED")
+        if diagnostics["unavailable_place_count"]:
+            codes.append("PLACE_UNAVAILABLE")
         if diagnostics["ambiguous_count"]:
             codes.append("PLACE_AMBIGUOUS")
         if diagnostics["representative_point_count"] or diagnostics["regional_count"]:

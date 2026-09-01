@@ -3,14 +3,13 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import sqlite3
-import unicodedata
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from backend.app.geography.normalization import normalize_name
 from backend.app.models import HistoricalPlace, PlaceSpatialSemantics
 
 PLEIADES_SOURCE = "Pleiades: A Gazetteer of Past Places"
@@ -18,7 +17,7 @@ _DATA = Path(__file__).with_name("data") / "roman_republic_places.json"
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_INDEX = _REPOSITORY_ROOT / "data" / "pleiades_v4_1" / "pleiades_v4_1.sqlite3"
 _INDEX_ENV = "PLEIADES_GAZETTEER_PATH"
-_SUPPORTED_INDEX_SCHEMA = "1"
+_SUPPORTED_INDEX_SCHEMA = "2"
 
 
 @dataclass(frozen=True)
@@ -30,24 +29,43 @@ class GazetteerResolution:
     reason: str | None = None
 
 
-def normalize_name(value: str) -> str:
-    normalized = unicodedata.normalize("NFKC", value).casefold().strip()
-    return re.sub(r"\s+", " ", normalized)
-
 @lru_cache(maxsize=1)
 def records() -> list[dict]:
     return json.loads(_DATA.read_text(encoding="utf-8"))
 
+
 @lru_cache(maxsize=1)
 def places() -> tuple[HistoricalPlace, ...]:
-    return tuple(HistoricalPlace(id=f"pleiades-{r['pleiades_id']}", canonical_name=r["canonical_name"], modern_name=r.get("modern_name"), latitude=r["latitude"], longitude=r["longitude"], period=r.get("period"), source=PLEIADES_SOURCE, source_id=str(r["pleiades_id"]), source_url=f"https://pleiades.stoa.org/places/{r['pleiades_id']}", confidence=r["confidence"], uncertain=r.get("uncertain", False), coordinate_role=r["coordinate_role"], spatial_semantics=PlaceSpatialSemantics(r["spatial_semantics"]), spatial_semantics_provenance=r["spatial_semantics_provenance"]) for r in records())
+    return tuple(
+        HistoricalPlace(
+            id=f"pleiades-{r['pleiades_id']}",
+            canonical_name=r["canonical_name"],
+            modern_name=r.get("modern_name"),
+            latitude=r["latitude"],
+            longitude=r["longitude"],
+            period=r.get("period"),
+            source=PLEIADES_SOURCE,
+            source_id=str(r["pleiades_id"]),
+            source_url=f"https://pleiades.stoa.org/places/{r['pleiades_id']}",
+            confidence=r["confidence"],
+            uncertain=r.get("uncertain", False),
+            coordinate_role=r["coordinate_role"],
+            spatial_semantics=PlaceSpatialSemantics(r["spatial_semantics"]),
+            spatial_semantics_provenance=r["spatial_semantics_provenance"],
+        )
+        for r in records()
+    )
+
 
 @lru_cache(maxsize=1)
 def aliases() -> dict[str, tuple[HistoricalPlace, ...]]:
-    by_id = {place.id: place for place in places()}; result = {}
+    by_id = {place.id: place for place in places()}
+    result: dict[str, list[HistoricalPlace]] = {}
     for r in records():
-        for alias in r["aliases"]: result.setdefault(normalize_name(alias), []).append(by_id[f"pleiades-{r['pleiades_id']}"])
+        for alias in r["aliases"]:
+            result.setdefault(normalize_name(alias), []).append(by_id[f"pleiades-{r['pleiades_id']}"])
     return {key: tuple(value) for key, value in result.items()}
+
 
 def _index_path() -> tuple[Path | None, bool]:
     configured = os.getenv(_INDEX_ENV)
@@ -66,7 +84,8 @@ def _metadata(connection: sqlite3.Connection) -> dict[str, str]:
     values = {row["key"]: row["value"] for row in connection.execute("SELECT key, value FROM metadata")}
     if values.get("index_schema_version") != _SUPPORTED_INDEX_SCHEMA:
         raise RuntimeError(
-            f"Unsupported Pleiades index schema: {values.get('index_schema_version')!r}"
+            f"Unsupported Pleiades index schema: {values.get('index_schema_version')!r}; "
+            f"expected {_SUPPORTED_INDEX_SCHEMA!r}"
         )
     return values
 
@@ -86,14 +105,41 @@ def _spatial_semantics(place_types: tuple[str, ...]) -> PlaceSpatialSemantics:
     return PlaceSpatialSemantics.UNKNOWN
 
 
+def _name_attestations(connection: sqlite3.Connection, name_row_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
+    if not name_row_ids:
+        return {}
+    placeholders = ",".join("?" for _ in name_row_ids)
+    rows = connection.execute(
+        f"""SELECT name_row_id, time_period, time_period_uri, confidence, confidence_uri
+              FROM name_attestations
+             WHERE name_row_id IN ({placeholders})
+             ORDER BY name_row_id, row_id""",
+        name_row_ids,
+    ).fetchall()
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(row["name_row_id"], []).append(
+            {
+                "time_period": row["time_period"],
+                "time_period_uri": row["time_period_uri"],
+                "confidence": row["confidence"],
+                "confidence_uri": row["confidence_uri"],
+            }
+        )
+    return grouped
+
+
 def _lookup_index(path: Path, name: str) -> GazetteerResolution:
-    with _connect_read_only(path) as connection:
+    connection = _connect_read_only(path)
+    try:
         metadata = _metadata(connection)
         rows = connection.execute(
-            """SELECT n.pleiades_id, n.original_name, n.name_resource_id,
-                      n.language, n.name_type, n.provenance AS name_provenance,
+            """SELECT n.row_id, n.pleiades_id, n.original_name, n.name_resource_id,
+                      n.language, n.name_type, n.name_start, n.name_end,
+                      n.provenance AS name_provenance,
                       p.title, p.place_types_json, p.representative_lon,
-                      p.representative_lat, p.uri, p.provenance AS place_provenance
+                      p.representative_lat, p.bbox_min_lon, p.bbox_min_lat,
+                      p.bbox_max_lon, p.bbox_max_lat, p.uri, p.provenance AS place_provenance
                  FROM names AS n
                  JOIN places AS p USING (pleiades_id)
                 WHERE n.normalized_name = ?
@@ -106,6 +152,10 @@ def _lookup_index(path: Path, name: str) -> GazetteerResolution:
         if not grouped:
             return GazetteerResolution(status="NOT_FOUND")
 
+        attestations_by_name = _name_attestations(
+            connection,
+            [row["row_id"] for name_rows in grouped.values() for row in name_rows],
+        )
         places_found: list[HistoricalPlace] = []
         candidate_summaries: list[dict[str, Any]] = []
         for pleiades_id, name_rows in grouped.items():
@@ -120,6 +170,19 @@ def _lookup_index(path: Path, name: str) -> GazetteerResolution:
                 first["representative_lon"] is not None
                 and first["representative_lat"] is not None
             )
+            matched_name_details = []
+            for row in name_rows:
+                matched_name_details.append(
+                    {
+                        "original_name": row["original_name"],
+                        "name_type": row["name_type"],
+                        "name_resource_id": row["name_resource_id"],
+                        "language": row["language"],
+                        "name_start": row["name_start"],
+                        "name_end": row["name_end"],
+                        "attestations": attestations_by_name.get(row["row_id"], []),
+                    }
+                )
             candidate_summaries.append(
                 {
                     "pleiades_id": pleiades_id,
@@ -127,6 +190,7 @@ def _lookup_index(path: Path, name: str) -> GazetteerResolution:
                     "place_types": list(place_types),
                     "coordinate_available": coordinate_available,
                     "matched_names": list(dict.fromkeys(row["original_name"] for row in name_rows)),
+                    "matched_name_details": matched_name_details,
                 }
             )
             if not coordinate_available:
@@ -145,9 +209,19 @@ def _lookup_index(path: Path, name: str) -> GazetteerResolution:
                 "matched_name_id": first["name_resource_id"],
                 "matched_name_language": first["language"],
                 "matched_name_type": first["name_type"],
+                "matched_name_start": first["name_start"],
+                "matched_name_end": first["name_end"],
+                "matched_name_attestations": attestations_by_name.get(first["row_id"], []),
+                "matched_name_details": matched_name_details,
                 "name_provenance": first["name_provenance"],
                 "place_types": list(place_types),
                 "place_provenance": first["place_provenance"],
+                "bbox": {
+                    "min_lon": first["bbox_min_lon"],
+                    "min_lat": first["bbox_min_lat"],
+                    "max_lon": first["bbox_max_lon"],
+                    "max_lat": first["bbox_max_lat"],
+                },
                 "locations": [dict(location) for location in locations],
             }
             places_found.append(
@@ -180,6 +254,8 @@ def _lookup_index(path: Path, name: str) -> GazetteerResolution:
             candidate_count=len(grouped),
             candidates=tuple(candidate_summaries),
         )
+    finally:
+        connection.close()
 
 
 def resolve_with_status(name: str) -> GazetteerResolution:
@@ -206,4 +282,8 @@ def resolve(name: str) -> tuple[HistoricalPlace, ...]:
     return resolve_with_status(name).places
 
 
-def alias_records() -> tuple[tuple[str, tuple[str, ...], str], ...]: return tuple((r["canonical_name"], tuple(r["aliases"]), "pleiades_registry_snapshot_2026_08") for r in records())
+def alias_records() -> tuple[tuple[str, tuple[str, ...], str], ...]:
+    return tuple(
+        (r["canonical_name"], tuple(r["aliases"]), "pleiades_registry_snapshot_2026_08")
+        for r in records()
+    )

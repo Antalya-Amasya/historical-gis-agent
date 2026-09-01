@@ -41,17 +41,22 @@ class HistoricalPlaceMentionExtractor:
 
     def aliases_in(self, text: str) -> list[tuple[int, HistoricalPlaceAlias, str]]:
         lower = text.lower()
-        found: list[tuple[int, HistoricalPlaceAlias, str]] = []
+        candidates: list[tuple[int, int, HistoricalPlaceAlias, str]] = []
         for place in self.aliases:
-            hits = []
             for alias in place.aliases:
-                match = re.search(rf"(?<!\w){re.escape(alias)}(?!\w)", lower)
-                if match:
-                    hits.append((match.start(), alias))
-            if hits:
-                position, alias = min(hits)
-                found.append((position, place, alias))
-        return sorted(found, key=lambda value: value[0])
+                for match in re.finditer(rf"(?<!\w){re.escape(alias)}(?!\w)", lower):
+                    candidates.append((match.start(), match.end(), place, alias))
+        if not candidates:
+            return []
+        candidates.sort(key=lambda item: (-(item[1] - item[0]), item[0], item[3], item[2].canonical_name))
+        accepted: list[tuple[int, int, HistoricalPlaceAlias, str]] = []
+        for candidate in candidates:
+            start, end, place, alias = candidate
+            if any(start < other_end and end > other_start for other_start, other_end, _, _ in accepted):
+                continue
+            accepted.append(candidate)
+        accepted.sort(key=lambda item: item[0])
+        return [(start, place, alias) for start, _, place, alias in accepted]
 
     def extract(self, evidence: list[Evidence]) -> list[ExtractedHistoricalPlaceMention]:
         grouped: dict[str, ExtractedHistoricalPlaceMention] = {}

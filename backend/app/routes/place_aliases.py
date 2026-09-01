@@ -12,7 +12,6 @@ class HistoricalPlaceAlias:
 # Data only: usable for any event; matching never supplies coordinates or event order.
 HISTORICAL_PLACE_ALIASES = tuple(HistoricalPlaceAlias(name, values, provenance) for name, values, provenance in alias_records()) + (
     HistoricalPlaceAlias("Pyrenaei", ("pyrenaei", "pyrenees")),
-    HistoricalPlaceAlias("Pyrenaei", ("pyrenaei", "pyrenees")),
     HistoricalPlaceAlias("Roma", ("roma", "rome")),
     HistoricalPlaceAlias("Taurini", ("taurini", "taurinians")),
     HistoricalPlaceAlias("Padus", ("padus", "po valley", "river po", "po, italy")),

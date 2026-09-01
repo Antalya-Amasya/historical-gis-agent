@@ -186,7 +186,7 @@ def test_sulla_sailed_for_greece_thence_passed_on_to_italy_creates_explicit_edge
         [evidence("sulla-sail", text)], event_id="sulla",
     )[0]
     assert (claim.source_place, claim.destination_place, claim.movement_relation) == (
-        "Hellas", "Italia", "thence_passed_on_to",
+        "Greece", "Italia", "thence_passed_on_to",
     )
     assert claim.sequence_status == "explicit"
     assert claim.supporting_evidence_ids == ["sulla-sail"]
