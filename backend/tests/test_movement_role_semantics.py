@@ -175,3 +175,86 @@ def test_troop_provenance_from_does_not_create_origin():
     )
     assert roles.get("Rutheni") is not EventPlaceRole.ORIGIN
     assert roles.get("Gauls") is not EventPlaceRole.ORIGIN
+
+
+def test_sulla_sailed_for_greece_thence_passed_on_to_italy_creates_explicit_edge():
+    text = (
+        "Sulla left them and sailed for Greece, and thence passed on to Italy "
+        "with the greater part of his army."
+    )
+    claim = HistoricalPlaceMentionExtractor().movement_claims(
+        [evidence("sulla-sail", text)], event_id="sulla",
+    )[0]
+    assert (claim.source_place, claim.destination_place, claim.movement_relation) == (
+        "Greece", "Italy", "thence_passed_on_to",
+    )
+    assert claim.sequence_status == "explicit"
+    assert claim.supporting_evidence_ids == ["sulla-sail"]
+
+
+def test_sailed_for_greece_without_thence_does_not_invent_origin():
+    text = "The army sailed for Greece with provisions."
+    assert HistoricalPlaceMentionExtractor().movement_claims(
+        [evidence("dest-only", text)], event_id="event",
+    ) == []
+
+
+def test_advanced_to_the_city_does_not_create_movement_edge():
+    text = "when Sulla first advanced to the city against Marius"
+    assert HistoricalPlaceMentionExtractor().movement_claims(
+        [evidence("livy-city", text)], event_id="event",
+    ) == []
+
+
+def test_march_on_rome_remains_unsupported_for_movement_claims():
+    text = "Sulla prepared to march on Rome before winter."
+    assert HistoricalPlaceMentionExtractor().movement_claims(
+        [evidence("march-on", text)], event_id="event",
+    ) == []
+
+
+def test_sulla_thence_clause_builds_route_skeleton_when_geography_resolves():
+    from backend.app.routes.extractor import HistoricalRouteExtractor
+
+    class Geography:
+        coordinates = {
+            "Greece": (39.0, 22.0, "regional_centroid"),
+            "Italy": (42.5, 12.5, "regional_centroid"),
+        }
+
+        def call(self, tool, arguments):
+            name = arguments["name"]
+            if name not in self.coordinates:
+                return {"found": False}
+            latitude, longitude, coordinate_role = self.coordinates[name]
+            return {
+                "found": True,
+                "id": name.lower(),
+                "canonical_name": name,
+                "latitude": latitude,
+                "longitude": longitude,
+                "source": "test registry",
+                "confidence": 0.8,
+                "coordinate_role": coordinate_role,
+            }
+
+    text = (
+        "Sulla left them and sailed for Greece, and thence passed on to Italy "
+        "with the greater part of his army."
+    )
+    item = evidence(
+        "sulla-sail",
+        text,
+        document_id="appian_roman_history_civil_wars",
+        spine_index=369,
+        start_offset=1101,
+    )
+    route = HistoricalRouteExtractor(Geography()).build(
+        [item], event_id="sulla", name="Sulla eastern campaign", period="roman-republic",
+    )
+    assert route is not None
+    assert len(route.ordered_points) == 2
+    assert [point.historical_place.canonical_name for point in route.ordered_points] == [
+        "Greece", "Italy",
+    ]
+    assert all(point.evidence_refs == ["sulla-sail"] for point in route.ordered_points)

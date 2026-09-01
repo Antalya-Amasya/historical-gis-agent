@@ -126,6 +126,20 @@ class HistoricalPlaceMentionExtractor:
                         source, destination = self._place_after(reached_match.end(), aliases), self._place_after(lead_match.end(), aliases)
                         if source and destination and source != destination:
                             relation = ("arrival_then_lead", source, destination)
+                if relation is None:
+                    sailed_match = re.search(r"\b(?:sail|sailed|sailing)\s+for\s+", lower)
+                    thence_match = re.search(r"\bthence\s+passed\s+on\s+to\s+", lower)
+                    if sailed_match and thence_match and sailed_match.start() < thence_match.start():
+                        sailed_destination = self._place_after(
+                            sailed_match.end(), aliases, before=thence_match.start(),
+                        )
+                        thence_destination = self._place_after(thence_match.end(), aliases)
+                        if (
+                            sailed_destination
+                            and thence_destination
+                            and sailed_destination != thence_destination
+                        ):
+                            relation = ("thence_passed_on_to", sailed_destination, thence_destination)
                 claim_number += 1
                 if relation is not None:
                     movement_relation, source, destination = relation
