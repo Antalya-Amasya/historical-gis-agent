@@ -182,7 +182,7 @@ def test_sequential_retrievals_keep_prior_evidence_backed_events():
     registry.execute("search_historical_evidence", {"query": "Rhine bridges"}, state)
     assert [(event.event_type.value, event.place_mentions[0].raw_text if event.place_mentions else None) for event in state.historical_events] == [
         ("BATTLE", "Alesia"),
-        ("MOVEMENT", None),
+        ("MOVEMENT", "Rhine"),
     ]
 
 

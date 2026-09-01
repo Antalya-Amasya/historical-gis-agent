@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from backend.app.models import Evidence, ExtractedHistoricalPlaceMention, GeoJsonLineString, HistoricalClaim, HistoricalPlace, HistoricalRoute, HistoricalRoutePoint
+from backend.app.routes.movement_semantics import analyze_sentence
 from backend.app.routes.place_aliases import HISTORICAL_PLACE_ALIASES, HistoricalPlaceAlias
 
 
@@ -81,7 +82,7 @@ class HistoricalPlaceMentionExtractor:
         return candidates[0] if candidates else None
 
     def movement_claims(self, evidence: list[Evidence], *, event_id: str) -> list[HistoricalClaim]:
-        """Extract only explicit same-statement movement claims.
+        """Extract explicit movement claims from evidence-local movement semantics.
 
         Traversal-only statements retain evidence provenance but cannot form a route edge.
         """
@@ -89,72 +90,58 @@ class HistoricalPlaceMentionExtractor:
         claim_number = 0
         for item in evidence:
             document = str(item.metadata.get("document_id") or item.source_file or item.author)
+            prior_endpoints = ()
             for sentence in self._sentences(self._text(item)):
                 aliases = self.aliases_in(sentence)
-                lower = sentence.lower()
-                relation: tuple[str, HistoricalPlaceAlias, HistoricalPlaceAlias] | None = None
-                movement_from = re.search(r"\b(?:marched|advanced|proceeded|moved|travelled|traveled|returned|withdrew|retreated|hastened|led(?:\s+(?:his|the)\s+army)?)\b.{0,180}?\bfrom\s+", lower)
-                if movement_from:
-                    from_match = re.search(r"\bfrom\s+", lower[movement_from.start():])
-                    from_start = movement_from.start() + from_match.start() if from_match else None
-                    from_end = movement_from.start() + from_match.end() if from_match else None
-                    to_match = re.search(r"\b(?:to|into|toward|towards)\s+", lower[from_end:] if from_end is not None else "")
-                    to_start = from_end + to_match.start() if to_match and from_end is not None else None
-                    to_end = from_end + to_match.end() if to_match and from_end is not None else None
-                else:
-                    from_start = from_end = to_start = to_end = None
-                if from_start is not None and from_end is not None and to_start is not None and to_end is not None:
-                    source = self._place_after(from_end, aliases, before=to_start)
-                    destination = self._place_after(to_end, aliases)
-                    if source and destination and source != destination:
-                        relation = ("from_to", source, destination)
-                if relation is None:
-                    leave_match = re.search(r"\b(?:left|leaving|departed(?:\s+from)?)\s+", lower)
-                    arrive_match = re.search(r"\b(?:reached|arriv(?:ed|ing)\s+(?:at|in)|came\s+to|entered|passed\s+into)\s+", lower)
-                    if leave_match and arrive_match and leave_match.start() < arrive_match.start():
-                        source = self._place_after(leave_match.end(), aliases, before=arrive_match.start())
-                        destination = self._place_after(arrive_match.end(), aliases)
-                        if source and destination and source != destination:
-                            relation = ("departure_arrival", source, destination)
-                if relation is None:
-                    cross_match = re.search(r"\b(?:crossed|crossing|traversed|traversing)\s+(?:the\s+)?", lower)
-                    arrive_match = re.search(r"\b(?:came\s+to|arriv(?:ed|ing)\s+(?:at|in)|entered|passed\s+into)\s+", lower)
-                    if cross_match and arrive_match and cross_match.start() < arrive_match.start():
-                        crossed = self._place_after(cross_match.end(), aliases, before=arrive_match.start())
-                        destination = self._place_after(arrive_match.end(), aliases)
-                        if crossed and destination and crossed != destination:
-                            relation = ("crossing_arrival", crossed, destination)
-                if relation is None:
-                    reached_match = re.search(r"\b(?:reached|arrived\s+(?:at|in)|came\s+to)\s+", lower)
-                    lead_match = re.search(r"\b(?:led|conducted)\b.{0,180}?\b(?:to|into)\s+", lower)
-                    if reached_match and lead_match and reached_match.start() < lead_match.start():
-                        source, destination = self._place_after(reached_match.end(), aliases), self._place_after(lead_match.end(), aliases)
-                        if source and destination and source != destination:
-                            relation = ("arrival_then_lead", source, destination)
-                if relation is None:
-                    sailed_match = re.search(r"\b(?:sail|sailed|sailing)\s+for\s+", lower)
-                    thence_match = re.search(r"\bthence\s+passed\s+on\s+to\s+", lower)
-                    if sailed_match and thence_match and sailed_match.start() < thence_match.start():
-                        sailed_destination = self._place_after(
-                            sailed_match.end(), aliases, before=thence_match.start(),
-                        )
-                        thence_destination = self._place_after(thence_match.end(), aliases)
-                        if (
-                            sailed_destination
-                            and thence_destination
-                            and sailed_destination != thence_destination
-                        ):
-                            relation = ("thence_passed_on_to", sailed_destination, thence_destination)
+                semantics = analyze_sentence(sentence, aliases, prior_endpoints=prior_endpoints)
+                prior_endpoints = semantics.endpoints
                 claim_number += 1
-                if relation is not None:
-                    movement_relation, source, destination = relation
-                    claims.append(HistoricalClaim(id=f"{event_id}-movement-{claim_number}", claim_type="MOVEMENT", text=sentence, textual_basis=sentence, source_place=source.canonical_name, destination_place=destination.canonical_name, movement_relation=movement_relation, sequence_status="explicit", supporting_evidence_ids=[item.id], source_documents=[document], confidence=0.9))
-                    continue
-                traverse_match = re.search(r"\b(?:crossed|crossing|traversed|traversing|entered|entering|ascent\s+of|descent\s+of)\s+(?:the\s+)?", lower)
-                if traverse_match:
-                    traversed = self._place_after(traverse_match.end(), aliases)
-                    if traversed:
-                        claims.append(HistoricalClaim(id=f"{event_id}-movement-{claim_number}", claim_type="MOVEMENT", text=sentence, textual_basis=sentence, traversed_place=traversed.canonical_name, movement_relation="traversal", sequence_status="unordered", supporting_evidence_ids=[item.id], source_documents=[document], confidence=0.8))
+                for edge in semantics.edges:
+                    if edge.origin and edge.destination:
+                        claims.append(HistoricalClaim(
+                            id=f"{event_id}-movement-{claim_number}",
+                            claim_type="MOVEMENT",
+                            text=sentence,
+                            textual_basis=sentence,
+                            source_place=edge.origin.place_name,
+                            destination_place=edge.destination.place_name,
+                            movement_relation=edge.movement_relation,
+                            sequence_status="explicit",
+                            supporting_evidence_ids=[item.id],
+                            source_documents=[document],
+                            confidence=0.9,
+                        ))
+                        continue
+                    if edge.traversal and edge.destination and edge.movement_relation in {
+                        "crossing_into", "crossing_arrival",
+                    }:
+                        claims.append(HistoricalClaim(
+                            id=f"{event_id}-movement-{claim_number}",
+                            claim_type="MOVEMENT",
+                            text=sentence,
+                            textual_basis=sentence,
+                            source_place=edge.traversal.place_name,
+                            destination_place=edge.destination.place_name,
+                            movement_relation=edge.movement_relation,
+                            sequence_status="explicit",
+                            supporting_evidence_ids=[item.id],
+                            source_documents=[document],
+                            confidence=0.9,
+                        ))
+                        continue
+                    if edge.traversal and edge.movement_relation == "traversal":
+                        claims.append(HistoricalClaim(
+                            id=f"{event_id}-movement-{claim_number}",
+                            claim_type="MOVEMENT",
+                            text=sentence,
+                            textual_basis=sentence,
+                            traversed_place=edge.traversal.place_name,
+                            movement_relation="traversal",
+                            sequence_status="unordered",
+                            supporting_evidence_ids=[item.id],
+                            source_documents=[document],
+                            confidence=0.8,
+                        ))
         return claims
 
 

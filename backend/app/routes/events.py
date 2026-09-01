@@ -19,6 +19,7 @@ from backend.app.models import (
     TemporalPrecision,
 )
 from backend.app.routes.extractor import HistoricalPlaceMentionExtractor
+from backend.app.routes.movement_semantics import MovementEndpoint, analyze_sentence, _has_movement_cue
 from backend.app.routes.place_mention_validation import validate_broad_place_mention
 from backend.app.routes.temporal import EvidenceTemporalResolver
 
@@ -145,6 +146,8 @@ class EvidenceGroundedHistoricalEventExtractor:
         for event_type, pattern in self._TYPE_PATTERNS:
             if re.search(pattern, lower):
                 return event_type
+        if _has_movement_cue(sentence):
+            return HistoricalEventType.MOVEMENT
         return HistoricalEventType.UNKNOWN
 
     @staticmethod
@@ -250,6 +253,98 @@ class EvidenceGroundedHistoricalEventExtractor:
                     item.role = role
         return values
 
+    @staticmethod
+    def _place_identity(mention: HistoricalEventPlaceMention) -> str:
+        return (mention.canonical_hint or mention.raw_text).casefold()
+
+    def _assign_movement_endpoint_role(
+        self,
+        places: list[HistoricalEventPlaceMention],
+        endpoint: MovementEndpoint,
+        role: EventPlaceRole,
+        sentence: str,
+        evidence_id: str,
+    ) -> None:
+        if role not in {EventPlaceRole.ORIGIN, EventPlaceRole.DESTINATION, EventPlaceRole.RELATED_PLACE}:
+            return
+        existing = next(
+            (
+                item for item in places
+                if item.raw_text.casefold() == endpoint.surface.casefold()
+                or (endpoint.canonical and item.canonical_hint == endpoint.canonical)
+            ),
+            None,
+        )
+        if existing is not None:
+            if role in {EventPlaceRole.ORIGIN, EventPlaceRole.DESTINATION}:
+                existing.role = role
+            return
+        validation = validate_broad_place_mention(
+            endpoint.surface,
+            sentence,
+            re.search(re.escape(endpoint.surface), sentence, re.IGNORECASE),
+        )
+        if validation.validation_class is PlaceMentionValidationClass.NON_PLACE_HIGH_CONFIDENCE:
+            return
+        places.append(HistoricalEventPlaceMention(
+            raw_text=endpoint.surface,
+            canonical_hint=endpoint.canonical,
+            role=role,
+            evidence_refs=[evidence_id],
+            resolution_status=(
+                EventPlaceResolutionStatus.NORMALIZED_TEXT_ONLY
+                if endpoint.canonical
+                else EventPlaceResolutionStatus.TEXT_ONLY
+            ),
+            alias_provenance=None,
+            validation_class=validation.validation_class,
+            validation_reason=validation.reason,
+        ))
+
+    @classmethod
+    def _collapse_same_place_origin_destination(cls, places: list[HistoricalEventPlaceMention]) -> list[HistoricalEventPlaceMention]:
+        """Fail closed on impossible same-place O/D pairs produced by overlapping heuristics."""
+        origin_identities = {cls._place_identity(item) for item in places if item.role is EventPlaceRole.ORIGIN}
+        for mention in places:
+            if mention.role is EventPlaceRole.DESTINATION and cls._place_identity(mention) in origin_identities:
+                mention.role = EventPlaceRole.RELATED_PLACE
+        return places
+
+    def _apply_movement_semantics(
+        self,
+        sentence: str,
+        places: list[HistoricalEventPlaceMention],
+        evidence_id: str,
+        *,
+        prior_endpoints: tuple = (),
+    ) -> list[HistoricalEventPlaceMention]:
+        semantics = analyze_sentence(
+            sentence,
+            self.mention_extractor.aliases_in(sentence),
+            prior_endpoints=prior_endpoints,
+        )
+        if semantics.should_abstain:
+            return places
+        role_map = {
+            "origin": EventPlaceRole.ORIGIN,
+            "destination": EventPlaceRole.DESTINATION,
+            "traversal": EventPlaceRole.RELATED_PLACE,
+        }
+        for endpoint in semantics.endpoints:
+            self._assign_movement_endpoint_role(
+                places, endpoint, role_map[endpoint.role], sentence, evidence_id,
+            )
+        for edge in semantics.edges:
+            if edge.origin is not None:
+                self._assign_movement_endpoint_role(
+                    places, edge.origin, role_map[edge.origin.role], sentence, evidence_id,
+                )
+            if edge.destination is not None:
+                self._assign_movement_endpoint_role(
+                    places, edge.destination, role_map[edge.destination.role], sentence, evidence_id,
+                )
+        return self._collapse_same_place_origin_destination(places)
+
     def _anaphoric_origin(
         self, previous: str | None, sentence: str, evidence_id: str,
     ) -> HistoricalEventPlaceMention | None:
@@ -318,17 +413,28 @@ class EvidenceGroundedHistoricalEventExtractor:
             contexts = (query.strip(),)
         for item in evidence:
             sentences = self._sentences(self._text(item))
+            prior_endpoints: tuple = ()
             for index, sentence in enumerate(sentences):
                 event_type = self._event_type(sentence)
                 if not self._eligible(sentence, event_type, contexts):
                     continue
                 places = self._places(sentence, item.id)
+                if event_type is HistoricalEventType.MOVEMENT:
+                    places = self._apply_movement_semantics(
+                        sentence, places, item.id, prior_endpoints=prior_endpoints,
+                    )
                 origin = (
                     self._anaphoric_origin(sentences[index - 1] if index else None, sentence, item.id)
                     if event_type is HistoricalEventType.MOVEMENT else None
                 )
                 if origin is not None:
                     places.insert(0, origin)
+                if event_type is HistoricalEventType.MOVEMENT:
+                    prior_endpoints = analyze_sentence(
+                        sentence,
+                        self.mention_extractor.aliases_in(sentence),
+                        prior_endpoints=prior_endpoints,
+                    ).endpoints
                 statement = f"{sentences[index - 1]} {sentence}" if origin is not None else sentence
                 digest = hashlib.sha256(f"{item.id}:{index}:{statement}".encode("utf-8")).hexdigest()[:12]
                 temporal_readings, codes = self.temporal_resolver.resolve(statement, item.id)
