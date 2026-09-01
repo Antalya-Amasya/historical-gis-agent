@@ -1,6 +1,8 @@
 from fastapi.testclient import TestClient
 
+from backend.app.geography.place_registry import GazetteerResolution
 from geography_mcp.server import app
+from geography_mcp import service
 
 
 def test_resolve_demo_place_uses_shared_auditable_repository() -> None:
@@ -47,9 +49,45 @@ def test_bituriges_is_a_broad_region_not_a_fake_settlement_point() -> None:
     assert place["uncertain"] is True
 
 
-def test_unknown_place_remains_unresolved() -> None:
+def test_unknown_place_remains_distinguishable(monkeypatch) -> None:
+    monkeypatch.setattr(
+        service, "resolve_with_status", lambda name: GazetteerResolution(status="NOT_FOUND")
+    )
     response = TestClient(app).post(
         "/tools/resolve_ancient_place", json={"name": "Definitely Not A Registered Ancient Place"}
     )
     assert response.status_code == 200
-    assert response.json() == {"found": False}
+    assert response.json() == {"found": False, "status": "NOT_FOUND"}
+
+
+def test_unavailable_gazetteer_remains_distinguishable(monkeypatch) -> None:
+    monkeypatch.setattr(
+        service,
+        "resolve_with_status",
+        lambda name: GazetteerResolution(status="UNAVAILABLE", reason="index missing"),
+    )
+    response = TestClient(app).post("/tools/resolve_ancient_place", json={"name": "Roma"})
+    assert response.status_code == 200
+    assert response.json() == {
+        "found": False,
+        "status": "UNAVAILABLE",
+        "reason": "index missing",
+    }
+
+
+def test_ambiguous_status_and_candidates_are_preserved(monkeypatch) -> None:
+    candidates = ({"pleiades_id": "501596"}, {"pleiades_id": "501597"})
+    monkeypatch.setattr(
+        service,
+        "resolve_with_status",
+        lambda name: GazetteerResolution(
+            status="AMBIGUOUS", candidate_count=2, candidates=candidates
+        ),
+    )
+    response = TestClient(app).post("/tools/resolve_ancient_place", json={"name": "Samothrace"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["found"] is False
+    assert payload["status"] == "AMBIGUOUS"
+    assert payload["candidate_count"] == 2
+    assert payload["candidates"] == list(candidates)

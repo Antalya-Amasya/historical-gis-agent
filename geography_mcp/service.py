@@ -56,6 +56,7 @@ class GeographyService:
         if resolution.status == "AMBIGUOUS":
             return {
                 "found": False,
+                "status": "AMBIGUOUS",
                 "ambiguous": True,
                 "candidate_count": resolution.candidate_count,
                 "candidates": list(resolution.candidates),
@@ -63,15 +64,14 @@ class GeographyService:
         if resolution.status == "UNLOCATED":
             return {
                 "found": False,
+                "status": "UNLOCATED",
                 "authority_status": "UNLOCATED",
                 "candidate_count": resolution.candidate_count,
                 "candidates": list(resolution.candidates),
             }
         if resolution.status == "UNAVAILABLE":
-            # Keep the established MCP response contract while the internal
-            # resolver retains the explicit UNAVAILABLE diagnostic.
-            return {"found": False}
-        return {"found": False}
+            return {"found": False, "status": "UNAVAILABLE", "reason": resolution.reason}
+        return {"found": False, "status": "NOT_FOUND"}
     def calculate_distance(self, point_a: GeoPoint, point_b: GeoPoint) -> DistanceResult:
         lat1,lon1,lat2,lon2=map(radians,(point_a.latitude,point_a.longitude,point_b.latitude,point_b.longitude))
         value=2*6371008.8*asin(sqrt(sin((lat2-lat1)/2)**2+cos(lat1)*cos(lat2)*sin((lon2-lon1)/2)**2))
