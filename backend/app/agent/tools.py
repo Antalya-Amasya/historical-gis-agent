@@ -14,6 +14,7 @@ from backend.app.routes.route_provenance import HistoricalRouteTraceBuilder
 from backend.app.routes.events import EvidenceGroundedHistoricalEventExtractor, HistoricalEventConsolidator
 from backend.app.routes.event_places import HistoricalEventPlaceResolver
 from backend.app.route_orchestrator import (
+    BarrierCrossingConstraintError,
     HistoricalCampaignIntentRegistry,
     HistoricalRouteOrchestrator,
     RouteOrchestrationError,
@@ -39,6 +40,27 @@ def _retrieval_evidence_count(result_summary: str) -> int:
         return 0
     value, _, _ = result_summary.partition(marker)[2].partition(" ")
     return int(value) if value.isdigit() else 0
+
+
+def _global_canonical_chain(route) -> tuple[str, ...]:
+    return tuple(point.historical_place.canonical_name for point in route.ordered_points)
+
+
+def _has_non_duplicate_fallback_components(route) -> bool:
+    global_chain = _global_canonical_chain(route)
+    for component in route.route_components:
+        if len(component.ordered_points) < 2:
+            continue
+        chain = tuple(point.historical_place.canonical_name for point in component.ordered_points)
+        if chain != global_chain:
+            return True
+    return False
+
+
+def _global_presentation_failure_reason(exc: Exception) -> str:
+    if isinstance(exc, BarrierCrossingConstraintError):
+        return "BARRIER_CROSSING_CONSTRAINT"
+    return type(exc).__name__
 
 
 def _cumulative_event_query_contexts(
@@ -227,6 +249,14 @@ class AgentToolRegistry:
             try:
                 presentation = self.route_orchestrator.present(intent, route, state.historical_evidence)
             except (RouteOrchestrationError, ValueError, KeyError) as exc:
+                if (
+                    isinstance(exc, BarrierCrossingConstraintError)
+                    and route.route_components
+                    and _has_non_duplicate_fallback_components(route)
+                ):
+                    return self._present_component_fallback_after_global_failure(
+                        intent, route, state, diagnostics, exc,
+                    )
                 diagnostics["gis_reconstruction"] = {
                     "attempted": True,
                     "pipeline": "terrain_candidate_orchestrator",
@@ -295,4 +325,64 @@ class AgentToolRegistry:
             "presentation": presentation.model_dump(mode="json"),
             "diagnostics": diagnostics["gis_reconstruction"],
             "summary": "terrain_presentation=ready",
+        }
+
+    def _present_component_fallback_after_global_failure(
+        self,
+        intent: HistoricalRouteIntent,
+        route,
+        state: AgentState,
+        diagnostics: dict,
+        global_exc: Exception,
+    ) -> dict:
+        from backend.app.candidate_routes.component_fragment_presentation import ComponentFragmentPresentationAdapter
+
+        global_chain = _global_canonical_chain(route)
+        fragment_result = ComponentFragmentPresentationAdapter(self.route_orchestrator).present(
+            intent,
+            route,
+            state.historical_evidence,
+            global_chain=global_chain,
+        )
+        global_presentation = {
+            "status": "FAILED",
+            "reason": _global_presentation_failure_reason(global_exc),
+            "reason_code": type(global_exc).__name__,
+        }
+        component_fallback = {
+            "attempted": True,
+            "components_total": fragment_result.diagnostics.get("components_total", 0),
+            "components_eligible": (
+                int(fragment_result.diagnostics.get("components_total", 0))
+                - int(fragment_result.diagnostics.get("components_skipped", 0))
+            ),
+            "fragments_presented": fragment_result.diagnostics.get("components_presented", 0),
+            "components_failed": fragment_result.diagnostics.get("components_failed", 0),
+            "components_skipped_duplicate": fragment_result.diagnostics.get("components_skipped_duplicate", 0),
+        }
+        gis_reconstruction = {
+            **fragment_result.diagnostics,
+            "global_presentation": global_presentation,
+            "component_fallback": component_fallback,
+        }
+        if fragment_result.presentation is None:
+            gis_reconstruction["status"] = "FAILED"
+            gis_reconstruction["reason_code"] = "NO_SAFE_COMPONENT_FALLBACK"
+            diagnostics["gis_reconstruction"] = gis_reconstruction
+            state.historical_route_diagnostics = diagnostics
+            return {
+                "presentation": None,
+                "diagnostics": gis_reconstruction,
+                "summary": "terrain_component_fallback_unavailable",
+            }
+        gis_reconstruction["status"] = fragment_result.diagnostics.get("status", "PARTIAL")
+        diagnostics["gis_reconstruction"] = gis_reconstruction
+        state.historical_route_diagnostics = diagnostics
+        return {
+            "presentation": fragment_result.presentation.model_dump(mode="json"),
+            "diagnostics": gis_reconstruction,
+            "summary": (
+                f"terrain_component_fallback_fragments="
+                f"{fragment_result.diagnostics.get('components_presented', 0)}"
+            ),
         }

@@ -145,6 +145,8 @@ class ComponentFragmentPresentationAdapter:
         intent: HistoricalRouteIntent,
         route: HistoricalRoute,
         evidence: list[Evidence],
+        *,
+        global_chain: tuple[str, ...] | None = None,
     ) -> ComponentFragmentPresentationResult:
         components = sorted(route.route_components, key=lambda item: item.component_id)
         seen_chains: set[tuple[str, ...]] = set()
@@ -152,9 +154,24 @@ class ComponentFragmentPresentationAdapter:
         failures: list[RoutePresentationFragment] = []
         skipped: list[RoutePresentationFragment] = []
         component_results: list[dict[str, object]] = []
+        skipped_duplicate_global = 0
 
         for component in components:
             chain = _canonical_chain(component)
+            if global_chain is not None and chain == global_chain:
+                skipped_duplicate_global += 1
+                skipped.append(RoutePresentationFragment(
+                    component_id=component.component_id,
+                    status="SKIPPED",
+                    evidence_refs=_component_evidence_refs(component),
+                    reason_code="DUPLICATE_GLOBAL_CHAIN",
+                ))
+                component_results.append({
+                    "component_id": component.component_id,
+                    "status": "SKIPPED",
+                    "reason_code": "DUPLICATE_GLOBAL_CHAIN",
+                })
+                continue
             if chain in seen_chains:
                 skipped.append(RoutePresentationFragment(
                     component_id=component.component_id,
@@ -235,6 +252,8 @@ class ComponentFragmentPresentationAdapter:
             "components_skipped": len(skipped),
             "component_results": component_results,
         }
+        if global_chain is not None:
+            diagnostics["components_skipped_duplicate"] = skipped_duplicate_global
         if not successes:
             return ComponentFragmentPresentationResult(
                 presentation=None,
