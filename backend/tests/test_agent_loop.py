@@ -29,7 +29,7 @@ class Geo:
 def ev(identifier,text): return Evidence(id=identifier,author="Polybius",work="Histories",locator="Book III",excerpt=text,text=text,book="3",page_start=1,page_end=1,source_file="polybius.pdf",source_type="pdf")
 def route_ev(): return [ev("move", "Synthetic test evidence: Hannibal's army marched from New Carthage to the Rhone.")]
 def terminal(answer, ids, insufficient_evidence=False): return call("submit_grounded_answer", {"answer":answer,"evidence_ids":ids,"insufficient_evidence":insufficient_evidence}, "terminal")
-def agent(script, evidence=None, max_steps=4, max_tool_executions=10, max_rag_search_executions=4, max_completion_corrections=1, max_completion_tool_executions=1): return HistoricalGisAgent(ScriptedLLMProvider(script),Retriever(evidence or []),Geo(),max_steps=max_steps,max_tool_executions=max_tool_executions,max_rag_search_executions=max_rag_search_executions,max_completion_corrections=max_completion_corrections,max_completion_tool_executions=max_completion_tool_executions)
+def agent(script, evidence=None, max_steps=4, max_tool_executions=10, max_rag_search_executions=4, max_completion_corrections=1, max_completion_tool_executions=1, max_grounding_corrections=1): return HistoricalGisAgent(ScriptedLLMProvider(script),Retriever(evidence or []),Geo(),max_steps=max_steps,max_tool_executions=max_tool_executions,max_rag_search_executions=max_rag_search_executions,max_completion_corrections=max_completion_corrections,max_completion_tool_executions=max_completion_tool_executions,max_grounding_corrections=max_grounding_corrections)
 def call(name,args,ident="x"): return AgentModelResponse(tool_calls=[AgentToolCall(id=ident,name=name,arguments=args)],finish_reason="tool_calls")
 
 def test_tool_registry_has_only_allowlisted_schemas():

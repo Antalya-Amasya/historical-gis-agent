@@ -20,6 +20,13 @@ _DIRECTIONAL_MARKERS = (
 )
 _INSUFFICIENT_TERMS = ("insufficient", "cannot build", "unable to build", "evidence is not enough", "证据不足", "无法生成", "不能生成")
 COMPLETION_TOOL_BY_OUTPUT = {"historical_route": "build_historical_route"}
+ROUTE_PROSE_GROUNDING_FALLBACK = (
+    "A structured route was built from the current Evidence, but the generated explanation "
+    "did not pass grounding validation. Use the verified route nodes and citations."
+)
+GENERIC_GROUNDING_GUARDRAIL = (
+    "The current retrieved historical evidence is insufficient to support a reliable answer."
+)
 
 
 def _fingerprint(name: str, arguments: dict) -> str:
@@ -217,6 +224,19 @@ class BoundedAgentLoop:
         if assessment.candidate_explosion:
             state.warnings.append("provenance_candidate_explosion")
 
+    def _grounding_guardrail_reply(self, state: AgentState) -> str:
+        if state.requested_output == "historical_route" and state.historical_route is not None:
+            return ROUTE_PROSE_GROUNDING_FALLBACK
+        return GENERIC_GROUNDING_GUARDRAIL
+
+    def _finish_grounding_guardrail(self, state: AgentState, started: float) -> tuple[str, AgentState]:
+        state.status = "completed_with_guardrail"
+        state.final_grounding_status = "guardrail_fallback"
+        state.warnings.append("unsupported_historical_answer_discarded")
+        if state.requested_output == "historical_route" and state.historical_route is not None:
+            state.warnings.append("prose_grounding_discarded_route_preserved")
+        return self._finish(self._grounding_guardrail_reply(state), state, started)
+
     def _route_completion_action(self, response_content: str | None, state: AgentState, corrections: int) -> str:
         if state.requested_output != "historical_route" or state.historical_route is not None:
             return "finish"
@@ -271,6 +291,7 @@ class BoundedAgentLoop:
             self.tools.resolve_route_intent(user_message)
             if state.requested_output == "historical_route" else None
         )
+        state.historical_route = None
         state.historical_route_presentation = None
         state.historical_route_diagnostics = None
         state.historical_events = []
@@ -353,8 +374,7 @@ class BoundedAgentLoop:
                         manifest = "; ".join(f"{item.id} ({item.author}, {item.work}, {item.locator})" for item in state.historical_evidence[:8])
                         messages.append({"role":"user","content":f"Your submit_grounded_answer validation failed: {', '.join(issues)}. Call submit_grounded_answer again with answer and evidence_ids selected only from: {manifest}. Use insufficient_evidence=true only for an explicit insufficiency answer."})
                         continue
-                    state.status="completed_with_guardrail"; state.final_grounding_status="guardrail_fallback"; state.warnings.append("unsupported_historical_answer_discarded")
-                    return self._finish("The current retrieved historical evidence is insufficient to support a reliable answer.", state, started)
+                    return self._finish_grounding_guardrail(state, started)
                 self._record_grounding_assessment(state, assessment)
                 if explicit_insufficient:
                     state.final_grounding_status="insufficient_evidence"
@@ -384,7 +404,7 @@ class BoundedAgentLoop:
                         state.final_grounding_status = "insufficient_evidence"
                         state.warnings.append("answer_blocked_without_evidence")
                         return self._finish(
-                            "The current retrieved historical evidence is insufficient to support a reliable answer.",
+                            GENERIC_GROUNDING_GUARDRAIL,
                             state,
                             started,
                         )
@@ -448,7 +468,7 @@ class BoundedAgentLoop:
                         state.final_grounding_status = "guardrail_fallback"
                         state.warnings.append("unsupported_historical_answer_discarded")
                         return self._finish(
-                            "The current retrieved historical evidence is insufficient to support a reliable answer.",
+                            GENERIC_GROUNDING_GUARDRAIL,
                             state,
                             started,
                         )
