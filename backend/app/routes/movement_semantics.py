@@ -41,6 +41,20 @@ _MOVEMENT_AFTER_DISCOURSE = re.compile(
     r"\b(?:marched|advanced|proceeded|passed|went|moved|travelled|traveled|reached|arrived|entered)\b",
     re.IGNORECASE,
 )
+_MOVEMENT_GOVERNED_FROM = re.compile(
+    r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|"
+    r"departed|left|leaving|withdrew|retreated|fled|came|went|crossed|crossing|returned|"
+    r"hastened|set\s+out|descended)\b(?:\s+\w+){0,12}?\bfrom\b",
+    re.IGNORECASE,
+)
+_MEDIATED_ORIGIN_PREFIX = re.compile(
+    r"^(?:the\s+)?(?:passage|valley|crossing|banks?|mouth|shores?|foot)\s+of\s+(?:the\s+)?",
+    re.IGNORECASE,
+)
+_VALLEY_OF_PREFIX = re.compile(
+    r"^(?:the\s+)?([A-Z][A-Za-z'À-ÖØ-öø-ÿÆæŒœ]*(?:\s+(?:the\s+)?[A-Z][A-Za-z'À-ÖØ-öø-ÿÆæŒœ]*){0,2})\s+valley\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -124,6 +138,49 @@ def _endpoint_after(
     return MovementEndpoint(surface=surface, canonical=None, role=role, position=position)
 
 
+def _origin_after_from(
+    sentence: str,
+    from_end: int,
+    aliases: list[tuple[int, HistoricalPlaceAlias, str]],
+    *,
+    before: int | None = None,
+) -> MovementEndpoint | None:
+    """Resolve a movement source after ``from``, including mediated phrases."""
+    remainder = sentence[from_end:]
+    stripped = remainder.lstrip()
+    offset = from_end + (len(remainder) - len(stripped))
+    mediated = _MEDIATED_ORIGIN_PREFIX.match(stripped)
+    if mediated:
+        return _endpoint_after(sentence, offset + mediated.end(), aliases, before=before, role="origin")
+    valley = _VALLEY_OF_PREFIX.match(stripped)
+    if valley:
+        surface = valley.group(1).strip()
+        alias_hits = [
+            (position, place, alias)
+            for position, place, alias in aliases
+            if position >= offset and (before is None or position < before)
+        ]
+        for position, place, alias in alias_hits:
+            if alias.casefold() in surface.casefold() or surface.casefold() in alias.casefold():
+                return MovementEndpoint(
+                    surface=sentence[position:position + len(alias)],
+                    canonical=place.canonical_name,
+                    role="origin",
+                    position=position,
+                )
+        fake = re.search(re.escape(surface), sentence[offset:before] if before else sentence[offset:], re.IGNORECASE)
+        if fake:
+            validation = validate_broad_place_mention(surface, sentence, fake)
+            if validation.validation_class is not PlaceMentionValidationClass.NON_PLACE_HIGH_CONFIDENCE:
+                return MovementEndpoint(
+                    surface=surface,
+                    canonical=None,
+                    role="origin",
+                    position=offset + valley.start(1),
+                )
+    return _endpoint_after(sentence, from_end, aliases, before=before, role="origin")
+
+
 def _has_movement_cue(sentence: str) -> bool:
     return bool(_MOVEMENT_CUE.search(sentence)) and not _NON_MOVEMENT.search(sentence)
 
@@ -174,7 +231,7 @@ def analyze_sentence(
     # A. marched/advanced ... from X to/into/toward Y
     movement_from = re.search(
         r"\b(?:marched|advanced|proceeded|moved|travelled|traveled|returned|withdrew|retreated|"
-        r"hastened|led(?:\s+(?:his|the)\s+army)?|set\s+out|went|descended|fled)\b.{0,180}?\bfrom\s+",
+        r"hastened|led(?:\s+(?:his|the)\s+army)?|set\s+out|went|descended|fled|march(?:ed|ing)?)\b.{0,180}?\bfrom\s+",
         lower,
     )
     if movement_from:
@@ -185,19 +242,39 @@ def analyze_sentence(
         if from_end is not None and to_match:
             to_start = from_end + to_match.start()
             to_end = from_end + to_match.end()
-            origin = _endpoint_after(sentence, from_end, aliases, before=to_start, role="origin")
+            origin = _origin_after_from(sentence, from_end, aliases, before=to_start)
             destination = _endpoint_after(sentence, to_end, aliases, role="destination")
             candidate = _edge(origin, destination, movement_relation="from_to")
             if candidate:
                 edges.append(candidate)
                 endpoints.extend(item for item in (origin, destination) if item)
 
+    # A-cross: crossed/moved ... from X into/to/toward Y
+    if not edges:
+        cross_from = re.search(
+            r"\b(?:crossed|crossing|moved|travelled|traveled|went|came|advanced|proceeded)\b.{0,160}?\bfrom\s+",
+            lower,
+        )
+        if cross_from:
+            from_match = re.search(r"\bfrom\s+", lower[cross_from.start():])
+            from_end = cross_from.start() + from_match.end() if from_match else None
+            to_match = re.search(r"\b(?:into|to|toward|towards)\s+", lower[from_end:] if from_end is not None else "")
+            if from_end is not None and to_match:
+                to_start = from_end + to_match.start()
+                to_end = from_end + to_match.end()
+                origin = _origin_after_from(sentence, from_end, aliases, before=to_start)
+                destination = _endpoint_after(sentence, to_end, aliases, role="destination")
+                candidate = _edge(origin, destination, movement_relation="crossed_from_into")
+                if candidate:
+                    edges.append(candidate)
+                    endpoints.extend(item for item in (origin, destination) if item)
+
     # B. departed from X for/toward Y
     if not edges:
         depart = re.search(r"\b(?:departed(?:\s+from)?|set\s+out\s+from)\s+", lower)
         dest = re.search(r"\b(?:for|toward|towards|to|into)\s+", lower[depart.end():] if depart else "")
         if depart and dest:
-            origin = _endpoint_after(sentence, depart.end(), aliases, before=depart.end() + dest.start(), role="origin")
+            origin = _origin_after_from(sentence, depart.end(), aliases, before=depart.end() + dest.start())
             destination = _endpoint_after(sentence, depart.end() + dest.end(), aliases, role="destination")
             candidate = _edge(origin, destination, movement_relation="departed_for")
             if candidate:

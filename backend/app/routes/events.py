@@ -79,7 +79,31 @@ class EvidenceGroundedHistoricalEventExtractor:
         re.IGNORECASE,
     )
     _MOVEMENT_FROM_PREFIX = re.compile(
-        r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|left|leaving|withdrew|retreated|fled|came)\s+(?:\w+\s+){0,6}from\b",
+        r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|left|leaving|withdrew|retreated|fled|came|went|crossed|crossing|returned|hastened|set\s+out|descended)\s+(?:\w+\s+){0,12}from\b",
+        re.IGNORECASE,
+    )
+    _MOVEMENT_GOVERNED_FROM = re.compile(
+        r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|left|leaving|withdrew|retreated|fled|came|went|crossed|crossing|returned|hastened|set\s+out|descended)\b(?:\s+\w+){0,12}?\bfrom\b",
+        re.IGNORECASE,
+    )
+    _MEDIATED_FROM_PREFIX = re.compile(
+        r"\bfrom\s+(?:the\s+)?(?:passage|valley|crossing|banks?|mouth|shores?|foot)\s+of\s+(?:the\s+)?",
+        re.IGNORECASE,
+    )
+    _NON_SPATIAL_FROM = re.compile(
+        r"\b(?:suffered|learned|escaped|benefited|benefitted|died|derived|known|heard|distinguished|removed|apart|different)\s+from\b",
+        re.IGNORECASE,
+    )
+    _DISTANCE_FROM = re.compile(
+        r"\b\d+\s+(?:miles?|leagues?|stadia|kilometers?|km)\s+from\b",
+        re.IGNORECASE,
+    )
+    _REFERENCE_FROM = re.compile(
+        r"\b(?:news|intelligence|report|account|word|tidings|letter|message|story|version|tradition)\s+from\b",
+        re.IGNORECASE,
+    )
+    _ACCOUNT_FROM = re.compile(
+        r"\bfrom\s+this\s+account\b|\bfrom\s+the\s+account\b",
         re.IGNORECASE,
     )
     _RETROSPECTIVE = re.compile(
@@ -172,10 +196,21 @@ class EvidenceGroundedHistoricalEventExtractor:
                 return False
             return bool(cls._MOVEMENT_TO_PREFIX.search(governed) or cls._MOVEMENT_TO_PREFIX.search(prefix[-80:]))
         if role_token == "from":
-            from_window = sentence[max(0, endpoint_start - 40):endpoint_start + len(role_token)]
+            from_window = sentence[max(0, endpoint_start - 60):endpoint_start + len(role_token)]
+            if cls._NON_SPATIAL_FROM.search(from_window):
+                return False
+            if cls._DISTANCE_FROM.search(from_window):
+                return False
+            if cls._REFERENCE_FROM.search(from_window):
+                return False
+            if cls._ACCOUNT_FROM.search(sentence):
+                return False
             if cls._TROOP_PROVENANCE_FROM.search(from_window):
                 return False
             if cls._MOVEMENT_FROM_PREFIX.search(governed) or cls._MOVEMENT_FROM_PREFIX.search(local):
+                return True
+            mediated_clause = sentence[cls._clause_start(sentence, endpoint_start):place_end]
+            if cls._MEDIATED_FROM_PREFIX.search(mediated_clause) and cls._MOVEMENT_GOVERNED_FROM.search(mediated_clause):
                 return True
             return not local.strip() and bool(cls._MOVEMENT_VERBS.search(sentence[place_end:]))
         return True
@@ -228,14 +263,23 @@ class EvidenceGroundedHistoricalEventExtractor:
         for position, place, _alias in aliases:
             prefix = sentence[:position]
             role = None
-            if re.search(r"\b(?:left|leaving|departed(?:\s+from)?|from)\s+(?:the\s+)?$", prefix, re.IGNORECASE):
+            if re.search(
+                r"\b(?:left|leaving|departed(?:\s+from)?|from)\s+(?:the\s+)?(?:"
+                r"(?:passage|valley|crossing|banks?|mouth|shores?|foot)\s+of\s+(?:the\s+)?)?$",
+                prefix,
+                re.IGNORECASE,
+            ):
                 role = EventPlaceRole.ORIGIN
             elif re.search(r"\b(?:reached|arrived\s+(?:at|in)|came\s+to|entered|passed\s+into|marched?\s+to|marches\s+to|marching\s+to|march\s+to|to|into)\s+(?:the\s+)?$", prefix, re.IGNORECASE):
                 role = EventPlaceRole.DESTINATION
             if role is None:
                 continue
             if role is EventPlaceRole.ORIGIN:
-                from_prep = re.search(r"\bfrom\s+(?:the\s+)?$", prefix, re.IGNORECASE)
+                from_prep = re.search(
+                    r"\bfrom\s+(?:the\s+)?(?:(?:passage|valley|crossing|banks?|mouth|shores?|foot)\s+of\s+(?:the\s+)?)?$",
+                    prefix,
+                    re.IGNORECASE,
+                )
                 if from_prep:
                     from_window = sentence[max(0, from_prep.start() - 40):from_prep.end()]
                     if self._TROOP_PROVENANCE_FROM.search(from_window) or not self._governs_movement_endpoint(
