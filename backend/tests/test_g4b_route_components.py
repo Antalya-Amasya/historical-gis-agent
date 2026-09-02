@@ -98,8 +98,11 @@ def test_hub_incoming_relations_are_retained_as_branches():
         relation("Beta", "Gamma", refs=("b",), event_ids=("e2",)),
     ]
     assembly = assemble(relations)
-    assert assembly.components == ()
     assert set(assembly.branch_pairs) == {("Alpha", "Gamma"), ("Beta", "Gamma")}
+    assert {tuple(path) for path, _edges in assembly.components} == {
+        ("Alpha", "Gamma"),
+        ("Beta", "Gamma"),
+    }
     chain, _edges = EventAnchorRouteBuilder._chain(relations)
     assert chain == []
 
@@ -111,8 +114,12 @@ def test_branching_outgoing_relations_are_retained():
         relation("Beta", "Delta", refs=("c",), event_ids=("e3",)),
     ]
     assembly = assemble(relations)
-    assert len(assembly.components) == 1
-    assert assembly.components[0][0] == ("Alpha", "Beta")
+    assert len(assembly.components) == 3
+    assert {tuple(path) for path, _edges in assembly.components} == {
+        ("Alpha", "Beta"),
+        ("Beta", "Gamma"),
+        ("Beta", "Delta"),
+    }
     assert set(assembly.branch_pairs) == {("Beta", "Gamma"), ("Beta", "Delta")}
 
 

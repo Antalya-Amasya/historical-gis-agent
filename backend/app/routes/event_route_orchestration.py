@@ -274,6 +274,44 @@ def _branch_kind(
     return "isolated"
 
 
+def _component_covered_edges(
+    components: list[tuple[tuple[str, ...], tuple[tuple[str, str], ...]]],
+) -> set[tuple[str, str]]:
+    covered: set[tuple[str, str]] = set()
+    for path, _edges in components:
+        for index in range(len(path) - 1):
+            covered.add((path[index], path[index + 1]))
+    return covered
+
+
+def _eligible_same_movement_component(
+    relation: AnchorOrderingRelation,
+    pair: tuple[str, str],
+) -> bool:
+    return (
+        relation.rule is OrderingRule.SAME_MOVEMENT_EVENT
+        and relation.earlier != relation.later
+        and bool(relation.evidence_refs)
+    )
+
+
+def _materialize_same_movement_branch_components(
+    components: list[tuple[tuple[str, ...], tuple[tuple[str, str], ...]]],
+    branch_pairs: list[tuple[str, str]],
+    subgraph: dict[tuple[str, str], AnchorOrderingRelation],
+) -> None:
+    """Promote proven SAME_MOVEMENT hub branches into drawable 2-point components."""
+    covered = _component_covered_edges(components)
+    for pair in sorted(branch_pairs):
+        if pair in covered:
+            continue
+        relation = subgraph.get(pair)
+        if relation is None or not _eligible_same_movement_component(relation, pair):
+            continue
+        components.append(((pair[0], pair[1]), (pair,)))
+        covered.add(pair)
+
+
 class EventAnchorRouteBuilder:
     """Build a HistoricalRoute only from anchors whose order is independently proven."""
 
@@ -443,9 +481,14 @@ class EventAnchorRouteBuilder:
                 if len(path) >= 2:
                     components.append((tuple(path), tuple(chain_edges)))
             for pair in sorted(subgraph):
-                if pair not in used_edges and pair not in branch_pairs:
-                    components.append(((pair[0], pair[1]), (pair,)))
-                    used_edges.add(pair)
+                if pair in used_edges or pair in subgraph_branches:
+                    continue
+                relation = subgraph[pair]
+                if not _eligible_same_movement_component(relation, pair):
+                    continue
+                components.append(((pair[0], pair[1]), (pair,)))
+                used_edges.add(pair)
+            _materialize_same_movement_branch_components(components, subgraph_branches, subgraph)
         branch_pairs = sorted(set(branch_pairs))
         components.sort(key=lambda item: (-len(item[0]), item[0]))
         return RouteAssembly(tuple(components), tuple(branch_pairs), usable, contradictory, suppressed)
