@@ -21,7 +21,7 @@ from backend.app.models import (
 from backend.app.routes.extractor import HistoricalPlaceMentionExtractor
 from backend.app.routes.movement_semantics import MovementEndpoint, analyze_sentence, _has_movement_cue
 from backend.app.routes.place_mention_validation import validate_broad_place_mention
-from backend.app.routes.temporal import EvidenceTemporalResolver
+from backend.app.routes.temporal import EvidenceTemporalResolver, TemporalResolutionContext
 
 
 class EvidenceGroundedHistoricalEventExtractor:
@@ -414,6 +414,7 @@ class EvidenceGroundedHistoricalEventExtractor:
         for item in evidence:
             sentences = self._sentences(self._text(item))
             prior_endpoints: tuple = ()
+            temporal_context = TemporalResolutionContext()
             for index, sentence in enumerate(sentences):
                 event_type = self._event_type(sentence)
                 if not self._eligible(sentence, event_type, contexts):
@@ -437,7 +438,9 @@ class EvidenceGroundedHistoricalEventExtractor:
                     ).endpoints
                 statement = f"{sentences[index - 1]} {sentence}" if origin is not None else sentence
                 digest = hashlib.sha256(f"{item.id}:{index}:{statement}".encode("utf-8")).hexdigest()[:12]
-                temporal_readings, codes = self.temporal_resolver.resolve(statement, item.id)
+                temporal_readings, codes = self.temporal_resolver.resolve(
+                    statement, item.id, context=temporal_context,
+                )
                 temporal_codes.update(codes)
                 temporal = self.temporal_resolver.primary(temporal_readings, item.id)
                 events.append(HistoricalEvent(
