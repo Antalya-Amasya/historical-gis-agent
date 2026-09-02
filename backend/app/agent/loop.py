@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, logging
+import json, logging, re
 from time import perf_counter
 from backend.app.agent.prompts import SYSTEM_PROMPT
 from backend.app.agent.evidence_support import assess_evidence_support, assess_final_answer_provenance, event_relation_supports_answer, render_evidence_citations, validate_evidence_citations, validate_evidence_selection
@@ -18,6 +18,16 @@ _DIRECTIONAL_MARKERS = (
     " from ", " into ", " across ", " between ", " through ", " toward", " towards", " onto ", " over ",
     "从", "到", "进入", "越过", "翻越",
 )
+_DISPLAY_VERBS = ("show", "trace", "map", "follow", "reconstruct", "display")
+_MOVEMENT_NOUNS = (
+    "campaign movements", "campaign movement", "movements", "movement", "routes", "route",
+    "journeys", "journey", "marches", "march", "advances", "advance", "retreats", "retreat",
+)
+_ANALYTICAL_MOVEMENT_CUES = (
+    "consequences of", "why were", "why was", "why did", "what caused", "what were the",
+    "explain ", "describe ", "strategy", "how important", "tell me about", "significance of",
+    "impact of", "political consequences", "important were", "important was",
+)
 _INSUFFICIENT_TERMS = ("insufficient", "cannot build", "unable to build", "evidence is not enough", "证据不足", "无法生成", "不能生成")
 COMPLETION_TOOL_BY_OUTPUT = {"historical_route": "build_historical_route"}
 ROUTE_PROSE_GROUNDING_FALLBACK = (
@@ -33,14 +43,71 @@ def _fingerprint(name: str, arguments: dict) -> str:
     return f"{name}:{json.dumps(arguments, sort_keys=True, separators=(',', ':'), ensure_ascii=False)}"
 
 
+def _has_analytical_movement_question(normalized: str) -> bool:
+    padded = f" {normalized} "
+    return any(cue in padded or normalized.startswith(cue.strip()) for cue in _ANALYTICAL_MOVEMENT_CUES)
+
+
+def _contains_display_verb(normalized: str) -> bool:
+    if "can you show" in normalized or "i want to trace" in normalized:
+        return True
+    padded = f" {normalized} "
+    return any(
+        padded.startswith(f"{verb} ") or f" {verb} " in padded or f" {verb} me " in padded
+        for verb in _DISPLAY_VERBS
+    )
+
+
+def _contains_movement_object(normalized: str) -> bool:
+    return any(re.search(rf"\b{re.escape(noun)}\b", normalized) for noun in _MOVEMENT_NOUNS)
+
+
+def _contains_movement_verb(normalized: str) -> bool:
+    return any(re.search(rf"\b{re.escape(verb)}\b", normalized) for verb in _MOVEMENT_VERBS + _TRANSIT_VERBS)
+
+
+def _has_where_or_how_movement_question(normalized: str) -> bool:
+    padded = f" {normalized} "
+    if not (
+        padded.startswith("where ")
+        or " where " in padded
+        or padded.startswith("how ")
+        or " how " in padded
+    ):
+        return False
+    if not _contains_movement_verb(normalized):
+        return False
+    if any(marker in padded for marker in _DIRECTIONAL_MARKERS):
+        return True
+    if " from " in padded and " to " in padded:
+        return True
+    if _contains_movement_object(normalized):
+        return True
+    if " during " in padded or " in the campaign" in padded:
+        return True
+    return False
+
+
+def _has_movement_display_intent(normalized: str) -> bool:
+    if _contains_display_verb(normalized) and (
+        _contains_movement_object(normalized) or _contains_movement_verb(normalized)
+    ):
+        return True
+    return _has_where_or_how_movement_question(normalized)
+
+
 def _has_movement_intent(normalized: str) -> bool:
     """Detect general movement questions without requiring the literal word 'route'."""
+    if _has_analytical_movement_question(normalized):
+        return False
+    if _has_movement_display_intent(normalized):
+        return True
     padded = f" {normalized} "
     if any(verb in normalized for verb in _TRANSIT_VERBS) and (
         padded.startswith("how ") or " how " in padded or padded.startswith("where ") or " where " in padded
     ):
         return True
-    if not any(verb in normalized for verb in _MOVEMENT_VERBS):
+    if not _contains_movement_verb(normalized):
         return False
     if any(marker in padded for marker in _DIRECTIONAL_MARKERS):
         return True
