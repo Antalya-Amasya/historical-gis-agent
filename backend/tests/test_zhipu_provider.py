@@ -25,7 +25,7 @@ def provider(handler, *, base_url="https://open.bigmodel.cn/api/paas/v4"):
     return ZhipuLLMProvider(
         "test-key",
         base_url,
-        "glm-4.5-flash",
+        "glm-4.5-air",
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
 
@@ -191,7 +191,7 @@ def test_zhipu_tool_result_continuation_roundtrip():
     zhipu_provider = ZhipuLLMProvider(
         "test-key",
         "https://open.bigmodel.cn/api/paas/v4",
-        "glm-4.5-flash",
+        "glm-4.5-air",
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
     reply, state = HistoricalGisAgent(zhipu_provider, Retriever()).respond(

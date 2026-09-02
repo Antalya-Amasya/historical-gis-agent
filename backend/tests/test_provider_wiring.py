@@ -49,9 +49,9 @@ def test_build_agent_zhipu(monkeypatch):
     monkeypatch.setenv("AGENT_LLM_PROVIDER", "zhipu")
     monkeypatch.setenv("ZHIPU_API_KEY", "test-key")
     monkeypatch.setenv("ZHIPU_BASE_URL", "https://open.bigmodel.cn/api/paas/v4")
-    monkeypatch.setenv("ZHIPU_MODEL_FLASH", "glm-4.5-flash")
+    monkeypatch.setenv("ZHIPU_MODEL_FLASH", "glm-4.5-air")
     monkeypatch.setenv("ZHIPU_MODEL_PRO", "glm-4.7")
-    monkeypatch.setenv("ZHIPU_MODEL", "glm-4.7")
+    monkeypatch.setenv("ZHIPU_MODEL", "glm-4.5-air")
     monkeypatch.setenv("AGENT_MODEL_POLICY", "flash_first")
     settings = Settings()
     monkeypatch.setattr("backend.app.main.settings", settings)
@@ -60,7 +60,7 @@ def test_build_agent_zhipu(monkeypatch):
     selected = agent.model_router.select_model("answer", "answer")
     provider = agent.provider_factory(selected.model_id)
     assert isinstance(provider, ZhipuLLMProvider)
-    assert provider.model == "glm-4.5-flash"
+    assert provider.model == "glm-4.5-air"
 
 
 def test_build_agent_unknown_provider_uses_fake(monkeypatch):
@@ -74,14 +74,14 @@ def test_build_agent_unknown_provider_uses_fake(monkeypatch):
 
 
 def test_zhipu_model_policy_flash_first():
-    router = ModelRouter("glm-4.5-flash", "glm-4.7", "glm-4.7", "flash_first")
+    router = ModelRouter("glm-4.5-air", "glm-4.7", "glm-4.5-air", "flash_first")
     selected = router.select_model("answer", "answer")
     assert selected.tier == "flash"
-    assert selected.model_id == "glm-4.5-flash"
+    assert selected.model_id == "glm-4.5-air"
 
 
 def test_zhipu_model_policy_high_selects_pro():
-    router = ModelRouter("glm-4.5-flash", "glm-4.7", "glm-4.7", "flash_first")
+    router = ModelRouter("glm-4.5-air", "glm-4.7", "glm-4.5-air", "flash_first")
     selected = router.select_model("answer", "answer", quality_mode="high")
     assert selected.tier == "pro"
     assert selected.model_id == "glm-4.7"

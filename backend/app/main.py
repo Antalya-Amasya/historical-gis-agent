@@ -123,7 +123,20 @@ def compose_roman_road_capability() -> None:
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "agent": "mock" if settings.agent_mode == "mock" else "bounded", "provider": settings.agent_llm_provider if settings.agent_mode != "mock" else "mock"}
+    payload = {
+        "status": "ok",
+        "agent": "mock" if settings.agent_mode == "mock" else "bounded",
+        "provider": settings.agent_llm_provider if settings.agent_mode != "mock" else "mock",
+    }
+    if settings.agent_mode != "mock" and settings.agent_llm_provider == "zhipu":
+        payload["model_policy"] = settings.agent_model_policy
+        payload["default_model"] = settings.zhipu_model_flash or settings.zhipu_model or ""
+        payload["pro_model"] = settings.zhipu_model_pro or ""
+    elif settings.agent_mode != "mock" and settings.agent_llm_provider == "deepseek":
+        payload["model_policy"] = settings.agent_model_policy
+        payload["default_model"] = settings.deepseek_model_flash or settings.deepseek_model or ""
+        payload["pro_model"] = settings.deepseek_model_pro or ""
+    return payload
 
 
 @app.post("/api/v1/agent/chat", response_model=ChatResponse)
