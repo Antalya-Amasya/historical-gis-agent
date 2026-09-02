@@ -223,6 +223,53 @@ class AgentToolRegistry:
             campaign_id=route.event_id,
             route_type="evidence_route",
         )
+        if len(route.ordered_points) >= 2:
+            try:
+                presentation = self.route_orchestrator.present(intent, route, state.historical_evidence)
+            except (RouteOrchestrationError, ValueError, KeyError) as exc:
+                diagnostics["gis_reconstruction"] = {
+                    "attempted": True,
+                    "pipeline": "terrain_candidate_orchestrator",
+                    "status": "FAILED",
+                    "reason_code": type(exc).__name__,
+                }
+                state.historical_route_diagnostics = diagnostics
+                return {
+                    "presentation": None,
+                    "diagnostics": diagnostics["gis_reconstruction"],
+                    "summary": f"terrain_presentation_unavailable={type(exc).__name__}",
+                }
+            diagnostics["gis_reconstruction"] = {
+                "attempted": True,
+                "pipeline": "terrain_candidate_orchestrator",
+                "status": "COMPLETE",
+            }
+            state.historical_route_diagnostics = diagnostics
+            return {
+                "presentation": presentation.model_dump(mode="json"),
+                "diagnostics": diagnostics["gis_reconstruction"],
+                "summary": "terrain_presentation=ready",
+            }
+
+        if route.route_components:
+            from backend.app.candidate_routes.component_fragment_presentation import ComponentFragmentPresentationAdapter
+            fragment_result = ComponentFragmentPresentationAdapter(self.route_orchestrator).present(
+                intent, route, state.historical_evidence,
+            )
+            diagnostics["gis_reconstruction"] = fragment_result.diagnostics
+            state.historical_route_diagnostics = diagnostics
+            if fragment_result.presentation is None:
+                return {
+                    "presentation": None,
+                    "diagnostics": fragment_result.diagnostics,
+                    "summary": "terrain_component_presentation_unavailable",
+                }
+            return {
+                "presentation": fragment_result.presentation.model_dump(mode="json"),
+                "diagnostics": fragment_result.diagnostics,
+                "summary": f"terrain_component_fragments={fragment_result.diagnostics.get('components_presented', 0)}",
+            }
+
         try:
             presentation = self.route_orchestrator.present(intent, route, state.historical_evidence)
         except (RouteOrchestrationError, ValueError, KeyError) as exc:

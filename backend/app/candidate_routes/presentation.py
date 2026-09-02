@@ -1,6 +1,8 @@
 """Offline presentation DTOs for evidence-grounded route and waypoint display."""
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from .evaluation import RouteEvaluationResult
@@ -90,6 +92,15 @@ class PresentationSummary(BaseModel):
     timeline: list[PresentationTimelineStep] = Field(default_factory=list)
 
 
+class RoutePresentationFragment(BaseModel):
+    component_id: str
+    status: Literal["COMPLETE", "FAILED", "SKIPPED"]
+    evidence_refs: list[str] = Field(default_factory=list)
+    waypoints: list[dict[str, object]] = Field(default_factory=list)
+    route_geojson: dict[str, object] | None = None
+    reason_code: str | None = None
+
+
 class HistoricalRouteResponse(BaseModel):
     """HTTP-neutral response contract retained as plain data only in this phase."""
 
@@ -101,6 +112,7 @@ class HistoricalRouteResponse(BaseModel):
     location_warnings: list[str] = Field(default_factory=list)
     knowledge_panels: list[HistoricalKnowledgePanel] = Field(default_factory=list)
     presentation_summary: PresentationSummary | None = None
+    fragments: list[RoutePresentationFragment] = Field(default_factory=list)
 
 
 class HistoricalRoutePresentationService:

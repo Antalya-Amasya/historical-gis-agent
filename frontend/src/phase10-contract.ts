@@ -10,7 +10,8 @@ export type RouteQuality = { segment_ledger?: CandidateSegmentLedger[]; waypoint
 export type CrossingCandidate = { coordinate: [number, number]; barrier_id: string; barrier_name: string; source: "ANCIENT_ROAD_BARRIER_CANDIDATE" | "TERRAIN_DERIVED_CROSSING"; road_support: boolean; terrain_support: boolean; reconstruction_cost: number; authority: "algorithmic_gis_candidate"; limitations: string[]; };
 export type RomanRoadLeg = { leg_index?: number; source_anchor_id?: string; destination_anchor_id?: string; barrier_anchor_id?: string | null; reconstruction_method?: string; limitation?: string | null; failure_status?: string | null; crossing_candidate?: CrossingCandidate | null; terrain_candidate?: { metrics?: { distance_m?: number }; cost_breakdown?: CandidateRouteScore } | null; candidate?: { network_distance_m?: number } | null; };
 export type RomanRoadNetwork = { source: string; route_status: "COMPLETE" | "PARTIAL" | "UNAVAILABLE"; terrain_fallback_used?: boolean; aggregate: { successful_leg_count: number; failed_leg_count: number; total_network_distance_m: number; total_access_connector_distance_m: number; road_type_counts: Record<string, number>; segment_status_counts: Record<string, number>; chronology_counts: Record<string, number> }; limitations: string[]; legs: RomanRoadLeg[]; };
-export type HistoricalRoutePresentationPayload = { route: { route_id: string; route_name?: string | null; period?: string | null; confidence: number; generation_method?: string; route_status?: string; score?: CandidateRouteScore; explanations?: { distance_reason?: string; terrain_reason?: string; historical_reason?: string }; }; waypoints?: HistoricalWaypoint[]; geojson: { type: "FeatureCollection"; features: GeoJsonFeature[] }; route_geojson?: GeoJsonFeature | null; knowledge_panels?: HistoricalKnowledgePanel[]; presentation_summary?: PresentationSummary | null; road_network?: RomanRoadNetwork; location_warnings?: string[]; };
+export type HistoricalRoutePresentationPayload = { route: { route_id: string; route_name?: string | null; period?: string | null; confidence: number; generation_method?: string; route_status?: string; score?: CandidateRouteScore; explanations?: { distance_reason?: string; terrain_reason?: string; historical_reason?: string }; }; waypoints?: HistoricalWaypoint[]; geojson: { type: "FeatureCollection"; features: GeoJsonFeature[] }; route_geojson?: GeoJsonFeature | null; knowledge_panels?: HistoricalKnowledgePanel[]; presentation_summary?: PresentationSummary | null; road_network?: RomanRoadNetwork; location_warnings?: string[]; fragments?: RoutePresentationFragment[]; };
+export type RoutePresentationFragment = { component_id: string; status: "COMPLETE" | "FAILED" | "SKIPPED"; evidence_refs?: string[]; waypoints?: HistoricalWaypoint[]; route_geojson?: GeoJsonFeature | null; reason_code?: string | null; };
 export type WaypointPopupMetadata = { waypointId: string; name: string; eventType: string | null; period: string | null; description: string | null; confidence: string | null; evidenceCount: number; sourceBook: string | null; sourceChapter: string | null; externalReferenceCount: number; knowledgePanelId: string | null; };
 export type HistoricalRouteSegmentPresentation = { id: string; kind: "roman_road" | "terrain" | "connector" | "failed_gap"; feature?: GeoJsonFeature; from?: string; to?: string; distanceKm?: number; cost?: number; terrainSource?: string; limitation?: string | null; failureStatus?: string | null; };
 
@@ -30,6 +31,13 @@ export async function fetchHistoricalRoutePresentation(routeId: string, request:
 
 export function routeFeature(payload: HistoricalRoutePresentationPayload): GeoJsonFeature | undefined { return payload.route_geojson?.geometry?.type === "LineString" ? payload.route_geojson : payload.geojson.features.find((feature) => feature.geometry?.type === "LineString"); }
 
+export function routeFragmentFeatures(payload: HistoricalRoutePresentationPayload): GeoJsonFeature[] {
+  const tagged = payload.geojson.features.filter((feature) => feature.geometry?.type === "LineString" && feature.properties.layer_type === "route_fragment");
+  if (tagged.length) return tagged;
+  const single = routeFeature(payload);
+  return single ? [single] : [];
+}
+
 /** GeoJSON is longitude/latitude; Leaflet consumes latitude/longitude. */
 export function toLeafletLineCoordinates(feature: GeoJsonFeature | undefined): [number, number][] {
   if (feature?.geometry?.type !== "LineString") return [];
@@ -42,7 +50,7 @@ export function toLeafletLineCoordinates(feature: GeoJsonFeature | undefined): [
 
 export type RouteDirectionArrow = { position: [number, number]; rotationDeg: number };
 export function routeDirectionArrows(payload: HistoricalRoutePresentationPayload, maxArrows = 3): RouteDirectionArrow[] {
-  const coordinates = toLeafletLineCoordinates(routeFeature(payload));
+  const coordinates = routeFragmentFeatures(payload).flatMap((feature) => toLeafletLineCoordinates(feature));
   if (coordinates.length < 3) return [];
   const count = Math.min(maxArrows, coordinates.length - 2);
   return Array.from({ length: count }, (_, index) => {
@@ -69,14 +77,28 @@ export function routeSegments(payload: HistoricalRoutePresentationPayload): Hist
     });
   }
   const feature = routeFeature(payload);
+  const fragmentFeatures = routeFragmentFeatures(payload);
   const quality = feature?.properties.route_quality as RouteQuality | undefined;
   const ledgers = quality?.segment_ledger ?? [];
   if (ledgers.length) return ledgers.map((ledger, index) => ({ id: ledger.segment_id ?? `terrain-${index + 1}`, kind: "terrain", feature, from: ledger.source_anchor_id, to: ledger.target_anchor_id, distanceKm: ledger.physical_distance_km, cost: ledger.search_cost_total ?? ledger.cost_breakdown?.total_cost, terrainSource: ledger.terrain_source ?? quality?.terrain_source }));
+  if (fragmentFeatures.length > 1) {
+    return fragmentFeatures.map((fragment, index) => ({
+      id: String(fragment.properties.component_id ?? `fragment-${index + 1}`),
+      kind: "terrain" as const,
+      feature: fragment,
+      from: String(fragment.properties.source_anchor_id ?? fragment.properties.component_id ?? `fragment-${index + 1}`),
+      to: String(fragment.properties.target_anchor_id ?? fragment.properties.component_id ?? `fragment-${index + 1}`),
+      terrainSource: String((fragment.properties.route_quality as RouteQuality | undefined)?.terrain_source ?? ""),
+    }));
+  }
   return feature?.geometry?.type === "LineString" ? [{ id: "candidate-route", kind: "terrain", feature, terrainSource: quality?.terrain_source }] : [];
 }
 
 export function drawableRouteSegments(payload: HistoricalRoutePresentationPayload): HistoricalRouteSegmentPresentation[] { return routeSegments(payload).filter((segment) => segment.kind !== "failed_gap" && segment.feature?.geometry?.type === "LineString"); }
 export function failedRouteSegments(payload: HistoricalRoutePresentationPayload): HistoricalRouteSegmentPresentation[] { return routeSegments(payload).filter((segment) => segment.kind === "failed_gap"); }
+export function failedRouteFragments(payload: HistoricalRoutePresentationPayload): RoutePresentationFragment[] {
+  return (payload.fragments ?? []).filter((fragment) => fragment.status === "FAILED");
+}
 
 export function uncertaintyCorridorFeatures(payload: HistoricalRoutePresentationPayload): GeoJsonFeature[] { return payload.geojson.features.filter((feature) => feature.geometry?.type === "Polygon" && feature.properties.layer_type === "uncertainty_corridor"); }
 

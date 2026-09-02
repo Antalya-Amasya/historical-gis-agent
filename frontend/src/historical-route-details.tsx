@@ -1,4 +1,4 @@
-import { failedRouteSegments, markerFeatures, routeSegments, type HistoricalRoutePresentationPayload, waypointPopupMetadata } from "./phase10-contract";
+import { failedRouteFragments, failedRouteSegments, markerFeatures, routeSegments, type HistoricalRoutePresentationPayload, waypointPopupMetadata } from "./phase10-contract";
 
 function formatMetric(value: number | undefined, suffix = "") {
   return typeof value === "number" && Number.isFinite(value)
@@ -22,6 +22,7 @@ function friendlyRouteSource(source: string | null | undefined) {
 export function RouteDetails({ payload, routeSource }: { payload: HistoricalRoutePresentationPayload; routeSource?: string | null }) {
   const segments = routeSegments(payload);
   const failed = failedRouteSegments(payload);
+  const failedFragments = failedRouteFragments(payload);
   const summary = payload.presentation_summary;
   const limitations = [
     ...(summary?.limitations ?? []),
@@ -47,6 +48,7 @@ export function RouteDetails({ payload, routeSource }: { payload: HistoricalRout
       <ul className="segment-list">{segments.map((segment) => <li key={segment.id} className={`segment-${segment.kind}`}><strong>{segmentLabel(segment.kind)}</strong><span>{segment.from && segment.to ? `${segment.from} → ${segment.to}` : "历史路点之间"}</span>{segment.distanceKm !== undefined ? <span>距离 {formatMetric(segment.distanceKm, " km")}</span> : null}{segment.cost !== undefined ? <span>重建成本 {formatMetric(segment.cost)}</span> : null}{segment.terrainSource ? <small>地形数据：{segment.terrainSource}</small> : null}{segment.failureStatus ? <small className="gap-warning">原因：{segment.failureStatus}</small> : null}</li>)}</ul>
       {!segments.length && <p className="route-empty">历史路点已确定，但当前没有可显示的候选几何。</p>}
       {failed.length > 0 && <p className="gap-warning" role="status">{failed.length} 个区段未能可靠重建；地图不会用直线补齐。</p>}
+      {failedFragments.length > 0 && <p className="gap-warning" role="status">{failedFragments.length} 个证据片段未能安全重建；已成功片段仍单独显示，片段之间不连线。</p>}
     </section>
     {limitations.length > 0 && <section className="knowledge-panel limitations-card"><p className="panel-kicker">限制</p><h2>如何理解这条路线</h2><ul>{limitations.map((item) => <li key={item}>{item}</li>)}</ul></section>}
   </aside>;

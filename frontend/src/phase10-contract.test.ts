@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fetchAgentHistoricalRoutePresentation, fetchHistoricalRoutePresentation, loadHistoricalRoutePresentation, markerFeatures, panelForFeature, romanRoadSegmentFeatures, routeDirectionArrows, routeFeature, visibleMapLayers, toLeafletLineCoordinates, uncertaintyCorridorFeatures, waypointPopupMetadata } from "./phase10-contract";
+import { fetchAgentHistoricalRoutePresentation, fetchHistoricalRoutePresentation, loadHistoricalRoutePresentation, markerFeatures, panelForFeature, romanRoadSegmentFeatures, routeDirectionArrows, routeFeature, routeFragmentFeatures, visibleMapLayers, toLeafletLineCoordinates, uncertaintyCorridorFeatures, waypointPopupMetadata } from "./phase10-contract";
 
 const response = { route: { route_id: "r1", route_name: "Route", confidence: 0.7 }, waypoints: [{ id: "a", name: "Anchor", event_type: "CITY", period: "218 BCE", description: "Supplied", location_confidence: "EXACT", evidence_refs: ["e1"] }], geojson: { type: "FeatureCollection" as const, features: [{ type: "Feature" as const, geometry: { type: "LineString" as const, coordinates: [[1, 2], [3, 4]] as [number, number][] }, properties: {} }, { type: "Feature" as const, geometry: { type: "Point" as const, coordinates: [1, 2] as [number, number] }, properties: { waypoint_id: "a", knowledge_panel_id: "a" } }, { type: "Feature" as const, geometry: null, properties: { waypoint_id: "missing" } }] }, knowledge_panels: [{ waypoint_id: "a", title: "Anchor", summary: "Bound summary", evidence_refs: ["e1"], source_references: ["e1"], external_references: [{ id: "ref", title: "Reading", url: "https://example.invalid", reference_type: "PAPER" }], confidence: "EXACT" }] };
 
@@ -40,6 +40,28 @@ describe("Phase 10.1 presentation API contract", () => {
     expect(romanRoadSegmentFeatures(payload)).toHaveLength(2);
     expect(romanRoadSegmentFeatures(payload).find((item) => item.properties.segment_role === "failed_gap")?.geometry).toBeNull();
     expect(markerFeatures(payload)[0]?.geometry).toEqual({ type: "Point", coordinates: [1, 2] });
+  });
+
+  it("accepts multi-fragment presentations without connecting linestrings", () => {
+    const payload = loadHistoricalRoutePresentation({
+      ...response,
+      fragments: [
+        { component_id: "comp-a", status: "COMPLETE", evidence_refs: ["e1"] },
+        { component_id: "comp-b", status: "FAILED", evidence_refs: ["e2"], reason_code: "BarrierCrossingConstraintError" },
+      ],
+      geojson: {
+        type: "FeatureCollection",
+        features: [
+          { type: "Feature", geometry: { type: "LineString", coordinates: [[1, 2], [3, 4]] }, properties: { layer_type: "route_fragment", component_id: "comp-a" } },
+          { type: "Feature", geometry: { type: "LineString", coordinates: [[10, 20], [11, 21]] }, properties: { layer_type: "route_fragment", component_id: "comp-b" } },
+        ],
+      },
+    });
+    const fragments = routeFragmentFeatures(payload);
+    expect(fragments).toHaveLength(2);
+    expect(fragments[0].properties.component_id).toBe("comp-a");
+    expect(fragments[0].geometry?.coordinates[0]).not.toEqual(fragments[1].geometry?.coordinates[0]);
+    expect(routeFeature(payload)?.geometry?.type).toBe("LineString");
   });
 
 });
