@@ -1,4 +1,4 @@
-"""Minimal DeepSeek OpenAI-compatible chat-completions adapter."""
+"""Zhipu OpenAI-compatible chat-completions adapter."""
 from __future__ import annotations
 
 import httpx
@@ -11,11 +11,11 @@ from backend.app.agent.llm.openai_compatible import (
 from backend.app.models import AgentModelResponse
 
 
-class DeepSeekProviderError(OpenAICompatibleProviderError):
+class ZhipuProviderError(OpenAICompatibleProviderError):
     pass
 
 
-class DeepSeekLLMProvider(LLMProvider):
+class ZhipuLLMProvider(LLMProvider):
     def __init__(
         self,
         api_key: str | None,
@@ -32,12 +32,11 @@ class DeepSeekLLMProvider(LLMProvider):
             api_key=api_key,
             base_url=base_url,
             model=model,
-            provider_name="DeepSeek",
+            provider_name="Zhipu",
             timeout_s=timeout_s,
             connect_timeout_s=connect_timeout_s,
             http_client=http_client,
-            extra_payload={"thinking": {"type": "disabled"}},
-            error_class=DeepSeekProviderError,
+            error_class=ZhipuProviderError,
         )
 
     @staticmethod

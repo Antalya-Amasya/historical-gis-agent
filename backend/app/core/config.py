@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     agent_model_policy: str = "flash_first"
     deepseek_connect_timeout_s: float = 10
     deepseek_read_timeout_s: float = 30
+    zhipu_api_key: str | None = None
+    zhipu_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
+    zhipu_model: str | None = None
+    zhipu_model_flash: str | None = None
+    zhipu_model_pro: str | None = None
+    zhipu_connect_timeout_s: float = 10
+    zhipu_read_timeout_s: float = 30
     llm_api_key: str | None = None
     llm_model: str | None = None
     agent_max_steps: int = 8

@@ -29,10 +29,10 @@ class ModelRouter:
             raise ModelSelectionError(f"Unsupported quality mode: {quality_mode}")
         if quality_mode == "high":
             if not self.pro_model:
-                raise ModelSelectionError("DeepSeek Pro model is not configured for quality_mode=high")
+                raise ModelSelectionError("Pro model is not configured for quality_mode=high")
             return SelectedModel("pro", self.pro_model, self.policy, "quality_mode_high")
         model_id = self.flash_model or self.legacy_model
         if not model_id:
-            raise ModelSelectionError("DeepSeek Flash model is not configured")
+            raise ModelSelectionError("Flash model is not configured")
         reason = "flash_first" if self.flash_model else "legacy_model_fallback"
         return SelectedModel("flash", model_id, self.policy, reason)

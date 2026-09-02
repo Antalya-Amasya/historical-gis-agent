@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.agent.agent import HistoricalGisAgent
 from backend.app.agent.llm.deepseek import DeepSeekLLMProvider
 from backend.app.agent.llm.fake import RuleBasedFakeLLMProvider
+from backend.app.agent.llm.zhipu import ZhipuLLMProvider
 from backend.app.agent.model_router import ModelRouter
 from backend.app.agent.mock_agent import MockAgent
 from backend.app.core.config import settings
@@ -32,12 +33,69 @@ app = FastAPI(title="Historical Military GIS Agent", version="0.4.0")
 app.add_middleware(CORSMiddleware, allow_origins=[origin.strip() for origin in settings.backend_cors_origins.split(",")], allow_methods=["*"], allow_headers=["*"])
 store = InMemorySessionStore()
 def build_agent(*, roman_road_orchestrator=None):
-    if settings.agent_mode == "mock": return MockAgent(evidence_retriever=SemanticRouteEvidenceRetriever())
-    kwargs = {"max_steps": settings.agent_max_steps, "max_tool_executions": settings.agent_max_tool_executions, "max_rag_search_executions": settings.agent_max_rag_search_executions, "max_completion_corrections": settings.agent_max_completion_corrections, "max_completion_tool_executions": settings.agent_max_completion_tool_executions, "max_grounding_corrections": settings.agent_max_grounding_corrections}
-    if settings.agent_llm_provider != "deepseek": return HistoricalGisAgent(RuleBasedFakeLLMProvider(), SemanticRouteEvidenceRetriever(), roman_road_orchestrator=roman_road_orchestrator, **kwargs)
-    router = ModelRouter(settings.deepseek_model_flash, settings.deepseek_model_pro, settings.deepseek_model, settings.agent_model_policy)
-    def provider_factory(model_id: str): return DeepSeekLLMProvider(settings.deepseek_api_key, settings.deepseek_base_url, model_id, timeout_s=settings.deepseek_read_timeout_s, connect_timeout_s=settings.deepseek_connect_timeout_s)
-    return HistoricalGisAgent(None, SemanticRouteEvidenceRetriever(), model_router=router, provider_factory=provider_factory, roman_road_orchestrator=roman_road_orchestrator, **kwargs)
+    if settings.agent_mode == "mock":
+        return MockAgent(evidence_retriever=SemanticRouteEvidenceRetriever())
+    kwargs = {
+        "max_steps": settings.agent_max_steps,
+        "max_tool_executions": settings.agent_max_tool_executions,
+        "max_rag_search_executions": settings.agent_max_rag_search_executions,
+        "max_completion_corrections": settings.agent_max_completion_corrections,
+        "max_completion_tool_executions": settings.agent_max_completion_tool_executions,
+        "max_grounding_corrections": settings.agent_max_grounding_corrections,
+    }
+    retriever = SemanticRouteEvidenceRetriever()
+    if settings.agent_llm_provider == "deepseek":
+        router = ModelRouter(
+            settings.deepseek_model_flash,
+            settings.deepseek_model_pro,
+            settings.deepseek_model,
+            settings.agent_model_policy,
+        )
+        def provider_factory(model_id: str):
+            return DeepSeekLLMProvider(
+                settings.deepseek_api_key,
+                settings.deepseek_base_url,
+                model_id,
+                timeout_s=settings.deepseek_read_timeout_s,
+                connect_timeout_s=settings.deepseek_connect_timeout_s,
+            )
+        return HistoricalGisAgent(
+            None,
+            retriever,
+            model_router=router,
+            provider_factory=provider_factory,
+            roman_road_orchestrator=roman_road_orchestrator,
+            **kwargs,
+        )
+    if settings.agent_llm_provider == "zhipu":
+        router = ModelRouter(
+            settings.zhipu_model_flash,
+            settings.zhipu_model_pro,
+            settings.zhipu_model,
+            settings.agent_model_policy,
+        )
+        def provider_factory(model_id: str):
+            return ZhipuLLMProvider(
+                settings.zhipu_api_key,
+                settings.zhipu_base_url,
+                model_id,
+                timeout_s=settings.zhipu_read_timeout_s,
+                connect_timeout_s=settings.zhipu_connect_timeout_s,
+            )
+        return HistoricalGisAgent(
+            None,
+            retriever,
+            model_router=router,
+            provider_factory=provider_factory,
+            roman_road_orchestrator=roman_road_orchestrator,
+            **kwargs,
+        )
+    return HistoricalGisAgent(
+        RuleBasedFakeLLMProvider(),
+        retriever,
+        roman_road_orchestrator=roman_road_orchestrator,
+        **kwargs,
+    )
 agent = build_agent()
 historical_route_presentation_service = HistoricalRoutePresentationReadService()
 
