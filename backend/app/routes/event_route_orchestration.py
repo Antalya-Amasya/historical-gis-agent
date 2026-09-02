@@ -79,6 +79,7 @@ class RouteAssembly:
   branch_pairs: tuple[tuple[str, str], ...]
   usable: dict[tuple[str, str], AnchorOrderingRelation]
   contradictory: tuple[tuple[str, str], ...]
+  suppressed: tuple[dict[str, object], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -127,6 +128,64 @@ def _structural_span(anchors: list[EventAnchor], evidence_by_id: dict[str, Evide
     if not keys or len({key[0] for key in keys}) != 1:
         return None
     return min(keys), max(keys)
+
+
+def _relation_provenance_record(relation: AnchorOrderingRelation) -> dict[str, object]:
+    return {
+        "earlier": relation.earlier,
+        "later": relation.later,
+        "rule": relation.rule.value,
+        "event_ids": list(relation.event_ids),
+        "evidence_refs": list(relation.evidence_refs),
+    }
+
+
+def _resolve_authority_conflicts(
+    best: dict[tuple[str, str], AnchorOrderingRelation],
+) -> tuple[dict[tuple[str, str], AnchorOrderingRelation], tuple[tuple[str, str], ...], tuple[dict[str, object], ...]]:
+    """Prefer stronger ordering authority when reverse edges disagree."""
+    usable = dict(best)
+    unresolved_contradictory: list[tuple[str, str]] = []
+    suppressed: list[dict[str, object]] = []
+    resolved: set[tuple[str, str]] = set()
+
+    for pair in sorted(best):
+        if pair in resolved:
+            continue
+        reverse = (pair[1], pair[0])
+        if reverse not in best:
+            continue
+        forward = best[pair]
+        backward = best[reverse]
+        resolved.add(pair)
+        resolved.add(reverse)
+
+        forward_priority = _RULE_PRIORITY[forward.rule]
+        backward_priority = _RULE_PRIORITY[backward.rule]
+        if forward_priority < backward_priority:
+            usable.pop(reverse, None)
+            suppressed.append({
+                "suppressed_relation": _relation_provenance_record(backward),
+                "reason": "CONFLICT_WITH_STRONGER_RELATION",
+                "winning_relation": _relation_provenance_record(forward),
+                "winning_authority": forward.rule.value,
+                "suppressed_authority": backward.rule.value,
+            })
+        elif backward_priority < forward_priority:
+            usable.pop(pair, None)
+            suppressed.append({
+                "suppressed_relation": _relation_provenance_record(forward),
+                "reason": "CONFLICT_WITH_STRONGER_RELATION",
+                "winning_relation": _relation_provenance_record(backward),
+                "winning_authority": backward.rule.value,
+                "suppressed_authority": forward.rule.value,
+            })
+        else:
+            usable.pop(pair, None)
+            usable.pop(reverse, None)
+            unresolved_contradictory.extend([pair, reverse])
+
+    return usable, tuple(sorted(set(unresolved_contradictory))), tuple(suppressed)
 
 
 def _weakly_connected_components(usable: dict[tuple[str, str], AnchorOrderingRelation]) -> list[set[str]]:
@@ -268,6 +327,8 @@ class EventAnchorRouteBuilder:
         )
         diagnostics["retained_relation_count"] = len(retained)
         diagnostics["contradictory_relation_count"] = len(assembly.contradictory)
+        diagnostics["suppressed_relation_count"] = len(assembly.suppressed)
+        diagnostics["suppressed_relations"] = list(assembly.suppressed)
         diagnostics["component_count"] = len(route.route_components)
         diagnostics["branch_relation_count"] = len(route.branch_relations)
         diagnostics["ordering_provenance"] = [relation.as_provenance() for relation in retained]
@@ -337,8 +398,7 @@ class EventAnchorRouteBuilder:
             key = (relation.earlier, relation.later)
             if key not in best or _RULE_PRIORITY[relation.rule] < _RULE_PRIORITY[best[key].rule]:
                 best[key] = relation
-        contradictory = tuple(sorted(pair for pair in best if (pair[1], pair[0]) in best))
-        usable = {pair: relation for pair, relation in best.items() if pair not in contradictory}
+        usable, contradictory, suppressed = _resolve_authority_conflicts(best)
         components: list[tuple[tuple[str, ...], tuple[tuple[str, str], ...]]] = []
         branch_pairs: list[tuple[str, str]] = []
         for node_group in _weakly_connected_components(usable):
@@ -388,7 +448,7 @@ class EventAnchorRouteBuilder:
                     used_edges.add(pair)
         branch_pairs = sorted(set(branch_pairs))
         components.sort(key=lambda item: (-len(item[0]), item[0]))
-        return RouteAssembly(tuple(components), tuple(branch_pairs), usable, contradictory)
+        return RouteAssembly(tuple(components), tuple(branch_pairs), usable, contradictory, suppressed)
 
     @staticmethod
     def _chain(relations: list[AnchorOrderingRelation]) -> tuple[list[str], dict[tuple[str, str], AnchorOrderingRelation]]:
