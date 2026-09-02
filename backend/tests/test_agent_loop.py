@@ -1,6 +1,6 @@
 from backend.app.agent.agent import HistoricalGisAgent
 from backend.app.agent.evidence_support import validate_evidence_citations
-from backend.app.agent.loop import _model_result
+from backend.app.agent.loop import ROUTE_PROSE_GROUNDING_FALLBACK, ROUTE_PROSE_GROUNDING_FALLBACK_NO_PRESENTATION, _model_result
 from backend.app.agent.llm.fake import ScriptedLLMProvider
 from backend.app.agent.tools import AgentToolRegistry
 from backend.app.models import AgentModelResponse, AgentState, AgentToolCall, Evidence, HistoricalEvent, HistoricalEventType
@@ -41,7 +41,9 @@ def test_scripted_llm_search_then_route_then_finish():
     reply,state=subject.respond("show a route",AgentState(session_id="a"))
     assert state.historical_route and len(state.historical_route.ordered_points)==2
     assert [entry.tool_name for entry in state.tool_history]==["search_historical_evidence","build_historical_route"]
-    assert state.final_answer==reply and state.historical_evidence
+    assert state.status=="completed_with_guardrail"
+    assert reply==ROUTE_PROSE_GROUNDING_FALLBACK
+    assert state.historical_evidence
 
 def test_scripted_llm_can_use_mcp_tool_without_bypassing_client():
     geo=Geo(); subject=HistoricalGisAgent(ScriptedLLMProvider([call("resolve_ancient_place",{"name":"Carthago Nova"}),AgentModelResponse(content="Resolved from MCP.")]),Retriever([]),geo)
@@ -338,7 +340,7 @@ def test_route_builder_is_not_invoked_twice_once_attempted():
     provider=ScriptedLLMProvider([call("search_historical_evidence",{"query":"Hannibal"}),AgentModelResponse(content="I will answer without a route."),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="The structured route is available.")])
     subject=HistoricalGisAgent(provider,Retriever(route_ev()),Geo(),max_steps=5)
     _,state=subject.respond("show a Hannibal historical route",AgentState(session_id="route-builder"))
-    assert state.status=="completed" and state.historical_route is not None
+    assert state.status=="completed_with_guardrail" and state.historical_route is not None
     assert [item.tool_name for item in state.tool_history].count("build_historical_route")==1
     assert state.tool_execution_stats["completion_corrections"]==0
 
@@ -398,7 +400,7 @@ def test_repeated_place_resolution_does_not_replace_route_builder():
 def test_existing_route_finishes_without_extra_correction():
     subject=agent([call("search_historical_evidence",{"query":"route"}),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="Structured route complete.")],route_ev())
     _,state=subject.respond("show a historical route",AgentState(session_id="route-exists"))
-    assert state.status=="completed" and state.historical_route is not None
+    assert state.status=="completed_with_guardrail" and state.historical_route is not None
     assert state.tool_execution_stats["completion_corrections"]==0
 
 
@@ -406,7 +408,7 @@ def test_route_builder_uses_general_budget_when_capacity_remains():
     subject=agent([call("search_historical_evidence",{"query":"route"}),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="Done.")],route_ev(),max_tool_executions=3)
     _,state=subject.respond("show a historical route",AgentState(session_id="general-builder"))
     builder=next(item for item in state.tool_history if item.tool_name=="build_historical_route")
-    assert state.status=="completed" and builder.budget_source=="general"
+    assert state.status=="completed_with_guardrail" and builder.budget_source=="general"
     assert state.tool_execution_stats["completion_reserved_executions"]==0 and state.tool_execution_stats["general_tool_executions"]==2
 
 
@@ -414,7 +416,7 @@ def test_route_builder_gets_one_reserved_execution_after_general_budget_exhausti
     subject=agent([call("search_historical_evidence",{"query":"route"}),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="Done.")],route_ev(),max_tool_executions=1)
     _,state=subject.respond("show a historical route",AgentState(session_id="reserved-builder"))
     builder=next(item for item in state.tool_history if item.tool_name=="build_historical_route")
-    assert state.status=="completed" and state.historical_route is not None
+    assert state.status=="completed_with_guardrail" and state.historical_route is not None
     assert builder.budget_source=="completion_reserved" and state.tool_execution_stats["completion_reserved_executions"]==1
     assert state.tool_execution_stats["general_tool_executions"]==1
 

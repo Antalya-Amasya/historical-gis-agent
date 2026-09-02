@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from backend.app.agent.agent import HistoricalGisAgent
-from backend.app.agent.loop import ROUTE_PROSE_GROUNDING_FALLBACK
+from backend.app.agent.loop import ROUTE_PROSE_GROUNDING_FALLBACK, ROUTE_PROSE_GROUNDING_FALLBACK_NO_PRESENTATION
 from backend.app.agent.llm.fake import ScriptedLLMProvider
 from backend.app.agent.tools import AgentToolRegistry
 from backend.app.models import (

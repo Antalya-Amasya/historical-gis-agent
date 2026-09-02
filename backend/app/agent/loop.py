@@ -32,7 +32,11 @@ _INSUFFICIENT_TERMS = ("insufficient", "cannot build", "unable to build", "evide
 COMPLETION_TOOL_BY_OUTPUT = {"historical_route": "build_historical_route"}
 ROUTE_PROSE_GROUNDING_FALLBACK = (
     "A structured route was built from the current Evidence, but the generated explanation "
-    "did not pass grounding validation. Use the verified route nodes and citations."
+    "did not complete grounded-answer submission. Use the verified route nodes, fragments, and citations."
+)
+ROUTE_PROSE_GROUNDING_FALLBACK_NO_PRESENTATION = (
+    "A structured route was built from the current Evidence, but the generated explanation "
+    "did not complete grounded-answer submission. Use the verified route nodes and citations."
 )
 GENERIC_GROUNDING_GUARDRAIL = (
     "The current retrieved historical evidence is insufficient to support a reliable answer."
@@ -291,18 +295,51 @@ class BoundedAgentLoop:
         if assessment.candidate_explosion:
             state.warnings.append("provenance_candidate_explosion")
 
-    def _grounding_guardrail_reply(self, state: AgentState) -> str:
-        if state.requested_output == "historical_route" and state.historical_route is not None:
-            return ROUTE_PROSE_GROUNDING_FALLBACK
+    def _route_preserving_guardrail_reply(self, state: AgentState) -> str:
+        if state.requested_output == "historical_route" and (
+            state.historical_route is not None or state.historical_route_presentation is not None
+        ):
+            if state.historical_route_presentation is not None:
+                return ROUTE_PROSE_GROUNDING_FALLBACK
+            return ROUTE_PROSE_GROUNDING_FALLBACK_NO_PRESENTATION
         return GENERIC_GROUNDING_GUARDRAIL
 
-    def _finish_grounding_guardrail(self, state: AgentState, started: float) -> tuple[str, AgentState]:
+    def _should_apply_route_terminal_closure(self, state: AgentState) -> bool:
+        return (
+            state.requested_output == "historical_route"
+            and (state.historical_route is not None or state.historical_route_presentation is not None)
+        )
+
+    def _finish_route_preserving_guardrail(
+        self,
+        state: AgentState,
+        started: float,
+        *,
+        reason_warning: str,
+    ) -> tuple[str, AgentState]:
         state.status = "completed_with_guardrail"
         state.final_grounding_status = "guardrail_fallback"
-        state.warnings.append("unsupported_historical_answer_discarded")
-        if state.requested_output == "historical_route" and state.historical_route is not None:
+        state.warnings.append(reason_warning)
+        if state.historical_route is not None:
             state.warnings.append("prose_grounding_discarded_route_preserved")
-        return self._finish(self._grounding_guardrail_reply(state), state, started)
+        return self._finish(self._route_preserving_guardrail_reply(state), state, started)
+
+    def _finish_route_terminal_closure(self, state: AgentState, started: float) -> tuple[str, AgentState]:
+        return self._finish_route_preserving_guardrail(
+            state,
+            started,
+            reason_warning="route_terminal_submission_missing",
+        )
+
+    def _grounding_guardrail_reply(self, state: AgentState) -> str:
+        return self._route_preserving_guardrail_reply(state)
+
+    def _finish_grounding_guardrail(self, state: AgentState, started: float) -> tuple[str, AgentState]:
+        return self._finish_route_preserving_guardrail(
+            state,
+            started,
+            reason_warning="unsupported_historical_answer_discarded",
+        )
 
     def _route_completion_action(self, response_content: str | None, state: AgentState, corrections: int) -> str:
         if state.requested_output != "historical_route" or state.historical_route is not None:
@@ -544,6 +581,8 @@ class BoundedAgentLoop:
                     )
                 completion_action = self._route_completion_action(response.content, state, corrections)
                 if completion_action == "finish":
+                    if self._should_apply_route_terminal_closure(state):
+                        return self._finish_route_terminal_closure(state, started)
                     return self._finish(response.content or "The agent completed without a final answer.", state, started)
                 if completion_action == "finish_insufficient":
                     try:
@@ -660,6 +699,8 @@ class BoundedAgentLoop:
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": json.dumps({"tool": call.name, "outcome": outcome, "success": payload["success"], "summary": summary, "evidence_count": len(state.historical_evidence), "route_points": len(state.historical_route.ordered_points) if state.historical_route else 0, "result": _model_result(call.name, payload, state, remaining_search_budget)}, ensure_ascii=False)})
         if self._should_attempt_deterministic_route_builder(state):
             self._attempt_deterministic_route_builder(state)
+        if self._should_apply_route_terminal_closure(state):
+            return self._finish_route_terminal_closure(state, started)
         state.status = "max_steps"
         state.warnings.append("Maximum agent steps reached")
         return self._finish("The agent reached its safe step limit and returned a partial result.", state, started)

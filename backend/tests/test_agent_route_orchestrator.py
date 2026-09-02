@@ -50,7 +50,8 @@ def test_hannibal_route_request_returns_terrain_reconstruction_presentation_from
     agent.tools.route_orchestrator = HistoricalRouteOrchestrator()
     _, state = agent.respond("展示汉尼拔翻越阿尔卑斯路线", AgentState(session_id="phase16-hannibal"))
 
-    assert state.status == "completed"
+    assert state.status == "completed_with_guardrail"
+    assert state.final_grounding_status == "guardrail_fallback"
     assert state.route_intent is not None
     assert state.route_intent.model_dump() == {
         "intent": "historical_route",
