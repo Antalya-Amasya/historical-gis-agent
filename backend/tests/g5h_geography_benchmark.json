@@ -1,0 +1,1005 @@
+{
+  "mentions": [
+    {
+      "raw_mention": "Piraeus",
+      "campaign": "xenophon",
+      "source_statement": "He proceeded also at once to alter the government, placing thirty rulers in the city, and ten in the Piraeus: he put, also, a garrison into the Acropolis, and made Callibius, a Spartan, the governor of it;",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Acropolis",
+      "campaign": "xenophon",
+      "source_statement": "He proceeded also at once to alter the government, placing thirty rulers in the city, and ten in the Piraeus: he put, also, a garrison into the Acropolis, and made Callibius, a Spartan, the governor of it;",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "A",
+      "campaign": "xenophon",
+      "source_statement": "He proceeded also at once to alter the government, placing thirty rulers in the city, and ten in the Piraeus: he put, also, a garrison into the A",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Ac",
+      "campaign": "xenophon",
+      "source_statement": "He proceeded also at once to alter the government, placing thirty rulers in the city, and ten in the Piraeus: he put, also, a garrison into the Ac",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Placentia",
+      "campaign": "xenophon",
+      "source_statement": "and made their way safely to Placentia, to the number of ten thousand.",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Italy",
+      "campaign": "xenophon",
+      "source_statement": "Thus in great strength he repassed the Alps, leading with him into Italy seventeen legions and ten thousand horse, besides six legions which he left in garrison under the command of Varius, one of his familiar friends and boon companions, w",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Armenia",
+      "campaign": "xenophon",
+      "source_statement": "After this engagement, Pompey was eager to advance with his forces upon the Hyrcanian and Caspian Sea, but was forced to retreat at a distance of three days\u2019 march from it, by the number of venomous serpents, and so he retreated into Armeni",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Armenia the Less",
+      "campaign": "xenophon",
+      "source_statement": "After this engagement, Pompey was eager to advance with his forces upon the Hyrcanian and Caspian Sea, but was forced to retreat at a distance of three days\u2019 march from it, by the number of venomous serpents, and so he retreated into Armeni",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Alexander",
+      "campaign": "alexander",
+      "source_statement": "While they were in this distress, it happened that some Macedonians who had fetched water in skins upon their mules from a river they had found out, came about noon to the place where Alexander was, and seeing him almost choked with thirst,",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Hephaestion",
+      "campaign": "alexander",
+      "source_statement": "After the death of Philip, he continued in the service of Alexander, with the title of his principal secretary, but in as great favor as the most intimate of his familiars, being esteemed as wise and faithful as any person about him, so tha",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "India",
+      "campaign": "alexander",
+      "source_statement": "Alexander now intent upon his expedition into India, took notice that his soldiers were so charged with booty that it hindered their marching.",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Antigonus",
+      "campaign": "alexander",
+      "source_statement": "Antigonus, the most powerful amongst the captains and successors of Alexander, having obtained for himself and his posterity the title of king, had a son named Demetrius, father to Antigonus, called Gonatas, and he had a son Demetrius, who,",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Gedrosia",
+      "campaign": "alexander",
+      "source_statement": "After sixty days march he came into Gedrosia, where he found great plenty of all things, which the neighboring kings and governors of provinces, hearing of his approach, had taken care to provide.",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Greece",
+      "campaign": "mithridates",
+      "source_statement": "Sulla, who had been appointed general of the Mithridatic war by the Romans, now for the first time passed over to Greece with five legions and a }\u00a5* few cohorts and troops of horse and straightway called for money, reinforcements and _ prov",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Aetolia",
+      "campaign": "mithridates",
+      "source_statement": "Sulla, who had been appointed general of the Mithridatic war by the Romans, now for the first time passed over to Greece with five legions and a }\u00a5* few cohorts and troops of horse and straightway called for money, reinforcements and _ prov",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Asia",
+      "campaign": "mithridates",
+      "source_statement": "Thence he passed to Asia, where he heard that Domitius was beaten by Pharnaces, son of Mithridates, and had fled out of Pontus with a handful of men;",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Pontus",
+      "campaign": "mithridates",
+      "source_statement": "Thence he passed to Asia, where he heard that Domitius was beaten by Pharnaces, son of Mithridates, and had fled out of Pontus with a handful of men;",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Attic",
+      "campaign": "mithridates",
+      "source_statement": "Lucullus sympathized with them, and in \u00e9mulation of the favour shown to the Attic race by Alexander he gave the city its freedom and recalled the citizens with all haste: After thus desolating and repeopling both Sinope and Amisus Lucullus ",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Machares",
+      "campaign": "mithridates",
+      "source_statement": "Lucullus sympathized with them, and in \u00e9mulation of the favour shown to the Attic race by Alexander he gave the city its freedom and recalled the citizens with all haste: After thus desolating and repeopling both Sinope and Amisus Lucullus ",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Europe",
+      "campaign": "mithridates",
+      "source_statement": "After you had confiscated the property of all your victims you crossed over to Europe with great armies, although we had forbidden all the kings of Asia even to set foot in Europe.",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Mithridates",
+      "campaign": "mithridates",
+      "source_statement": "He He marches accordingly collected his army and marched to the {fthetiates territory of Mithridates.",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Armenia Minor",
+      "campaign": "mithridates",
+      "source_statement": "Of the allied forces Arcathias, the son of Mithridates, led 10,000 horse from Armenia Minor, and Dorylaus commanded the phalanx.",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Tisaeum",
+      "campaign": "mithridates",
+      "source_statement": "THE MITHRIDATIC WARS the same time Arcathias, the son of Mithridates, with another army invaded Macedonia and without difiiculty overcame the small Roman force there, subjugated the whole country, appointed satraps to govern it, and himself",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Cabira",
+      "campaign": "mithridates",
+      "source_statement": "But the winter being well spent, he left Murena in charge of it, and went himself against Mithridates, then rendezvousing at Cabira, and resolving to await the Romans, with forty thousand foot about him, and fourteen thousand horse, on whom",
+      "place_role": "EVENT_SITE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Brundusium",
+      "campaign": "caesar_adriatic",
+      "source_statement": "When the civil strife broke out into war Caesar crossed the Adriatic from Brundusium in the winter, with what forces he had, and opened his 73",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Epirus",
+      "campaign": "caesar_adriatic",
+      "source_statement": "There arrived also the appointed contingents of allies from Epirus, Acarnania, and even Messenia;",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Domitius",
+      "campaign": "caesar_adriatic",
+      "source_statement": "Accordingly, Caesar despatching couriers, writes to Domitius, and acquaints him with his wishes on the subject: and having stationed a garrison of four cohorts at Apollonia, one at Lissus, and three at Oricum, besides those who were sick of",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Apollonia",
+      "campaign": "caesar_adriatic",
+      "source_statement": "Accordingly, Caesar despatching couriers, writes to Domitius, and acquaints him with his wishes on the subject: and having stationed a garrison of four cohorts at Apollonia, one at Lissus, and three at Oricum, besides those who were sick of",
+      "place_role": "EVENT_SITE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Lissus",
+      "campaign": "caesar_adriatic",
+      "source_statement": "Accordingly, Caesar despatching couriers, writes to Domitius, and acquaints him with his wishes on the subject: and having stationed a garrison of four cohorts at Apollonia, one at Lissus, and three at Oricum, besides those who were sick of",
+      "place_role": "EVENT_SITE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Oricum",
+      "campaign": "caesar_adriatic",
+      "source_statement": "Accordingly, Caesar despatching couriers, writes to Domitius, and acquaints him with his wishes on the subject: and having stationed a garrison of four cohorts at Apollonia, one at Lissus, and three at Oricum, besides those who were sick of",
+      "place_role": "EVENT_SITE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Greece",
+      "campaign": "caesar_adriatic",
+      "source_statement": "C\u00e6sar and Antonius, with their armies, passed over into Greece, to make war against Brutus and Cassius.",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Rome",
+      "campaign": "caesar_adriatic",
+      "source_statement": "So, leaving them with execrations, and disguising himself in a servant\u2019s dress, hiring a carriage with Quintus Cassius, he went straight away to Caesar, declaring at once, when they reached the camp, that affairs at Rome were conducted with",
+      "place_role": "EVENT_SITE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Caesar",
+      "campaign": "caesar_adriatic",
+      "source_statement": "So, leaving them with execrations, and disguising himself in a servant\u2019s dress, hiring a carriage with Quintus Cassius, he went straight away to Caesar, declaring at once, when they reached the camp, that affairs at Rome were conducted with",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Italy",
+      "campaign": "caesar_adriatic",
+      "source_statement": "Upon this, Caesar set his army in motion, and marched into Italy;",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Roman",
+      "campaign": "caesar_adriatic",
+      "source_statement": "From this place, he passed over, in a quinquereme, to the nearest part of Epirus, and proceeded, by long journeys, to the Roman camp.",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Gaul",
+      "campaign": "caesar_adriatic",
+      "source_statement": "He has likewise left Commentaries of his own actions both in the war in Gaul, and in the civil war with Pompey;",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Pompey",
+      "campaign": "caesar_adriatic",
+      "source_statement": "Not so, but you, who gave Pompey legions that belonged to others and the command, and undertook to deprive Caesar even of those that had been given him: it was you, who agreed with Pompey and the consuls not to accept the offers made by Cae",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Macedonia",
+      "campaign": "caesar_adriatic",
+      "source_statement": "Not so, but you, who gave Pompey legions that belonged to others and the command, and undertook to deprive Caesar even of those that had been given him: it was you, who agreed with Pompey and the consuls not to accept the offers made by Cae",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Brundisium",
+      "campaign": "caesar_adriatic",
+      "source_statement": "VIII.\u2014Caesar, having landed his soldiers, sent back his ships the same night to Brundisium, to transport the rest of his legions and cavalry.",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Carrhae",
+      "campaign": "crassus_parthia",
+      "source_statement": "and the Parthians, encompassing these on a small hill, slew every man of them excepting twenty, who with their drawn swords forced their way through the thickest, and they admiring their courage, opened their ranks to the right and left, an",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Surena",
+      "campaign": "crassus_parthia",
+      "source_statement": "Soon after a false report was brought to Surena, that Crassus, with his principal officers, had escaped, and that those who were got into Carrhae were but a confused rout of insignificant people, not worth further pursuit.",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Syria",
+      "campaign": "crassus_parthia",
+      "source_statement": "And at last Cassius himself returned to Carrhae, and his guides, the Arabians, advising him to tarry there till the moon was got out of Scorpio, he told them that he was most afraid of Sagittarius, and so with five hundred horse went off to",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Mesopotamia",
+      "campaign": "crassus_parthia",
+      "source_statement": "Crassus returned him but cold thanks for his readiness to serve him, and for the splendor of his assistance, and told him he was resolved to pass through Mesopotamia, where he had left a great many brave Roman soldiers;",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "City",
+      "campaign": "crassus_parthia",
+      "source_statement": "For affairs in the City were in turmoil, the Gauls had risen again, and, though the Romans knew it not as yet, they had broken into war against the Parthians: but to Crassus signs that were both evident and easy to interpret appeared as he ",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Crassus",
+      "campaign": "crassus_parthia",
+      "source_statement": "For affairs in the City were in turmoil, the Gauls had risen again, and, though the Romans knew it not as yet, they had broken into war against the Parthians: but to Crassus signs that were both evident and easy to interpret appeared as he ",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Alexander",
+      "campaign": "crassus_parthia",
+      "source_statement": "For affairs in the City were in turmoil, the Gauls had risen again, and, though the Romans knew it not as yet, they had broken into war against the Parthians: but to Crassus signs that were both evident and easy to interpret appeared as he ",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Pontus",
+      "campaign": "lucullus_mithridatic",
+      "source_statement": "By such practices the army of Lucullus being corrupted, neither followed him against Tigranes, nor against Mithridates, when he now at once returned into Pontus out of Armenia, and was recovering his kingdom, but under presence of the winte",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Gordyene",
+      "campaign": "lucullus_mithridatic",
+      "source_statement": "By such practices the army of Lucullus being corrupted, neither followed him against Tigranes, nor against Mithridates, when he now at once returned into Pontus out of Armenia, and was recovering his kingdom, but under presence of the winte",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Armenia",
+      "campaign": "lucullus_mithridatic",
+      "source_statement": "By such practices the army of Lucullus being corrupted, neither followed him against Tigranes, nor against Mithridates, when he now at once returned into Pontus out of Armenia, and was recovering his kingdom, but under presence of the winte",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Tigranes",
+      "campaign": "lucullus_mithridatic",
+      "source_statement": "Tigranes now withdrew into the interior of Armenia and Mithridates hastened to what was left of his own kingdom of Pontus, taking with him 4000 of his own troops and as many more that he had received from Tigranes.",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Bithynia",
+      "campaign": "lucullus_mithridatic",
+      "source_statement": "Many were persuading Lucullus to defer the war, but he rejected their counsel, and marched through Bithynia and Galatia into the king\u2019s country, in such great scarcity of provision at first, that thirty thousand Galatians followed, every ma",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Caspian",
+      "campaign": "lucullus_mithridatic",
+      "source_statement": "but when winter had stolen upon the Romans whilst they were still in the country, and they were busy celebrating the festival of Saturn, they mustered a body of no less than forty thousand fighting men, and set upon them, having passed over",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Cyrnus",
+      "campaign": "lucullus_mithridatic",
+      "source_statement": "but when winter had stolen upon the Romans whilst they were still in the country, and they were busy celebrating the festival of Saturn, they mustered a body of no less than forty thousand fighting men, and set upon them, having passed over",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Euphrates",
+      "campaign": "lucullus_mithridatic",
+      "source_statement": "The sight of Pompey's onward rush and the fact that his lieutenants were also subjugating the rest of Armenia and that region of Pontus and that Grabinius had advanced across the Euphrates as far as the Tigris filled him with fear of them, ",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Lucullus",
+      "campaign": "lucullus_mithridatic",
+      "source_statement": "They were stabbed, poisoned, and hanged, lamenting their fate, but when the garrison commanders of Mithridates saw these things they went over to Lucullus in a body, all but a few.",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Spain",
+      "campaign": "sertorius_hispania",
+      "source_statement": "And it is told that when his army was defeated near a city in Spain, and the enemy pressed hard upon them, the Spaniards, with no care for themselves, but being totally solicitous to save Sertorius, took him up on their shoulders and passed",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Italy",
+      "campaign": "sertorius_hispania",
+      "source_statement": "Nor were the Spaniards alone ambitious to serve him, but the Roman soldiers, also, that came out of Italy, were impatient to be under his command;",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Romans",
+      "campaign": "sertorius_hispania",
+      "source_statement": "Sertorius, with a few of his soldiers, made his way out, and rallying together the rest who escaped, he marched round about the walls, and finding the gate open, by which the Gyrisoenians had made their secret entrance, he gave not them the",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Atlantic",
+      "campaign": "sertorius_hispania",
+      "source_statement": "He escaped with difficulty, and after the wind ceased, ran for certain desert islands scattered in those seas, affording no water, and after passing a night there, making out to sea again, he went through the straits of Cadiz, and sailing o",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Cadiz",
+      "campaign": "sertorius_hispania",
+      "source_statement": "He escaped with difficulty, and after the wind ceased, ran for certain desert islands scattered in those seas, affording no water, and after passing a night there, making out to sea again, he went through the straits of Cadiz, and sailing o",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Lusitania",
+      "campaign": "sertorius_hispania",
+      "source_statement": "For with two thousand six hundred men, whom for honor\u2019s sake he called Romans, combined with seven hundred Africans, who landed with him when he first entered Lusitania, together with four thousand targeteers, and seven hundred horse of the",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Rome",
+      "campaign": "sertorius_hispania",
+      "source_statement": "Thoranius, another commander sent against him by Metellus with a great force, was slain, and Metellus, one of the greatest and most approved Roman generals then living, by a series of defeats, was reduced to such extremities, that Lucius Ma",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Hypata",
+      "campaign": "scipio_africanus",
+      "source_statement": "By the advice of the Athenians a numerous embassy of the \u00c6tolians came speedily from Hypata, and the discourse of Africanus, whom they addressed first, augmented their hopes of peace;",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Scipio",
+      "campaign": "scipio_africanus",
+      "source_statement": "In the fourteenth year of the Punic war, Publius Cornelius Scipio and Publius Licinius Crassus entered on the consulship, when the provinces assigned to the consuls were, to Scipio, Sicily, without drawing lots, his colleague not opposing i",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Italy",
+      "campaign": "scipio_africanus",
+      "source_statement": "In the fourteenth year of the Punic war, Publius Cornelius Scipio and Publius Licinius Crassus entered on the consulship, when the provinces assigned to the consuls were, to Scipio, Sicily, without drawing lots, his colleague not opposing i",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Carthage",
+      "campaign": "scipio_africanus",
+      "source_statement": "and setting out himself in company with Caius Laelius, with two quinqueremes from Carthage, passed over into Africa, working the vessels with oars for the greatest part of the voyage, in consequence of the calmness of the sea, though someti",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Africa",
+      "campaign": "scipio_africanus",
+      "source_statement": "and setting out himself in company with Caius Laelius, with two quinqueremes from Carthage, passed over into Africa, working the vessels with oars for the greatest part of the voyage, in consequence of the calmness of the sea, though someti",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Tarraco",
+      "campaign": "scipio_africanus",
+      "source_statement": "206, Scipio had compelled Mago to abandon Spain: and towards the winter the Roman army went into winter-quarters at Tarraco.",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Iberia",
+      "campaign": "scipio_africanus",
+      "source_statement": "Having thus put a finishing stroke to his campaigns in Iberia, Scipio arrived at Tarraco in high spirits, Scipio returns to Rome in the autumn of B.",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Rome",
+      "campaign": "scipio_africanus",
+      "source_statement": "Having thus put a finishing stroke to his campaigns in Iberia, Scipio arrived at Tarraco in high spirits, Scipio returns to Rome in the autumn of B.",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Libya",
+      "campaign": "scipio_africanus",
+      "source_statement": "the Romans, having heard the result of the embassy to Carthage, and that Hannibal had crossed the Iber earlier than they expected, at the head of an army, voted to send Publius Cornelius Scipio with his legions into Iberia, and Tiberius Sem",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Iber",
+      "campaign": "scipio_africanus",
+      "source_statement": "the Romans, having heard the result of the embassy to Carthage, and that Hannibal had crossed the Iber earlier than they expected, at the head of an army, voted to send Publius Cornelius Scipio with his legions into Iberia, and Tiberius Sem",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Roman",
+      "campaign": "scipio_africanus",
+      "source_statement": "When news of these proceedings reached the Roman camp Scipio immediately determined to attack.",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Celtiberia",
+      "campaign": "scipio_africanus",
+      "source_statement": "The new general, Hanno, who had passed over from Africa, to supply the place of the Barcine Hasdrubal, with a new army, and formed a junction with Mago, having in a short time armed a large number of men in Celtiberia, which lies in the mid",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Atlantic",
+      "campaign": "scipio_africanus",
+      "source_statement": "He escaped with difficulty, and after the wind ceased, ran for certain desert islands scattered in those seas, affording no water, and after passing a night there, making out to sea again, he went through the straits of Cadiz, and sailing o",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Cadiz",
+      "campaign": "scipio_africanus",
+      "source_statement": "He escaped with difficulty, and after the wind ceased, ran for certain desert islands scattered in those seas, affording no water, and after passing a night there, making out to sea again, he went through the straits of Cadiz, and sailing o",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Spain",
+      "campaign": "scipio_africanus",
+      "source_statement": "He escaped with difficulty, and after the wind ceased, ran for certain desert islands scattered in those seas, affording no water, and after passing a night there, making out to sea again, he went through the straits of Cadiz, and sailing o",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Sicily",
+      "campaign": "scipio_africanus",
+      "source_statement": "At the close of the summer in which Capua was recovered and Scipio entered Spain, a Carthaginian fleet, which had been fetched from Sicily to Tarentum, to cut off the supplies of the Roman garrison in the citadel of that place, had blocked ",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Tarentum",
+      "campaign": "scipio_africanus",
+      "source_statement": "At the close of the summer in which Capua was recovered and Scipio entered Spain, a Carthaginian fleet, which had been fetched from Sicily to Tarentum, to cut off the supplies of the Roman garrison in the citadel of that place, had blocked ",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Marius",
+      "campaign": "marius_cimbrian",
+      "source_statement": "where having carefully seen with his own eyes, or having been fully informed by persons upon the place of all their most important concerns, he returned to Marius, from whose hands he received the rewards of valor;",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Liguria",
+      "campaign": "marius_cimbrian",
+      "source_statement": "the Teutones and Ambrones to march against Marius by the sea-side through Liguria.",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Praeneste",
+      "campaign": "marius_cimbrian",
+      "source_statement": "Marius fled to Praeneste, but finding the gates shut, tied himself round by a rope that was thrown down to him, and was taken up on the walls.",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Cimbri",
+      "campaign": "marius_cimbrian",
+      "source_statement": "They were descended from the Cimbri and Teutones, who, when they were marching into our province and Italy, having deposited on this side the river Rhine such of their baggage-trains as",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Antony",
+      "campaign": "antony_mutina",
+      "source_statement": "and Decimus, when a certain senator deserted to Antony, so far from displaying anger toward him sent back all his baggage and whatever else he had left behind in Mutina, the result being that the affection of many of Antony's soldiers grew ",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Mutina",
+      "campaign": "antony_mutina",
+      "source_statement": "and Decimus, when a certain senator deserted to Antony, so far from displaying anger toward him sent back all his baggage and whatever else he had left behind in Mutina, the result being that the affection of many of Antony's soldiers grew ",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Caesar",
+      "campaign": "antony_mutina",
+      "source_statement": "and Decimus, when a certain senator deserted to Antony, so far from displaying anger toward him sent back all his baggage and whatever else he had left behind in Mutina, the result being that the affection of many of Antony's soldiers grew ",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Dyrrachium",
+      "campaign": "antony_mutina",
+      "source_statement": "Caesar fell sick and was left behind at Dyrrachium, while Antony marched for Philippi.",
+      "place_role": "EVENT_SITE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Philippi",
+      "campaign": "antony_mutina",
+      "source_statement": "Caesar fell sick and was left behind at Dyrrachium, while Antony marched for Philippi.",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Italy",
+      "campaign": "antony_mutina",
+      "source_statement": "So when news was brought that Caius, the brother of Antony, having passed over from Italy, was marching on directly to join the forces that Vatinius commanded in Dyrrhachium and Apollonia, Brutus resolved to anticipate him, and to seize the",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Dyrrhachium",
+      "campaign": "antony_mutina",
+      "source_statement": "So when news was brought that Caius, the brother of Antony, having passed over from Italy, was marching on directly to join the forces that Vatinius commanded in Dyrrhachium and Apollonia, Brutus resolved to anticipate him, and to seize the",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Actium",
+      "campaign": "antony_mutina",
+      "source_statement": "But whilst Antony lay with his fleet near Actium, where now stands Nicopolis, Caesar seized his opportunity, and crossed the Ionian sea, securing himself at a place in Epirus called the Ladle.",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Epirus",
+      "campaign": "antony_mutina",
+      "source_statement": "But whilst Antony lay with his fleet near Actium, where now stands Nicopolis, Caesar seized his opportunity, and crossed the Ionian sea, securing himself at a place in Epirus called the Ladle.",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Ionian",
+      "campaign": "antony_mutina",
+      "source_statement": "But whilst Antony lay with his fleet near Actium, where now stands Nicopolis, Caesar seized his opportunity, and crossed the Ionian sea, securing himself at a place in Epirus called the Ladle.",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Athens",
+      "campaign": "caesar_adriatic",
+      "source_statement": "Required hard-case audit mention: Athens",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Athenae",
+      "campaign": "sertorius_hispania",
+      "source_statement": "Required hard-case audit mention: Athenae",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Peloponnesus",
+      "campaign": "alexander",
+      "source_statement": "Required hard-case audit mention: Peloponnesus",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Gades",
+      "campaign": "xenophon",
+      "source_statement": "Required hard-case audit mention: Gades",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Cadiz",
+      "campaign": "caesar_adriatic",
+      "source_statement": "Required hard-case audit mention: Cadiz",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Hispania",
+      "campaign": "sertorius_hispania",
+      "source_statement": "Required hard-case audit mention: Hispania",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Carthago Nova",
+      "campaign": "alexander",
+      "source_statement": "Required hard-case audit mention: Carthago Nova",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Brundisium",
+      "campaign": "mithridates",
+      "source_statement": "Required hard-case audit mention: Brundisium",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Italia",
+      "campaign": "xenophon",
+      "source_statement": "Required hard-case audit mention: Italia",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Bactria",
+      "campaign": "caesar_adriatic",
+      "source_statement": "Required hard-case audit mention: Bactria",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "India",
+      "campaign": "sertorius_hispania",
+      "source_statement": "Required hard-case audit mention: India",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Hydaspes",
+      "campaign": "alexander",
+      "source_statement": "Required hard-case audit mention: Hydaspes",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Syria",
+      "campaign": "mithridates",
+      "source_statement": "Required hard-case audit mention: Syria",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Greece",
+      "campaign": "xenophon",
+      "source_statement": "Required hard-case audit mention: Greece",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Europe",
+      "campaign": "caesar_adriatic",
+      "source_statement": "Required hard-case audit mention: Europe",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Adriatic",
+      "campaign": "sertorius_hispania",
+      "source_statement": "Required hard-case audit mention: Adriatic",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Atlantic",
+      "campaign": "alexander",
+      "source_statement": "Required hard-case audit mention: Atlantic",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Alpes",
+      "campaign": "mithridates",
+      "source_statement": "Required hard-case audit mention: Alpes",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Rhodanus",
+      "campaign": "xenophon",
+      "source_statement": "Required hard-case audit mention: Rhodanus",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Massalia",
+      "campaign": "caesar_adriatic",
+      "source_statement": "Required hard-case audit mention: Massalia",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Roma",
+      "campaign": "sertorius_hispania",
+      "source_statement": "Required hard-case audit mention: Roma",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Epirus",
+      "campaign": "alexander",
+      "source_statement": "Required hard-case audit mention: Epirus",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Macedonia",
+      "campaign": "mithridates",
+      "source_statement": "Required hard-case audit mention: Macedonia",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Cimbri",
+      "campaign": "xenophon",
+      "source_statement": "Required hard-case audit mention: Cimbri",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Numidia",
+      "campaign": "caesar_adriatic",
+      "source_statement": "Required hard-case audit mention: Numidia",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Egypt",
+      "campaign": "sertorius_hispania",
+      "source_statement": "Required hard-case audit mention: Egypt",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Crete",
+      "campaign": "alexander",
+      "source_statement": "Required hard-case audit mention: Crete",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Iberus",
+      "campaign": "mithridates",
+      "source_statement": "Required hard-case audit mention: Iberus",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Genava",
+      "campaign": "xenophon",
+      "source_statement": "Required hard-case audit mention: Genava",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Lutetia",
+      "campaign": "caesar_adriatic",
+      "source_statement": "Required hard-case audit mention: Lutetia",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic"
+    },
+    {
+      "raw_mention": "Athenae",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Athenae",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Peloponnesus",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Peloponnesus",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Carthago Nova",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Carthago Nova",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Massalia",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Massalia",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Genava",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Genava",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Lutetia",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Lutetia",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Rubico",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Rubico",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Sequana",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Sequana",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Actium",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Actium",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Cannae",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Cannae",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Capua",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Capua",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Numidia",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Numidia",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Egypt",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Egypt",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Crete",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Crete",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Epirus",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Epirus",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Illyria",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Illyria",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Mesopotamia",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Mesopotamia",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Parthia",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Parthia",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Carrhae",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Carrhae",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    },
+    {
+      "raw_mention": "Caucasus",
+      "campaign": "benchmark",
+      "source_statement": "Audit mention of Caucasus",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE"
+    }
+  ]
+}

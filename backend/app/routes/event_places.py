@@ -39,7 +39,6 @@ class HistoricalEventPlaceResolver:
         return []
 
     def resolve(self, events: list[HistoricalEvent]) -> tuple[list[HistoricalEvent], dict[str, object]]:
-        cache: dict[str, dict] = {}
         diagnostics = {
             "place_mention_count": 0, "resolved_place_count": 0, "unresolved_place_count": 0,
             "unlocated_place_count": 0, "unavailable_place_count": 0,
@@ -50,6 +49,11 @@ class HistoricalEventPlaceResolver:
         for event in events:
             bindings: list[HistoricalEventPlaceBinding] = []
             seen: dict[tuple[str, str], HistoricalEventPlaceBinding] = {}
+            cache: dict[tuple, dict] = {}
+            geographic_mentions = [
+                mention for mention in event.place_mentions
+                if mention.validation_class is not PlaceMentionValidationClass.NON_PLACE_HIGH_CONFIDENCE
+            ]
             for mention in event.place_mentions:
                 diagnostics["place_mention_count"] += 1
                 if mention.validation_class is PlaceMentionValidationClass.NON_PLACE_HIGH_CONFIDENCE:
@@ -73,14 +77,50 @@ class HistoricalEventPlaceResolver:
                         existing.evidence_refs = list(dict.fromkeys([*existing.evidence_refs, *binding.evidence_refs]))
                     continue
                 lookup = mention.canonical_hint or mention.raw_text
-                if lookup not in cache:
+                co_mentions = tuple(
+                    sorted({
+                        (other.canonical_hint or other.raw_text)
+                        for other in geographic_mentions
+                        if other is not mention
+                    })
+                )
+                resolved_co_mentions = [
+                    {
+                        "name": binding.place.canonical_name,
+                        "latitude": binding.place.latitude,
+                        "longitude": binding.place.longitude,
+                        "spatial_semantics": binding.place.spatial_semantics.value if binding.place.spatial_semantics else None,
+                    }
+                    for binding in bindings
+                    if binding.place is not None and binding.resolution_status is EventPlaceResolutionStatus.RESOLVED
+                ]
+                statement = next(
+                    (stmt for stmt in (event.source_statements or [event.summary]) if lookup.casefold() in stmt.casefold()),
+                    event.summary,
+                )
+                cache_key = (
+                    lookup,
+                    event.period,
+                    mention.role.value,
+                    co_mentions,
+                    tuple((item["name"], item["latitude"], item["longitude"]) for item in resolved_co_mentions),
+                )
+                if cache_key not in cache:
                     try:
-                        cache[lookup] = self.geography_client.call(
-                            "resolve_ancient_place", {"name": lookup, "period": event.period},
+                        cache[cache_key] = self.geography_client.call(
+                            "resolve_ancient_place",
+                            {
+                                "name": lookup,
+                                "period": event.period,
+                                "source_statement": statement,
+                                "place_role": mention.role.value,
+                                "co_mentions": list(co_mentions),
+                                "resolved_co_mentions": resolved_co_mentions,
+                            },
                         )
                     except Exception:
-                        cache[lookup] = {"found": False, "resolver_error": True}
-                result = cache[lookup]
+                        cache[cache_key] = {"found": False, "resolver_error": True}
+                result = cache[cache_key]
                 place: HistoricalPlace | None = None
                 status = EventPlaceResolutionStatus.UNRESOLVED
                 limitations: list[str] = []

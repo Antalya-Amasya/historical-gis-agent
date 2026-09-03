@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.app.geography.normalization import normalize_name
+from backend.app.geography.place_disambiguation import PlaceResolutionContext, filter_resolution_candidates
 from backend.app.models import HistoricalPlace, PlaceSpatialSemantics
 
 PLEIADES_SOURCE = "Pleiades: A Gazetteer of Past Places"
@@ -27,6 +28,7 @@ class GazetteerResolution:
     candidate_count: int = 0
     candidates: tuple[dict[str, Any], ...] = ()
     reason: str | None = None
+    disambiguation_diagnostics: tuple[dict[str, Any], ...] = ()
 
 
 @lru_cache(maxsize=1)
@@ -258,12 +260,35 @@ def _lookup_index(path: Path, name: str) -> GazetteerResolution:
         connection.close()
 
 
-def resolve_with_status(name: str) -> GazetteerResolution:
+def _apply_context(
+    resolution: GazetteerResolution,
+    context: PlaceResolutionContext | None,
+) -> GazetteerResolution:
+    if context is None:
+        return resolution
+    status, places, candidates, diagnostics = filter_resolution_candidates(
+        status=resolution.status,
+        places=resolution.places,
+        candidates=resolution.candidates,
+        context=context,
+    )
+    return GazetteerResolution(
+        status=status,
+        places=places,
+        candidate_count=len(candidates) or resolution.candidate_count,
+        candidates=candidates,
+        reason="context_filtered" if diagnostics else resolution.reason,
+        disambiguation_diagnostics=tuple(diagnostics),
+    )
+
+
+def resolve_with_status(name: str, context: PlaceResolutionContext | None = None) -> GazetteerResolution:
     curated = aliases().get(normalize_name(name), ())
     if curated:
-        return GazetteerResolution(
+        resolution = GazetteerResolution(
             status="CURATED", places=curated, candidate_count=len(curated)
         )
+        return _apply_context(resolution, context)
     path, explicitly_configured = _index_path()
     if path is None:
         return GazetteerResolution(status="NOT_FOUND")
@@ -271,7 +296,7 @@ def resolve_with_status(name: str) -> GazetteerResolution:
         reason = f"Configured Pleiades index does not exist: {path}"
         return GazetteerResolution(status="UNAVAILABLE", reason=reason)
     try:
-        return _lookup_index(path, name)
+        return _apply_context(_lookup_index(path, name), context)
     except (OSError, sqlite3.Error, RuntimeError) as exc:
         if explicitly_configured or path == _DEFAULT_INDEX:
             return GazetteerResolution(status="UNAVAILABLE", reason=str(exc))
