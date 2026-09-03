@@ -19,6 +19,7 @@ from backend.app.models import (
     TemporalPrecision,
 )
 from backend.app.routes.extractor import HistoricalPlaceMentionExtractor
+from backend.app.routes.evidence_relevance import movement_eligibility_with_context
 from backend.app.routes.movement_semantics import MovementEndpoint, analyze_sentence, _has_movement_cue
 from backend.app.routes.place_mention_validation import validate_broad_place_mention
 from backend.app.routes.temporal import EvidenceTemporalResolver, TemporalResolutionContext
@@ -456,7 +457,16 @@ class EvidenceGroundedHistoricalEventExtractor:
             for context in contexts
         )
 
-    def _eligible(self, sentence: str, event_type: HistoricalEventType, query_contexts: tuple[str, ...] | None) -> bool:
+    def _eligible(
+        self,
+        sentence: str,
+        event_type: HistoricalEventType,
+        query_contexts: tuple[str, ...] | None,
+        *,
+        sentences: list[str] | None = None,
+        index: int = 0,
+        evidence_text: str = "",
+    ) -> bool:
         if event_type is HistoricalEventType.UNKNOWN:
             return False
         if self._NON_COMPLETED.search(sentence) or self._REPORTED_SPEECH.search(sentence) or self._NAVIGATION_HEADING.search(sentence):
@@ -465,7 +475,18 @@ class EvidenceGroundedHistoricalEventExtractor:
         # without requiring a place or a normalized date.
         if not self._proper_tokens(sentence) and not self._ACTOR.search(sentence):
             return False
-        return self._is_relevant_to_query_contexts(sentence, query_contexts)
+        if self._is_relevant_to_query_contexts(sentence, query_contexts):
+            return True
+        if not query_contexts:
+            return True
+        return movement_eligibility_with_context(
+            sentence,
+            event_type,
+            query_contexts,
+            sentences=sentences or [sentence],
+            index=index,
+            evidence_text=evidence_text,
+        )
 
     @staticmethod
     def _proper_tokens(value: str) -> set[str]:
@@ -484,12 +505,20 @@ class EvidenceGroundedHistoricalEventExtractor:
         if contexts is None and query and query.strip():
             contexts = (query.strip(),)
         for item in evidence:
-            sentences = self._sentences(self._text(item))
+            item_text = self._text(item)
+            sentences = self._sentences(item_text)
             prior_endpoints: tuple = ()
             temporal_context = TemporalResolutionContext()
             for index, sentence in enumerate(sentences):
                 event_type = self._event_type(sentence)
-                if not self._eligible(sentence, event_type, contexts):
+                if not self._eligible(
+                    sentence,
+                    event_type,
+                    contexts,
+                    sentences=sentences,
+                    index=index,
+                    evidence_text=item_text,
+                ):
                     continue
                 places = self._places(sentence, item.id)
                 if event_type is HistoricalEventType.MOVEMENT:

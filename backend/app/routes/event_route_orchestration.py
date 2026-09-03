@@ -25,6 +25,7 @@ from backend.app.models import (
     TemporalPrecision,
 )
 from backend.app.routes.event_anchors import EventAnchor, project_event_anchors
+from backend.app.routes.evidence_relevance import EvidenceRelevance, event_relevance
 from backend.app.routes.extractor import evidence_structural_key
 
 
@@ -46,6 +47,68 @@ _RULE_CONFIDENCE = {
 }
 _RESOLUTION_FAILURES = {"UNRESOLVED_PLACE", "AMBIGUOUS_PLACE", "MISSING_COORDINATE"}
 _COMPARABLE_PRECISION = {TemporalPrecision.DAY, TemporalPrecision.MONTH, TemporalPrecision.YEAR, TemporalPrecision.YEAR_RANGE}
+_ROUTE_ADMISSIBLE = frozenset({
+    EvidenceRelevance.DIRECT_SUBJECT,
+    EvidenceRelevance.DIRECT_CAMPAIGN,
+    EvidenceRelevance.DIRECT_EVENT,
+    EvidenceRelevance.SAME_CONFLICT_RELEVANT,
+})
+_STRUCTURAL_ADMISSIBLE = _ROUTE_ADMISSIBLE
+
+
+def _relation_admission_allowed(
+    relation: AnchorOrderingRelation,
+    events_by_id: dict[str, HistoricalEvent],
+    evidence_by_id: dict[str, Evidence],
+    query_contexts: tuple[str, ...] | None,
+) -> bool:
+    if not query_contexts:
+        return True
+    relevances = [
+        event_relevance(events_by_id[event_id], evidence_by_id, query_contexts)
+        for event_id in relation.event_ids
+        if event_id in events_by_id
+    ]
+    if any(tag is EvidenceRelevance.OTHER_CAMPAIGN for tag in relevances):
+        return False
+    if relation.rule is OrderingRule.SAME_MOVEMENT_EVENT:
+        if not relevances:
+            return True
+        return all(tag in _ROUTE_ADMISSIBLE or tag is EvidenceRelevance.UNKNOWN for tag in relevances) and any(
+            tag in _ROUTE_ADMISSIBLE for tag in relevances
+        )
+    if relation.rule is OrderingRule.TEMPORAL_ORDER:
+        return all(tag in _ROUTE_ADMISSIBLE or tag is EvidenceRelevance.UNKNOWN for tag in relevances)
+    if relation.rule is OrderingRule.SOURCE_STRUCTURAL_ORDER:
+        if len(relevances) < 2:
+            return relevances[0] in _STRUCTURAL_ADMISSIBLE if relevances else False
+        return all(tag in _STRUCTURAL_ADMISSIBLE for tag in relevances)
+    return True
+
+
+def _filter_relations_for_query(
+    relations: list[AnchorOrderingRelation],
+    events_by_id: dict[str, HistoricalEvent],
+    evidence_by_id: dict[str, Evidence],
+    query_contexts: tuple[str, ...] | None,
+) -> tuple[list[AnchorOrderingRelation], list[dict[str, object]]]:
+    if not query_contexts:
+        return relations, []
+    kept: list[AnchorOrderingRelation] = []
+    rejected: list[dict[str, object]] = []
+    for relation in relations:
+        if _relation_admission_allowed(relation, events_by_id, evidence_by_id, query_contexts):
+            kept.append(relation)
+            continue
+        rejected.append({
+            "reason": "CAMPAIGN_RELEVANCE_REJECTED",
+            "rule": relation.rule.value,
+            "earlier": relation.earlier,
+            "later": relation.later,
+            "event_ids": list(relation.event_ids),
+            "evidence_refs": list(relation.evidence_refs),
+        })
+    return kept, rejected
 
 
 @dataclass(frozen=True)
@@ -315,7 +378,17 @@ def _materialize_same_movement_branch_components(
 class EventAnchorRouteBuilder:
     """Build a HistoricalRoute only from anchors whose order is independently proven."""
 
-    def build_with_diagnostics(self, events: list[HistoricalEvent], evidence: list[Evidence], *, event_id: str, name: str, period: str, allow_contextual_related_places: bool = False) -> EventRouteOutcome:
+    def build_with_diagnostics(
+        self,
+        events: list[HistoricalEvent],
+        evidence: list[Evidence],
+        *,
+        event_id: str,
+        name: str,
+        period: str,
+        allow_contextual_related_places: bool = False,
+        query_contexts: tuple[str, ...] | None = None,
+    ) -> EventRouteOutcome:
         anchors, projection = project_event_anchors(
             events, evidence, allow_contextual_related_places=allow_contextual_related_places,
         )
@@ -352,13 +425,18 @@ class EventAnchorRouteBuilder:
             diagnostics["reason_codes"] = ["INSUFFICIENT_PLACES"]
             return EventRouteOutcome(None, (), diagnostics)
         relations = self._relations(events, anchors, {item.id: item for item in evidence})
+        events_by_id = {event.id: event for event in events}
+        evidence_by_id = {item.id: item for item in evidence}
+        relations, rejected_relations = _filter_relations_for_query(
+            relations, events_by_id, evidence_by_id, query_contexts,
+        )
+        diagnostics["rejected_relation_count"] = len(rejected_relations)
+        diagnostics["rejected_relations"] = rejected_relations
         diagnostics["ordering_relation_count"] = len(relations)
         if not relations:
             diagnostics["reason_codes"] = ["INSUFFICIENT_ORDERING"]
             return EventRouteOutcome(None, (), diagnostics)
         assembly = self._assemble(relations)
-        events_by_id = {event.id: event for event in events}
-        evidence_by_id = {item.id: item for item in evidence}
         route, retained, main_chain = self._route_from_assembly(
             assembly, places, events_by_id, evidence_by_id,
             event_id=event_id, name=name, period=period,
