@@ -18,7 +18,6 @@ from backend.app.routes.event_route_orchestration import (
     EventAnchorRouteBuilder,
     OrderingRule,
     _filter_relations_for_query,
-    _relation_admission_allowed,
 )
 from backend.app.routes.evidence_relevance import (
     EvidenceRelevance,
@@ -26,6 +25,8 @@ from backend.app.routes.evidence_relevance import (
     event_relevance,
     has_subject_campaign_conflict,
     movement_eligibility_with_context,
+    relation_admission_allowed,
+    same_movement_relation_relevance,
 )
 from backend.app.routes.events import EvidenceGroundedHistoricalEventExtractor
 from backend.tests.test_event_anchor_routes import evidence, movement
@@ -160,7 +161,7 @@ def test_structural_relation_rejected_across_campaigns():
     }
     events_by_id = {sertorius.id: sertorius, hannibal.id: hannibal}
     query = ("Sertorius Hispania campaign",)
-    assert not _relation_admission_allowed(structural, events_by_id, evidence_by_id, query)
+    assert not relation_admission_allowed(structural, events_by_id, evidence_by_id, query, rule=OrderingRule.SOURCE_STRUCTURAL_ORDER)
     kept, rejected = _filter_relations_for_query([structural], events_by_id, evidence_by_id, query)
     assert kept == []
     assert rejected[0]["reason"] == "CAMPAIGN_RELEVANCE_REJECTED"
@@ -192,7 +193,7 @@ def test_same_campaign_structural_relation_preserved():
     }
     events_by_id = {first.id: first, second.id: second}
     query = ("Scipio Hispania campaign Italia",)
-    assert _relation_admission_allowed(structural, events_by_id, evidence_by_id, query)
+    assert relation_admission_allowed(structural, events_by_id, evidence_by_id, query, rule=OrderingRule.SOURCE_STRUCTURAL_ORDER)
 
 
 def test_mithridates_pontus_asia_pair_preserved():
@@ -222,7 +223,7 @@ def test_hannibal_same_movement_rejected_for_sertorius_query():
     events_by_id = {hannibal.id: hannibal}
     query = ("Sertorius Hispania",)
     assert event_relevance(hannibal, evidence_by_id, query) is EvidenceRelevance.OTHER_CAMPAIGN
-    assert not _relation_admission_allowed(same_movement, events_by_id, evidence_by_id, query)
+    assert not relation_admission_allowed(same_movement, events_by_id, evidence_by_id, query, rule=OrderingRule.SAME_MOVEMENT_EVENT)
 
 
 def test_movement_window_eligibility_helper():

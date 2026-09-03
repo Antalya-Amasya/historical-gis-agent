@@ -240,3 +240,210 @@ def event_relevance(
         if item is not None:
             parts.append(" ".join(value for value in (item.text, item.excerpt) if value))
     return classify_evidence_relevance(" ".join(parts), contexts)
+
+
+_STATEMENT_ADMISSIBLE = frozenset({
+    EvidenceRelevance.DIRECT_SUBJECT,
+    EvidenceRelevance.DIRECT_CAMPAIGN,
+    EvidenceRelevance.DIRECT_EVENT,
+    EvidenceRelevance.SAME_CONFLICT_RELEVANT,
+})
+
+
+def _evidence_item_text(item: Evidence) -> str:
+    return " ".join(dict.fromkeys(value for value in (item.text, item.excerpt) if value))
+
+
+def _split_sentences(text: str) -> list[str]:
+    return [part.strip() for part in re.split(r"(?<=[.!?;])\s+|\n+", text) if part.strip()]
+
+
+def relation_supporting_statements(event: HistoricalEvent) -> list[str]:
+    """Statements that ground a movement relation, preferring explicit movement assertions."""
+    statements = list(dict.fromkeys(event.source_statements or []))
+    if event.summary and event.summary not in statements:
+        statements.insert(0, event.summary)
+    movement_statements = [
+        statement
+        for statement in statements
+        if _MOVEMENT_OBJECTIVE.search(statement)
+        or re.search(r"\bfrom\b[^.]{0,160}\b(?:to|into)\b", statement, re.IGNORECASE)
+    ]
+    return movement_statements or statements[:1] or ([event.summary] if event.summary else [])
+
+
+def statement_evidence_window(
+    statement: str,
+    event: HistoricalEvent,
+    evidence_by_id: dict[str, Evidence],
+) -> str | None:
+    """Bounded adjacent-sentence context within the same evidence item as the statement."""
+    normalized = statement.strip()
+    if not normalized:
+        return None
+    for ref in event.evidence_refs:
+        item = evidence_by_id.get(ref)
+        if item is None:
+            continue
+        sentences = _split_sentences(_evidence_item_text(item))
+        for index, sentence in enumerate(sentences):
+            if normalized in sentence or sentence in normalized:
+                return bounded_window_text(sentences, index)
+    return None
+
+
+def statement_relation_relevance(
+    statement: str,
+    contexts: tuple[str, ...] | None,
+    *,
+    event: HistoricalEvent | None = None,
+    evidence_by_id: dict[str, Evidence] | None = None,
+) -> EvidenceRelevance:
+    window = (
+        statement_evidence_window(statement, event, evidence_by_id)
+        if event is not None and evidence_by_id is not None
+        else None
+    )
+    return classify_evidence_relevance(statement, contexts, window_text=window)
+
+
+def same_movement_relation_relevance(
+    event: HistoricalEvent,
+    evidence_by_id: dict[str, Evidence],
+    contexts: tuple[str, ...] | None,
+) -> EvidenceRelevance:
+    """Prefer relation-supporting statements over whole-chunk relevance."""
+    chunk_relevance = event_relevance(event, evidence_by_id, contexts)
+    best: EvidenceRelevance | None = None
+    for statement in relation_supporting_statements(event):
+        tag = statement_relation_relevance(
+            statement, contexts, event=event, evidence_by_id=evidence_by_id,
+        )
+        if tag is EvidenceRelevance.OTHER_CAMPAIGN:
+            return EvidenceRelevance.OTHER_CAMPAIGN
+        if tag in _STATEMENT_ADMISSIBLE:
+            return tag
+        if best is None or tag is not EvidenceRelevance.UNKNOWN:
+            best = tag
+    if best in _STATEMENT_ADMISSIBLE:
+        return best
+    if chunk_relevance is EvidenceRelevance.OTHER_CAMPAIGN and best is EvidenceRelevance.UNKNOWN:
+        return EvidenceRelevance.UNKNOWN
+    return chunk_relevance
+
+
+_ROUTE_ADMISSIBLE = _STATEMENT_ADMISSIBLE
+
+
+def relation_admission_allowed(
+    relation,
+    events_by_id: dict[str, HistoricalEvent],
+    evidence_by_id: dict[str, Evidence],
+    contexts: tuple[str, ...] | None,
+    *,
+    rule,
+) -> bool:
+    if not contexts:
+        return True
+    final = classify_relation_relevance(
+        relation, events_by_id, evidence_by_id, contexts, rule=rule,
+    )
+    if final is EvidenceRelevance.OTHER_CAMPAIGN:
+        return False
+    if rule.value == "SAME_MOVEMENT_EVENT":
+        return final in _STATEMENT_ADMISSIBLE
+    if rule.value == "TEMPORAL_ORDER":
+        return final in _ROUTE_ADMISSIBLE or final is EvidenceRelevance.UNKNOWN
+    if rule.value == "SOURCE_STRUCTURAL_ORDER":
+        return final in _ROUTE_ADMISSIBLE
+    return True
+
+
+def classify_relation_relevance(
+    relation,
+    events_by_id: dict[str, HistoricalEvent],
+    evidence_by_id: dict[str, Evidence],
+    contexts: tuple[str, ...] | None,
+    *,
+    rule,
+) -> EvidenceRelevance:
+    from backend.app.routes.event_route_orchestration import OrderingRule
+
+    if not contexts:
+        return EvidenceRelevance.UNKNOWN
+    if rule is OrderingRule.SAME_MOVEMENT_EVENT:
+        tags = [
+            same_movement_relation_relevance(events_by_id[event_id], evidence_by_id, contexts)
+            for event_id in relation.event_ids
+            if event_id in events_by_id
+        ]
+        if any(tag is EvidenceRelevance.OTHER_CAMPAIGN for tag in tags):
+            return EvidenceRelevance.OTHER_CAMPAIGN
+        for tag in tags:
+            if tag in _STATEMENT_ADMISSIBLE:
+                return tag
+        return tags[0] if tags else EvidenceRelevance.UNKNOWN
+    tags = [
+        event_relevance(events_by_id[event_id], evidence_by_id, contexts)
+        for event_id in relation.event_ids
+        if event_id in events_by_id
+    ]
+    if any(tag is EvidenceRelevance.OTHER_CAMPAIGN for tag in tags):
+        return EvidenceRelevance.OTHER_CAMPAIGN
+    for tag in tags:
+        if tag in _STATEMENT_ADMISSIBLE:
+            return tag
+    return tags[0] if tags else EvidenceRelevance.UNKNOWN
+
+
+def relation_admission_diagnostic(
+    relation,
+    events_by_id: dict[str, HistoricalEvent],
+    evidence_by_id: dict[str, Evidence],
+    contexts: tuple[str, ...] | None,
+    *,
+    rule,
+) -> dict[str, object]:
+    from backend.app.routes.event_route_orchestration import OrderingRule
+
+    statements: list[str] = []
+    statement_tags: list[str] = []
+    window_tags: list[str] = []
+    chunk_tags: list[str] = []
+    for event_id in relation.event_ids:
+        event = events_by_id.get(event_id)
+        if event is None:
+            continue
+        chunk_tags.append(event_relevance(event, evidence_by_id, contexts).value)
+        for statement in relation_supporting_statements(event):
+            statements.append(statement)
+            statement_tags.append(
+                classify_evidence_relevance(statement, contexts).value,
+            )
+            window = statement_evidence_window(statement, event, evidence_by_id)
+            window_tags.append(
+                classify_evidence_relevance(statement, contexts, window_text=window).value
+                if window
+                else EvidenceRelevance.UNKNOWN.value
+            )
+    final = classify_relation_relevance(
+        relation, events_by_id, evidence_by_id, contexts, rule=rule,
+    )
+    allowed = relation_admission_allowed(
+        relation, events_by_id, evidence_by_id, contexts, rule=rule,
+    )
+    return {
+        "relation_type": rule.value,
+        "earlier": relation.earlier,
+        "later": relation.later,
+        "event_ids": list(relation.event_ids),
+        "supporting_statements": statements,
+        "statement_relevance": statement_tags,
+        "window_relevance": window_tags,
+        "chunk_relevance": chunk_tags,
+        "final_relation_relevance": final.value,
+        "admission": "ALLOW" if allowed else "REJECT",
+        "reason": "LOCAL_STATEMENT_RELEVANCE" if allowed and rule is OrderingRule.SAME_MOVEMENT_EVENT else (
+            "CAMPAIGN_RELEVANCE_REJECTED" if not allowed else "ADMISSIBLE"
+        ),
+    }
