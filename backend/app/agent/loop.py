@@ -30,6 +30,18 @@ _ANALYTICAL_MOVEMENT_CUES = (
 )
 _INSUFFICIENT_TERMS = ("insufficient", "cannot build", "unable to build", "evidence is not enough", "证据不足", "无法生成", "不能生成")
 COMPLETION_TOOL_BY_OUTPUT = {"historical_route": "build_historical_route"}
+POST_ROUTE_UPSTREAM_TOOLS = frozenset({
+    "search_historical_evidence",
+    "resolve_ancient_place",
+    "calculate_distance",
+    "get_elevation",
+    "get_elevation_profile",
+})
+POST_ROUTE_SUPPRESSION_MESSAGE = (
+    "Historical route is already built from the current Evidence. "
+    "Do not call search_historical_evidence, resolve_ancient_place, or build_historical_route again. "
+    "Proceed to submit_grounded_answer with a grounded summary, or finish if route presentation is complete."
+)
 ROUTE_PROSE_GROUNDING_FALLBACK = (
     "A structured route was built from the current Evidence, but the generated explanation "
     "did not complete grounded-answer submission. Use the verified route nodes, fragments, and citations."
@@ -181,6 +193,21 @@ def _model_result(tool_name: str, payload: dict, state: AgentState, remaining_se
             "unresolved_mentions": [mention.normalized_name for mention in route.unresolved_mentions],
         }
     return payload.get("result", {})
+
+
+def _route_is_built(state: AgentState) -> bool:
+    route = state.historical_route
+    if route is None:
+        return False
+    return bool(route.ordered_points or route.route_components or route.branch_relations)
+
+
+def _should_suppress_post_route_tool(tool_name: str, state: AgentState) -> bool:
+    if not _route_is_built(state):
+        return False
+    if tool_name == "build_historical_route":
+        return True
+    return tool_name in POST_ROUTE_UPSTREAM_TOOLS
 
 
 class BoundedAgentLoop:
@@ -411,6 +438,7 @@ class BoundedAgentLoop:
             "rag_search_executions": 0, "rag_search_budget_rejected": 0,
             "completion_corrections": 0,
             "grounding_corrections": 0,
+            "suppressed_tool_calls": 0,
         }
         self._refresh_evidence_support(state)
         messages = [{"role": "system", "content": SYSTEM_PROMPT}, *state.messages[-12:]]
@@ -640,7 +668,30 @@ class BoundedAgentLoop:
                 state.tool_execution_stats["tool_requests"] += 1
                 fingerprint = _fingerprint(call.name, call.arguments)
                 budget_source = "general"
-                if fingerprint in successful:
+                if _should_suppress_post_route_tool(call.name, state):
+                    summary = "route already built; upstream discovery suppressed"
+                    payload = {
+                        "success": False,
+                        "result": {
+                            "status": "route_already_built",
+                            "reason": "ROUTE_ALREADY_BUILT",
+                            "message": POST_ROUTE_SUPPRESSION_MESSAGE,
+                            "tool_call_suppressed": True,
+                            "tool": call.name,
+                            "phase": "POST_ROUTE",
+                        },
+                        "summary": summary,
+                        "duration_ms": 0,
+                    }
+                    outcome = "route_already_built"
+                    state.tool_execution_stats["suppressed_tool_calls"] += 1
+                    state.tool_results.setdefault("tool_call_suppressed", []).append({
+                        "tool": call.name,
+                        "step": step,
+                        "phase": "POST_ROUTE",
+                        "reason": "ROUTE_ALREADY_BUILT",
+                    })
+                elif fingerprint in successful:
                     summary = f"duplicate cache hit; reuse prior successful result: {successful[fingerprint]}"
                     payload = {"success": True, "result": {"status": "duplicate", "message": "This exact tool call already succeeded earlier in this run.", "previous_result_summary": successful[fingerprint]}, "summary": summary, "duration_ms": 0}
                     outcome = "duplicate"
