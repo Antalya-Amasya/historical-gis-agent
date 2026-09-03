@@ -16,8 +16,12 @@ class PlaceSpatialSemantics(str, Enum):
     """Audited spatial meaning of a HistoricalPlace, separate from its name."""
 
     SETTLEMENT = "settlement"
+    PORT = "port"
     RIVER = "river"
+    SEA = "sea"
+    STRAIT = "strait"
     MOUNTAIN_REGION = "mountain_region"
+    PASS = "pass"
     REGION = "region"
     ISLAND = "island"
     UNKNOWN = "unknown"

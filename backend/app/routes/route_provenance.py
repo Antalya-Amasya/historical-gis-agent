@@ -5,6 +5,7 @@ It has no resolver, ordering, or route-building authority of its own.
 """
 from __future__ import annotations
 
+from backend.app.geography.feature_semantics import exact_anchor_eligible
 from backend.app.models import Evidence, HistoricalEvent, HistoricalRoute
 from backend.app.routes.event_route_orchestration import EventRouteOutcome
 from backend.app.routes.extractor import RouteBuildOutcome
@@ -37,6 +38,10 @@ class HistoricalRouteTraceBuilder:
                     (binding.role.value in {"ORIGIN", "DESTINATION", "EVENT_SITE"} or contextual)
                     and binding.resolution_status.value == "RESOLVED"
                     and place is not None and place.latitude is not None and place.longitude is not None
+                    and exact_anchor_eligible(
+                        place,
+                        strong_role=binding.role.value in {"ORIGIN", "DESTINATION", "EVENT_SITE"},
+                    )
                 )
                 if eligible:
                     rejection = None
@@ -44,6 +49,10 @@ class HistoricalRouteTraceBuilder:
                     rejection = "ROLE_NOT_ANCHOR_ELIGIBLE"
                 elif binding.resolution_status.value != "RESOLVED":
                     rejection = "GEOGRAPHY_UNRESOLVED"
+                elif place is not None and not exact_anchor_eligible(
+                    place, strong_role=binding.role.value in {"ORIGIN", "DESTINATION", "EVENT_SITE"}
+                ):
+                    rejection = "NON_EXACT_FEATURE_ANCHOR"
                 else:
                     rejection = "MISSING_COORDINATE"
                 places.append({

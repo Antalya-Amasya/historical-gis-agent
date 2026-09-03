@@ -25,7 +25,7 @@ _BASINS: tuple[tuple[str, float, float, float, float], ...] = (
 )
 
 _ENDPOINT_INCOMPATIBLE_TYPES = frozenset({"plaza", "label", "labeled feature"})
-_TRAVERSAL_PREFERRED_TYPES = frozenset({"river", "sea", "strait", "channel", "gulf", "lake"})
+_TRAVERSAL_INCOMPATIBLE_TYPES = frozenset({"province", "province-2", "diocese-roman", "plaza", "label", "labeled feature"})
 _REGION_TYPES = frozenset({"region", "province", "province-2", "people", "ethnic-region", "peninsula"})
 
 
@@ -134,6 +134,8 @@ def _type_incompatible(candidate: dict[str, Any], place: HistoricalPlace | None,
     if not types:
         return False
     role = (context.place_role or "").upper()
+    if role == "TRAVERSAL" and types & _TRAVERSAL_INCOMPATIBLE_TYPES:
+        return True
     if role in {"ORIGIN", "DESTINATION"} and types <= _ENDPOINT_INCOMPATIBLE_TYPES:
         return True
     if role in {"ORIGIN", "DESTINATION", "EVENT_SITE"} and types == {"unlocated"}:

@@ -128,6 +128,8 @@ class RomanRoadCandidateService:
             status = RoadAccessStatus.REGION_GEOMETRY_UNAVAILABLE
         elif semantics is PlaceSpatialSemantics.UNKNOWN:
             status = RoadAccessStatus.UNKNOWN_PLACE_SEMANTICS
+        elif semantics in {PlaceSpatialSemantics.SEA, PlaceSpatialSemantics.STRAIT, PlaceSpatialSemantics.ISLAND}:
+            status = RoadAccessStatus.NON_POINT_PLACE
         elif coordinate_role != "exact_site":
             status = RoadAccessStatus.NON_POINT_PLACE
         else:

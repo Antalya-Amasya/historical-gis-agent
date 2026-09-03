@@ -4,6 +4,7 @@ This deliberately projects no edges and performs no route/GIS inference.
 """
 from __future__ import annotations
 from dataclasses import dataclass
+from backend.app.geography.feature_semantics import exact_anchor_eligible
 from backend.app.models import (
     EventGroundingStatus,
     EventPlaceResolutionStatus,
@@ -77,6 +78,8 @@ def project_event_anchors(
                 diagnostics.append(f"UNRESOLVED_PLACE:{event.id}"); continue
             if binding.place.latitude is None or binding.place.longitude is None:
                 diagnostics.append(f"MISSING_COORDINATE:{event.id}"); continue
+            if not exact_anchor_eligible(binding.place, strong_role=strong):
+                diagnostics.append(f"NON_EXACT_FEATURE_ANCHOR:{event.id}"); continue
             refs = set(binding.evidence_refs) or event_refs
             if not refs.issubset(visible):
                 diagnostics.append(f"INVALID_EVIDENCE_PROVENANCE:{event.id}"); continue

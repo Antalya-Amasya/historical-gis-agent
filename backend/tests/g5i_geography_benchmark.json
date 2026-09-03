@@ -1,0 +1,1828 @@
+{
+  "mentions": [
+    {
+      "raw_mention": "Adriatic",
+      "feature_type": "SEA",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Adriatic",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Aegean",
+      "feature_type": "SEA",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Aegean",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Ionian",
+      "feature_type": "SEA",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Ionian",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Mediterranean",
+      "feature_type": "SEA",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Mediterranean",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Atlantic",
+      "feature_type": "SEA",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Atlantic",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "mare nostrum",
+      "feature_type": "SEA",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of mare nostrum",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "adriaticum",
+      "feature_type": "SEA",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of adriaticum",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "aegaeum mare",
+      "feature_type": "SEA",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of aegaeum mare",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "ionium mare",
+      "feature_type": "SEA",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of ionium mare",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "internum mare",
+      "feature_type": "SEA",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of internum mare",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "atlanticus oceanus",
+      "feature_type": "SEA",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of atlanticus oceanus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "superum mare",
+      "feature_type": "SEA",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of superum mare",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "hesperius oceanus",
+      "feature_type": "SEA",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of hesperius oceanus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "adriatic sea",
+      "feature_type": "SEA",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of adriatic sea",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "aegean sea",
+      "feature_type": "SEA",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of aegean sea",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Hellespont",
+      "feature_type": "STRAIT",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Hellespont",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Bosphorus",
+      "feature_type": "STRAIT",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Bosphorus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "hellespontus",
+      "feature_type": "STRAIT",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of hellespontus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "dardanelles",
+      "feature_type": "STRAIT",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of dardanelles",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "bosporus",
+      "feature_type": "STRAIT",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of bosporus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Hellespont",
+      "feature_type": "STRAIT",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Hellespont",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Bosphorus",
+      "feature_type": "STRAIT",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Bosphorus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Hellespont",
+      "feature_type": "STRAIT",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Hellespont",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Rhodanus",
+      "feature_type": "RIVER",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Rhodanus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Iberus",
+      "feature_type": "RIVER",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Iberus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Tiber",
+      "feature_type": "RIVER",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Tiber",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Padus",
+      "feature_type": "RIVER",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Padus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Hydaspes",
+      "feature_type": "RIVER",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Hydaspes",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Rhodanus",
+      "feature_type": "RIVER",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Rhodanus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Iberus",
+      "feature_type": "RIVER",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Iberus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Tiber",
+      "feature_type": "RIVER",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Tiber",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "rhone",
+      "feature_type": "RIVER",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of rhone",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "ebro",
+      "feature_type": "RIVER",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of ebro",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "tiberis",
+      "feature_type": "RIVER",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of tiberis",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "po valley",
+      "feature_type": "RIVER",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of po valley",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Rhodanus",
+      "feature_type": "RIVER",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Rhodanus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Iberus",
+      "feature_type": "RIVER",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Iberus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Hydaspes",
+      "feature_type": "RIVER",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Hydaspes",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Alpes",
+      "feature_type": "MOUNTAIN",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Alpes",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Caucasus",
+      "feature_type": "MOUNTAIN",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Caucasus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Alps",
+      "feature_type": "MOUNTAIN",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Alps",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Alpes",
+      "feature_type": "MOUNTAIN",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Alpes",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Caucasus",
+      "feature_type": "MOUNTAIN",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Caucasus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Thermopylae",
+      "feature_type": "PASS",
+      "place_role": "EVENT_SITE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Thermopylae",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Thermopylae",
+      "feature_type": "PASS",
+      "place_role": "EVENT_SITE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Thermopylae",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Alpes",
+      "feature_type": "MOUNTAIN",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Alpes",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Caucasus",
+      "feature_type": "MOUNTAIN",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Caucasus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Alps",
+      "feature_type": "MOUNTAIN",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Alps",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Alpes",
+      "feature_type": "MOUNTAIN",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Alpes",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Caucasus",
+      "feature_type": "MOUNTAIN",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Caucasus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Thermopylae",
+      "feature_type": "PASS",
+      "place_role": "EVENT_SITE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Thermopylae",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Alpes",
+      "feature_type": "MOUNTAIN",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Alpes",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Caucasus",
+      "feature_type": "MOUNTAIN",
+      "place_role": "TRAVERSAL",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Caucasus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Italia",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Italia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Hispania",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Hispania",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Gallia",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Gallia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Macedonia",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Macedonia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Greece",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Greece",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Hellas",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Hellas",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Thessalia",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Thessalia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Syria",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Syria",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Pontus",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Pontus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Numidia",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Numidia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Egypt",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Egypt",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Bactria",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Bactria",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Europe",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Europe",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Illyria",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Illyria",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Mesopotamia",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Mesopotamia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Parthia",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Parthia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Italia",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Italia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Hispania",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Hispania",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Gallia",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Gallia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Macedonia",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Macedonia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Sicily",
+      "feature_type": "ISLAND",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Sicily",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Crete",
+      "feature_type": "ISLAND",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Crete",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Cyprus",
+      "feature_type": "ISLAND",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Cyprus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Sicilia",
+      "feature_type": "ISLAND",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Sicilia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Sicily",
+      "feature_type": "ISLAND",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Sicily",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Crete",
+      "feature_type": "ISLAND",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Crete",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Cyprus",
+      "feature_type": "ISLAND",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Cyprus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Sicily",
+      "feature_type": "ISLAND",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Sicily",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Crete",
+      "feature_type": "ISLAND",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Crete",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Cyprus",
+      "feature_type": "ISLAND",
+      "place_role": "DESTINATION",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Cyprus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Ostia",
+      "feature_type": "PORT",
+      "place_role": "ORIGIN",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Ostia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Piraeus",
+      "feature_type": "PORT",
+      "place_role": "ORIGIN",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Piraeus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Brundisium",
+      "feature_type": "PORT",
+      "place_role": "ORIGIN",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Brundisium",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Ostia",
+      "feature_type": "PORT",
+      "place_role": "ORIGIN",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Ostia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Piraeus",
+      "feature_type": "PORT",
+      "place_role": "ORIGIN",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Piraeus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Massalia",
+      "feature_type": "PORT",
+      "place_role": "ORIGIN",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Massalia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Ostia",
+      "feature_type": "PORT",
+      "place_role": "ORIGIN",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Ostia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Piraeus",
+      "feature_type": "PORT",
+      "place_role": "ORIGIN",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Piraeus",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Brundisium",
+      "feature_type": "PORT",
+      "place_role": "ORIGIN",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Brundisium",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Ostia",
+      "feature_type": "PORT",
+      "place_role": "ORIGIN",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Ostia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Athens",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Athens",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Sparta",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Sparta",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Corinth",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Corinth",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Cannae",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Cannae",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Capua",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Capua",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Carthago",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Carthago",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Carthago Nova",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Carthago Nova",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Alesia",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Alesia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Gergovia",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Gergovia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Athenae",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Athenae",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Roma",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Roma",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Actium",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Actium",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Massalia",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Massalia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Brundisium",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Brundisium",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Cannae",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Cannae",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Capua",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Capua",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Athens",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Athens",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Sparta",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Sparta",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Corinth",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Corinth",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Carthago Nova",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Carthago Nova",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Alesia",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Alesia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Gergovia",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Gergovia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Athenae",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Athenae",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Cannae",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Cannae",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Capua",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Capua",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Massalia",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Massalia",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Brundisium",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Brundisium",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Actium",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Actium",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Sparta",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Sparta",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Corinth",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "48 BCE",
+      "source_statement": "Audit mention of Corinth",
+      "campaign": "g5i"
+    },
+    {
+      "raw_mention": "Piraeus",
+      "feature_type": "PORT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "He proceeded also at once to alter the government, placing thirty rulers in the city, and ten in the Piraeus: he put, also, a garrison into the Acropolis, and made Callibius, a Spartan, the governor of it;",
+      "campaign": "xenophon"
+    },
+    {
+      "raw_mention": "Acropolis",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "He proceeded also at once to alter the government, placing thirty rulers in the city, and ten in the Piraeus: he put, also, a garrison into the Acropolis, and made Callibius, a Spartan, the governor of it;",
+      "campaign": "xenophon"
+    },
+    {
+      "raw_mention": "A",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "He proceeded also at once to alter the government, placing thirty rulers in the city, and ten in the Piraeus: he put, also, a garrison into the A",
+      "campaign": "xenophon"
+    },
+    {
+      "raw_mention": "Ac",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "He proceeded also at once to alter the government, placing thirty rulers in the city, and ten in the Piraeus: he put, also, a garrison into the Ac",
+      "campaign": "xenophon"
+    },
+    {
+      "raw_mention": "Placentia",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "and made their way safely to Placentia, to the number of ten thousand.",
+      "campaign": "xenophon"
+    },
+    {
+      "raw_mention": "Italy",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Thus in great strength he repassed the Alps, leading with him into Italy seventeen legions and ten thousand horse, besides six legions which he left in garrison under the command of Varius, one of his familiar friends and boon companions, w",
+      "campaign": "xenophon"
+    },
+    {
+      "raw_mention": "Armenia",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "After this engagement, Pompey was eager to advance with his forces upon the Hyrcanian and Caspian Sea, but was forced to retreat at a distance of three days\u2019 march from it, by the number of venomous serpents, and so he retreated into Armeni",
+      "campaign": "xenophon"
+    },
+    {
+      "raw_mention": "Armenia the Less",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "After this engagement, Pompey was eager to advance with his forces upon the Hyrcanian and Caspian Sea, but was forced to retreat at a distance of three days\u2019 march from it, by the number of venomous serpents, and so he retreated into Armeni",
+      "campaign": "xenophon"
+    },
+    {
+      "raw_mention": "Alexander",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "While they were in this distress, it happened that some Macedonians who had fetched water in skins upon their mules from a river they had found out, came about noon to the place where Alexander was, and seeing him almost choked with thirst,",
+      "campaign": "alexander"
+    },
+    {
+      "raw_mention": "Hephaestion",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "After the death of Philip, he continued in the service of Alexander, with the title of his principal secretary, but in as great favor as the most intimate of his familiars, being esteemed as wise and faithful as any person about him, so tha",
+      "campaign": "alexander"
+    },
+    {
+      "raw_mention": "India",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Alexander now intent upon his expedition into India, took notice that his soldiers were so charged with booty that it hindered their marching.",
+      "campaign": "alexander"
+    },
+    {
+      "raw_mention": "Antigonus",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Antigonus, the most powerful amongst the captains and successors of Alexander, having obtained for himself and his posterity the title of king, had a son named Demetrius, father to Antigonus, called Gonatas, and he had a son Demetrius, who,",
+      "campaign": "alexander"
+    },
+    {
+      "raw_mention": "Gedrosia",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "After sixty days march he came into Gedrosia, where he found great plenty of all things, which the neighboring kings and governors of provinces, hearing of his approach, had taken care to provide.",
+      "campaign": "alexander"
+    },
+    {
+      "raw_mention": "Aetolia",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Sulla, who had been appointed general of the Mithridatic war by the Romans, now for the first time passed over to Greece with five legions and a }\u00a5* few cohorts and troops of horse and straightway called for money, reinforcements and _ prov",
+      "campaign": "mithridates"
+    },
+    {
+      "raw_mention": "Asia",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "Thence he passed to Asia, where he heard that Domitius was beaten by Pharnaces, son of Mithridates, and had fled out of Pontus with a handful of men;",
+      "campaign": "mithridates"
+    },
+    {
+      "raw_mention": "Pontus",
+      "feature_type": "REGION",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic",
+      "source_statement": "Thence he passed to Asia, where he heard that Domitius was beaten by Pharnaces, son of Mithridates, and had fled out of Pontus with a handful of men;",
+      "campaign": "mithridates"
+    },
+    {
+      "raw_mention": "Attic",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Lucullus sympathized with them, and in \u00e9mulation of the favour shown to the Attic race by Alexander he gave the city its freedom and recalled the citizens with all haste: After thus desolating and repeopling both Sinope and Amisus Lucullus ",
+      "campaign": "mithridates"
+    },
+    {
+      "raw_mention": "Machares",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "Lucullus sympathized with them, and in \u00e9mulation of the favour shown to the Attic race by Alexander he gave the city its freedom and recalled the citizens with all haste: After thus desolating and repeopling both Sinope and Amisus Lucullus ",
+      "campaign": "mithridates"
+    },
+    {
+      "raw_mention": "Mithridates",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "He He marches accordingly collected his army and marched to the {fthetiates territory of Mithridates.",
+      "campaign": "mithridates"
+    },
+    {
+      "raw_mention": "Armenia Minor",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Of the allied forces Arcathias, the son of Mithridates, led 10,000 horse from Armenia Minor, and Dorylaus commanded the phalanx.",
+      "campaign": "mithridates"
+    },
+    {
+      "raw_mention": "Tisaeum",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "THE MITHRIDATIC WARS the same time Arcathias, the son of Mithridates, with another army invaded Macedonia and without difiiculty overcame the small Roman force there, subjugated the whole country, appointed satraps to govern it, and himself",
+      "campaign": "mithridates"
+    },
+    {
+      "raw_mention": "Cabira",
+      "feature_type": "SETTLEMENT",
+      "place_role": "EVENT_SITE",
+      "period": "Roman Republic",
+      "source_statement": "But the winter being well spent, he left Murena in charge of it, and went himself against Mithridates, then rendezvousing at Cabira, and resolving to await the Romans, with forty thousand foot about him, and fourteen thousand horse, on whom",
+      "campaign": "mithridates"
+    },
+    {
+      "raw_mention": "Brundusium",
+      "feature_type": "SETTLEMENT",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic",
+      "source_statement": "When the civil strife broke out into war Caesar crossed the Adriatic from Brundusium in the winter, with what forces he had, and opened his 73",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Epirus",
+      "feature_type": "SETTLEMENT",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic",
+      "source_statement": "There arrived also the appointed contingents of allies from Epirus, Acarnania, and even Messenia;",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Domitius",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Accordingly, Caesar despatching couriers, writes to Domitius, and acquaints him with his wishes on the subject: and having stationed a garrison of four cohorts at Apollonia, one at Lissus, and three at Oricum, besides those who were sick of",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Apollonia",
+      "feature_type": "SETTLEMENT",
+      "place_role": "EVENT_SITE",
+      "period": "Roman Republic",
+      "source_statement": "Accordingly, Caesar despatching couriers, writes to Domitius, and acquaints him with his wishes on the subject: and having stationed a garrison of four cohorts at Apollonia, one at Lissus, and three at Oricum, besides those who were sick of",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Lissus",
+      "feature_type": "SETTLEMENT",
+      "place_role": "EVENT_SITE",
+      "period": "Roman Republic",
+      "source_statement": "Accordingly, Caesar despatching couriers, writes to Domitius, and acquaints him with his wishes on the subject: and having stationed a garrison of four cohorts at Apollonia, one at Lissus, and three at Oricum, besides those who were sick of",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Oricum",
+      "feature_type": "SETTLEMENT",
+      "place_role": "EVENT_SITE",
+      "period": "Roman Republic",
+      "source_statement": "Accordingly, Caesar despatching couriers, writes to Domitius, and acquaints him with his wishes on the subject: and having stationed a garrison of four cohorts at Apollonia, one at Lissus, and three at Oricum, besides those who were sick of",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Rome",
+      "feature_type": "SETTLEMENT",
+      "place_role": "EVENT_SITE",
+      "period": "Roman Republic",
+      "source_statement": "So, leaving them with execrations, and disguising himself in a servant\u2019s dress, hiring a carriage with Quintus Cassius, he went straight away to Caesar, declaring at once, when they reached the camp, that affairs at Rome were conducted with",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Caesar",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "So, leaving them with execrations, and disguising himself in a servant\u2019s dress, hiring a carriage with Quintus Cassius, he went straight away to Caesar, declaring at once, when they reached the camp, that affairs at Rome were conducted with",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Italy",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "Upon this, Caesar set his army in motion, and marched into Italy;",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Roman",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "From this place, he passed over, in a quinquereme, to the nearest part of Epirus, and proceeded, by long journeys, to the Roman camp.",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Gaul",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "He has likewise left Commentaries of his own actions both in the war in Gaul, and in the civil war with Pompey;",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Pompey",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Not so, but you, who gave Pompey legions that belonged to others and the command, and undertook to deprive Caesar even of those that had been given him: it was you, who agreed with Pompey and the consuls not to accept the offers made by Cae",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Macedonia",
+      "feature_type": "REGION",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Not so, but you, who gave Pompey legions that belonged to others and the command, and undertook to deprive Caesar even of those that had been given him: it was you, who agreed with Pompey and the consuls not to accept the offers made by Cae",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Carrhae",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "and the Parthians, encompassing these on a small hill, slew every man of them excepting twenty, who with their drawn swords forced their way through the thickest, and they admiring their courage, opened their ranks to the right and left, an",
+      "campaign": "crassus_parthia"
+    },
+    {
+      "raw_mention": "Surena",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Soon after a false report was brought to Surena, that Crassus, with his principal officers, had escaped, and that those who were got into Carrhae were but a confused rout of insignificant people, not worth further pursuit.",
+      "campaign": "crassus_parthia"
+    },
+    {
+      "raw_mention": "Mesopotamia",
+      "feature_type": "REGION",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Crassus returned him but cold thanks for his readiness to serve him, and for the splendor of his assistance, and told him he was resolved to pass through Mesopotamia, where he had left a great many brave Roman soldiers;",
+      "campaign": "crassus_parthia"
+    },
+    {
+      "raw_mention": "City",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "For affairs in the City were in turmoil, the Gauls had risen again, and, though the Romans knew it not as yet, they had broken into war against the Parthians: but to Crassus signs that were both evident and easy to interpret appeared as he ",
+      "campaign": "crassus_parthia"
+    },
+    {
+      "raw_mention": "Crassus",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "For affairs in the City were in turmoil, the Gauls had risen again, and, though the Romans knew it not as yet, they had broken into war against the Parthians: but to Crassus signs that were both evident and easy to interpret appeared as he ",
+      "campaign": "crassus_parthia"
+    },
+    {
+      "raw_mention": "Alexander",
+      "feature_type": "SETTLEMENT",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic",
+      "source_statement": "For affairs in the City were in turmoil, the Gauls had risen again, and, though the Romans knew it not as yet, they had broken into war against the Parthians: but to Crassus signs that were both evident and easy to interpret appeared as he ",
+      "campaign": "crassus_parthia"
+    },
+    {
+      "raw_mention": "Gordyene",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "By such practices the army of Lucullus being corrupted, neither followed him against Tigranes, nor against Mithridates, when he now at once returned into Pontus out of Armenia, and was recovering his kingdom, but under presence of the winte",
+      "campaign": "lucullus_mithridatic"
+    },
+    {
+      "raw_mention": "Armenia",
+      "feature_type": "REGION",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic",
+      "source_statement": "By such practices the army of Lucullus being corrupted, neither followed him against Tigranes, nor against Mithridates, when he now at once returned into Pontus out of Armenia, and was recovering his kingdom, but under presence of the winte",
+      "campaign": "lucullus_mithridatic"
+    },
+    {
+      "raw_mention": "Tigranes",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Tigranes now withdrew into the interior of Armenia and Mithridates hastened to what was left of his own kingdom of Pontus, taking with him 4000 of his own troops and as many more that he had received from Tigranes.",
+      "campaign": "lucullus_mithridatic"
+    },
+    {
+      "raw_mention": "Bithynia",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Many were persuading Lucullus to defer the war, but he rejected their counsel, and marched through Bithynia and Galatia into the king\u2019s country, in such great scarcity of provision at first, that thirty thousand Galatians followed, every ma",
+      "campaign": "lucullus_mithridatic"
+    },
+    {
+      "raw_mention": "Caspian",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "but when winter had stolen upon the Romans whilst they were still in the country, and they were busy celebrating the festival of Saturn, they mustered a body of no less than forty thousand fighting men, and set upon them, having passed over",
+      "campaign": "lucullus_mithridatic"
+    },
+    {
+      "raw_mention": "Cyrnus",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "but when winter had stolen upon the Romans whilst they were still in the country, and they were busy celebrating the festival of Saturn, they mustered a body of no less than forty thousand fighting men, and set upon them, having passed over",
+      "campaign": "lucullus_mithridatic"
+    },
+    {
+      "raw_mention": "Euphrates",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "The sight of Pompey's onward rush and the fact that his lieutenants were also subjugating the rest of Armenia and that region of Pontus and that Grabinius had advanced across the Euphrates as far as the Tigris filled him with fear of them, ",
+      "campaign": "lucullus_mithridatic"
+    },
+    {
+      "raw_mention": "Lucullus",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "They were stabbed, poisoned, and hanged, lamenting their fate, but when the garrison commanders of Mithridates saw these things they went over to Lucullus in a body, all but a few.",
+      "campaign": "lucullus_mithridatic"
+    },
+    {
+      "raw_mention": "Spain",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "And it is told that when his army was defeated near a city in Spain, and the enemy pressed hard upon them, the Spaniards, with no care for themselves, but being totally solicitous to save Sertorius, took him up on their shoulders and passed",
+      "campaign": "sertorius_hispania"
+    },
+    {
+      "raw_mention": "Italy",
+      "feature_type": "SETTLEMENT",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic",
+      "source_statement": "Nor were the Spaniards alone ambitious to serve him, but the Roman soldiers, also, that came out of Italy, were impatient to be under his command;",
+      "campaign": "sertorius_hispania"
+    },
+    {
+      "raw_mention": "Romans",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "Sertorius, with a few of his soldiers, made his way out, and rallying together the rest who escaped, he marched round about the walls, and finding the gate open, by which the Gyrisoenians had made their secret entrance, he gave not them the",
+      "campaign": "sertorius_hispania"
+    },
+    {
+      "raw_mention": "Atlantic",
+      "feature_type": "SEA",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "He escaped with difficulty, and after the wind ceased, ran for certain desert islands scattered in those seas, affording no water, and after passing a night there, making out to sea again, he went through the straits of Cadiz, and sailing o",
+      "campaign": "sertorius_hispania"
+    },
+    {
+      "raw_mention": "Cadiz",
+      "feature_type": "SETTLEMENT",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic",
+      "source_statement": "He escaped with difficulty, and after the wind ceased, ran for certain desert islands scattered in those seas, affording no water, and after passing a night there, making out to sea again, he went through the straits of Cadiz, and sailing o",
+      "campaign": "sertorius_hispania"
+    },
+    {
+      "raw_mention": "Lusitania",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "For with two thousand six hundred men, whom for honor\u2019s sake he called Romans, combined with seven hundred Africans, who landed with him when he first entered Lusitania, together with four thousand targeteers, and seven hundred horse of the",
+      "campaign": "sertorius_hispania"
+    },
+    {
+      "raw_mention": "Rome",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Thoranius, another commander sent against him by Metellus with a great force, was slain, and Metellus, one of the greatest and most approved Roman generals then living, by a series of defeats, was reduced to such extremities, that Lucius Ma",
+      "campaign": "sertorius_hispania"
+    },
+    {
+      "raw_mention": "Hypata",
+      "feature_type": "SETTLEMENT",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic",
+      "source_statement": "By the advice of the Athenians a numerous embassy of the \u00c6tolians came speedily from Hypata, and the discourse of Africanus, whom they addressed first, augmented their hopes of peace;",
+      "campaign": "scipio_africanus"
+    },
+    {
+      "raw_mention": "Scipio",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "In the fourteenth year of the Punic war, Publius Cornelius Scipio and Publius Licinius Crassus entered on the consulship, when the provinces assigned to the consuls were, to Scipio, Sicily, without drawing lots, his colleague not opposing i",
+      "campaign": "scipio_africanus"
+    },
+    {
+      "raw_mention": "Carthage",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "and setting out himself in company with Caius Laelius, with two quinqueremes from Carthage, passed over into Africa, working the vessels with oars for the greatest part of the voyage, in consequence of the calmness of the sea, though someti",
+      "campaign": "scipio_africanus"
+    },
+    {
+      "raw_mention": "Africa",
+      "feature_type": "REGION",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "and setting out himself in company with Caius Laelius, with two quinqueremes from Carthage, passed over into Africa, working the vessels with oars for the greatest part of the voyage, in consequence of the calmness of the sea, though someti",
+      "campaign": "scipio_africanus"
+    },
+    {
+      "raw_mention": "Tarraco",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "206, Scipio had compelled Mago to abandon Spain: and towards the winter the Roman army went into winter-quarters at Tarraco.",
+      "campaign": "scipio_africanus"
+    },
+    {
+      "raw_mention": "Iberia",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Having thus put a finishing stroke to his campaigns in Iberia, Scipio arrived at Tarraco in high spirits, Scipio returns to Rome in the autumn of B.",
+      "campaign": "scipio_africanus"
+    },
+    {
+      "raw_mention": "Libya",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "the Romans, having heard the result of the embassy to Carthage, and that Hannibal had crossed the Iber earlier than they expected, at the head of an army, voted to send Publius Cornelius Scipio with his legions into Iberia, and Tiberius Sem",
+      "campaign": "scipio_africanus"
+    },
+    {
+      "raw_mention": "Iber",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "the Romans, having heard the result of the embassy to Carthage, and that Hannibal had crossed the Iber earlier than they expected, at the head of an army, voted to send Publius Cornelius Scipio with his legions into Iberia, and Tiberius Sem",
+      "campaign": "scipio_africanus"
+    },
+    {
+      "raw_mention": "Roman",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "When news of these proceedings reached the Roman camp Scipio immediately determined to attack.",
+      "campaign": "scipio_africanus"
+    },
+    {
+      "raw_mention": "Celtiberia",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "The new general, Hanno, who had passed over from Africa, to supply the place of the Barcine Hasdrubal, with a new army, and formed a junction with Mago, having in a short time armed a large number of men in Celtiberia, which lies in the mid",
+      "campaign": "scipio_africanus"
+    },
+    {
+      "raw_mention": "Spain",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "He escaped with difficulty, and after the wind ceased, ran for certain desert islands scattered in those seas, affording no water, and after passing a night there, making out to sea again, he went through the straits of Cadiz, and sailing o",
+      "campaign": "scipio_africanus"
+    },
+    {
+      "raw_mention": "Sicily",
+      "feature_type": "ISLAND",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "At the close of the summer in which Capua was recovered and Scipio entered Spain, a Carthaginian fleet, which had been fetched from Sicily to Tarentum, to cut off the supplies of the Roman garrison in the citadel of that place, had blocked ",
+      "campaign": "scipio_africanus"
+    },
+    {
+      "raw_mention": "Tarentum",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "At the close of the summer in which Capua was recovered and Scipio entered Spain, a Carthaginian fleet, which had been fetched from Sicily to Tarentum, to cut off the supplies of the Roman garrison in the citadel of that place, had blocked ",
+      "campaign": "scipio_africanus"
+    },
+    {
+      "raw_mention": "Marius",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "where having carefully seen with his own eyes, or having been fully informed by persons upon the place of all their most important concerns, he returned to Marius, from whose hands he received the rewards of valor;",
+      "campaign": "marius_cimbrian"
+    },
+    {
+      "raw_mention": "Liguria",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "the Teutones and Ambrones to march against Marius by the sea-side through Liguria.",
+      "campaign": "marius_cimbrian"
+    },
+    {
+      "raw_mention": "Praeneste",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "Marius fled to Praeneste, but finding the gates shut, tied himself round by a rope that was thrown down to him, and was taken up on the walls.",
+      "campaign": "marius_cimbrian"
+    },
+    {
+      "raw_mention": "Cimbri",
+      "feature_type": "SETTLEMENT",
+      "place_role": "ORIGIN",
+      "period": "Roman Republic",
+      "source_statement": "They were descended from the Cimbri and Teutones, who, when they were marching into our province and Italy, having deposited on this side the river Rhine such of their baggage-trains as",
+      "campaign": "marius_cimbrian"
+    },
+    {
+      "raw_mention": "Antony",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "and Decimus, when a certain senator deserted to Antony, so far from displaying anger toward him sent back all his baggage and whatever else he had left behind in Mutina, the result being that the affection of many of Antony's soldiers grew ",
+      "campaign": "antony_mutina"
+    },
+    {
+      "raw_mention": "Mutina",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "and Decimus, when a certain senator deserted to Antony, so far from displaying anger toward him sent back all his baggage and whatever else he had left behind in Mutina, the result being that the affection of many of Antony's soldiers grew ",
+      "campaign": "antony_mutina"
+    },
+    {
+      "raw_mention": "Dyrrachium",
+      "feature_type": "SETTLEMENT",
+      "place_role": "EVENT_SITE",
+      "period": "Roman Republic",
+      "source_statement": "Caesar fell sick and was left behind at Dyrrachium, while Antony marched for Philippi.",
+      "campaign": "antony_mutina"
+    },
+    {
+      "raw_mention": "Philippi",
+      "feature_type": "SETTLEMENT",
+      "place_role": "DESTINATION",
+      "period": "Roman Republic",
+      "source_statement": "Caesar fell sick and was left behind at Dyrrachium, while Antony marched for Philippi.",
+      "campaign": "antony_mutina"
+    },
+    {
+      "raw_mention": "Dyrrhachium",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "So when news was brought that Caius, the brother of Antony, having passed over from Italy, was marching on directly to join the forces that Vatinius commanded in Dyrrhachium and Apollonia, Brutus resolved to anticipate him, and to seize the",
+      "campaign": "antony_mutina"
+    },
+    {
+      "raw_mention": "Epirus",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "But whilst Antony lay with his fleet near Actium, where now stands Nicopolis, Caesar seized his opportunity, and crossed the Ionian sea, securing himself at a place in Epirus called the Ladle.",
+      "campaign": "antony_mutina"
+    },
+    {
+      "raw_mention": "Ionian",
+      "feature_type": "SEA",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "But whilst Antony lay with his fleet near Actium, where now stands Nicopolis, Caesar seized his opportunity, and crossed the Ionian sea, securing himself at a place in Epirus called the Ladle.",
+      "campaign": "antony_mutina"
+    },
+    {
+      "raw_mention": "Peloponnesus",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Peloponnesus",
+      "campaign": "alexander"
+    },
+    {
+      "raw_mention": "Gades",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Gades",
+      "campaign": "xenophon"
+    },
+    {
+      "raw_mention": "Cadiz",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Cadiz",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Hispania",
+      "feature_type": "REGION",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Hispania",
+      "campaign": "sertorius_hispania"
+    },
+    {
+      "raw_mention": "Italia",
+      "feature_type": "REGION",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Italia",
+      "campaign": "xenophon"
+    },
+    {
+      "raw_mention": "Bactria",
+      "feature_type": "REGION",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Bactria",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Hydaspes",
+      "feature_type": "RIVER",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Hydaspes",
+      "campaign": "alexander"
+    },
+    {
+      "raw_mention": "Syria",
+      "feature_type": "REGION",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Syria",
+      "campaign": "mithridates"
+    },
+    {
+      "raw_mention": "Greece",
+      "feature_type": "REGION",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Greece",
+      "campaign": "xenophon"
+    },
+    {
+      "raw_mention": "Europe",
+      "feature_type": "REGION",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Europe",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Adriatic",
+      "feature_type": "SEA",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Adriatic",
+      "campaign": "sertorius_hispania"
+    },
+    {
+      "raw_mention": "Alpes",
+      "feature_type": "MOUNTAIN",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Alpes",
+      "campaign": "mithridates"
+    },
+    {
+      "raw_mention": "Rhodanus",
+      "feature_type": "RIVER",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Rhodanus",
+      "campaign": "xenophon"
+    },
+    {
+      "raw_mention": "Cimbri",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Cimbri",
+      "campaign": "xenophon"
+    },
+    {
+      "raw_mention": "Numidia",
+      "feature_type": "REGION",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Numidia",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Egypt",
+      "feature_type": "REGION",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Egypt",
+      "campaign": "sertorius_hispania"
+    },
+    {
+      "raw_mention": "Crete",
+      "feature_type": "ISLAND",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Crete",
+      "campaign": "alexander"
+    },
+    {
+      "raw_mention": "Iberus",
+      "feature_type": "RIVER",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Iberus",
+      "campaign": "mithridates"
+    },
+    {
+      "raw_mention": "Genava",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Genava",
+      "campaign": "xenophon"
+    },
+    {
+      "raw_mention": "Lutetia",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "Roman Republic",
+      "source_statement": "Required hard-case audit mention: Lutetia",
+      "campaign": "caesar_adriatic"
+    },
+    {
+      "raw_mention": "Rubico",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE",
+      "source_statement": "Audit mention of Rubico",
+      "campaign": "benchmark"
+    },
+    {
+      "raw_mention": "Sequana",
+      "feature_type": "SETTLEMENT",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE",
+      "source_statement": "Audit mention of Sequana",
+      "campaign": "benchmark"
+    },
+    {
+      "raw_mention": "Illyria",
+      "feature_type": "REGION",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE",
+      "source_statement": "Audit mention of Illyria",
+      "campaign": "benchmark"
+    },
+    {
+      "raw_mention": "Parthia",
+      "feature_type": "REGION",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE",
+      "source_statement": "Audit mention of Parthia",
+      "campaign": "benchmark"
+    },
+    {
+      "raw_mention": "Caucasus",
+      "feature_type": "MOUNTAIN",
+      "place_role": "RELATED_PLACE",
+      "period": "88 BCE",
+      "source_statement": "Audit mention of Caucasus",
+      "campaign": "benchmark"
+    }
+  ]
+}

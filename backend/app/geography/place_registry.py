@@ -9,12 +9,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from backend.app.geography.feature_semantics import coordinate_role_for_semantics
 from backend.app.geography.normalization import normalize_name
 from backend.app.geography.place_disambiguation import PlaceResolutionContext, filter_resolution_candidates
 from backend.app.models import HistoricalPlace, PlaceSpatialSemantics
 
 PLEIADES_SOURCE = "Pleiades: A Gazetteer of Past Places"
 _DATA = Path(__file__).with_name("data") / "roman_republic_places.json"
+_PHYSICAL_DATA = Path(__file__).with_name("data") / "physical_features.json"
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_INDEX = _REPOSITORY_ROOT / "data" / "pleiades_v4_1" / "pleiades_v4_1.sqlite3"
 _INDEX_ENV = "PLEIADES_GAZETTEER_PATH"
@@ -37,35 +39,43 @@ def records() -> list[dict]:
 
 
 @lru_cache(maxsize=1)
-def places() -> tuple[HistoricalPlace, ...]:
-    return tuple(
-        HistoricalPlace(
-            id=f"pleiades-{r['pleiades_id']}",
-            canonical_name=r["canonical_name"],
-            modern_name=r.get("modern_name"),
-            latitude=r["latitude"],
-            longitude=r["longitude"],
-            period=r.get("period"),
-            source=PLEIADES_SOURCE,
-            source_id=str(r["pleiades_id"]),
-            source_url=f"https://pleiades.stoa.org/places/{r['pleiades_id']}",
-            confidence=r["confidence"],
-            uncertain=r.get("uncertain", False),
-            coordinate_role=r["coordinate_role"],
-            spatial_semantics=PlaceSpatialSemantics(r["spatial_semantics"]),
-            spatial_semantics_provenance=r["spatial_semantics_provenance"],
-        )
-        for r in records()
+def physical_records() -> list[dict]:
+    if not _PHYSICAL_DATA.is_file():
+        return []
+    return json.loads(_PHYSICAL_DATA.read_text(encoding="utf-8"))
+
+
+def _record_to_place(record: dict) -> HistoricalPlace:
+    return HistoricalPlace(
+        id=f"pleiades-{record['pleiades_id']}",
+        canonical_name=record["canonical_name"],
+        modern_name=record.get("modern_name"),
+        latitude=record["latitude"],
+        longitude=record["longitude"],
+        period=record.get("period"),
+        source=PLEIADES_SOURCE,
+        source_id=str(record["pleiades_id"]),
+        source_url=f"https://pleiades.stoa.org/places/{record['pleiades_id']}",
+        confidence=record["confidence"],
+        uncertain=record.get("uncertain", False),
+        coordinate_role=record["coordinate_role"],
+        spatial_semantics=PlaceSpatialSemantics(record["spatial_semantics"]),
+        spatial_semantics_provenance=record["spatial_semantics_provenance"],
     )
+
+
+@lru_cache(maxsize=1)
+def places() -> tuple[HistoricalPlace, ...]:
+    return tuple(_record_to_place(record) for record in [*records(), *physical_records()])
 
 
 @lru_cache(maxsize=1)
 def aliases() -> dict[str, tuple[HistoricalPlace, ...]]:
     by_id = {place.id: place for place in places()}
     result: dict[str, list[HistoricalPlace]] = {}
-    for r in records():
-        for alias in r["aliases"]:
-            result.setdefault(normalize_name(alias), []).append(by_id[f"pleiades-{r['pleiades_id']}"])
+    for record in [*records(), *physical_records()]:
+        for alias in record["aliases"]:
+            result.setdefault(normalize_name(alias), []).append(by_id[f"pleiades-{record['pleiades_id']}"])
     return {key: tuple(value) for key, value in result.items()}
 
 
@@ -92,14 +102,23 @@ def _metadata(connection: sqlite3.Connection) -> dict[str, str]:
     return values
 
 
-def _spatial_semantics(place_types: tuple[str, ...]) -> PlaceSpatialSemantics:
+def _spatial_semantics(place_types: tuple[str, ...], *, title: str = "") -> PlaceSpatialSemantics:
     values = {value.casefold().replace("_", "-") for value in place_types}
+    title_lower = title.casefold()
+    if "pass" in values:
+        return PlaceSpatialSemantics.PASS
     if "island" in values:
         return PlaceSpatialSemantics.ISLAND
     if "river" in values:
         return PlaceSpatialSemantics.RIVER
     if "mountain" in values:
         return PlaceSpatialSemantics.MOUNTAIN_REGION
+    if "water-open" in values:
+        if "strait" in title_lower:
+            return PlaceSpatialSemantics.STRAIT
+        return PlaceSpatialSemantics.SEA
+    if values & {"port"} and values & {"settlement", "urban", "archaeological-site"}:
+        return PlaceSpatialSemantics.PORT
     if values & {"region", "province", "province-2", "people", "ethnic-region"}:
         return PlaceSpatialSemantics.REGION
     if values & {"settlement", "urban", "fort", "fort-2", "station", "fortified-settlement"}:
@@ -197,9 +216,9 @@ def _lookup_index(path: Path, name: str) -> GazetteerResolution:
             )
             if not coordinate_available:
                 continue
-            semantics = _spatial_semantics(place_types)
-            coordinate_role = (
-                "regional_centroid" if semantics is PlaceSpatialSemantics.REGION else "representative_point"
+            semantics = _spatial_semantics(place_types, title=first["title"] or "")
+            coordinate_role = coordinate_role_for_semantics(
+                semantics, place_types=place_types, title=first["title"] or ""
             )
             authority_metadata = {
                 "dataset_version": metadata.get("dataset_version"),

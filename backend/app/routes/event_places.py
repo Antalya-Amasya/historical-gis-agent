@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from backend.app.geography.feature_semantics import place_limitations
 from backend.app.models import (
     EventPlaceResolutionStatus,
     HistoricalEvent,
@@ -30,13 +31,7 @@ class HistoricalEventPlaceResolver:
 
     @staticmethod
     def _limitations(place: HistoricalPlace) -> list[str]:
-        if place.spatial_semantics is PlaceSpatialSemantics.RIVER:
-            return ["Resolved river location is a representative entity point, not an exact event site."]
-        if place.spatial_semantics is PlaceSpatialSemantics.MOUNTAIN_REGION:
-            return ["Resolved mountain-region centroid identifies a region, not an exact event site or pass."]
-        if place.coordinate_role != "exact_site":
-            return [f"Resolved coordinate role is {place.coordinate_role}; it is not asserted as an exact event site."]
-        return []
+        return place_limitations(place)
 
     def resolve(self, events: list[HistoricalEvent]) -> tuple[list[HistoricalEvent], dict[str, object]]:
         diagnostics = {
@@ -132,7 +127,7 @@ class HistoricalEventPlaceResolver:
                     diagnostics["resolved_place_count"] += 1
                     if place.spatial_semantics is PlaceSpatialSemantics.SETTLEMENT and place.coordinate_role == "exact_site":
                         diagnostics["exact_site_count"] += 1
-                    elif place.coordinate_role == "representative_point":
+                    elif place.coordinate_role in {"representative_point", "feature_reference", "feature_centroid"}:
                         diagnostics["representative_point_count"] += 1
                     elif place.coordinate_role == "regional_centroid":
                         diagnostics["regional_count"] += 1

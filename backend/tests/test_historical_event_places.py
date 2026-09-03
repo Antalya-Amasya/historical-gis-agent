@@ -59,7 +59,7 @@ def test_river_and_mountain_region_preserve_non_exact_semantics():
     ))
     bindings = [binding for event in result for binding in event.place_bindings]
     assert {binding.place.spatial_semantics for binding in bindings if binding.place} == {PlaceSpatialSemantics.RIVER, PlaceSpatialSemantics.MOUNTAIN_REGION}
-    assert all("not an exact event site" in binding.limitations[0] for binding in bindings)
+    assert all("not an exact" in binding.limitations[0].casefold() for binding in bindings)
     assert diagnostics["representative_point_count"] == 1 and diagnostics["regional_count"] == 1
     assert "NON_EXACT_SPATIAL_SEMANTICS" in diagnostics["reason_codes"]
 
