@@ -7,6 +7,7 @@ from backend.app.models import AgentState, HistoricalEvent, HistoricalPlace, His
 from backend.app.core.config import settings
 from backend.app.candidate_routes.historical_reconstruction import RealTerrainGraphProvider
 from backend.app.candidate_routes.terrain import MosaicDEMProvider
+from backend.app.rag.evidence_ranking import is_route_or_movement_query
 from backend.app.rag.retriever import HistoricalRetriever
 from backend.app.routes.extractor import HistoricalRouteExtractor
 from backend.app.routes.event_route_orchestration import EventAnchorRouteBuilder
@@ -172,7 +173,14 @@ class AgentToolRegistry:
             top_k = arguments.get("top_k", 5)
             if not isinstance(top_k, int) or not 1 <= top_k <= 20: raise ValueError("top_k must be 1..20")
             filters = {key: arguments[key] for key in ("author", "book") if isinstance(arguments.get(key), str) and arguments[key]}
-            evidence = self.retriever.retrieve(query, top_k, filters or None)
+            movement_route = (
+                state.requested_output == "historical_route"
+                and is_route_or_movement_query(state.user_query or query)
+            )
+            if movement_route and not state.historical_evidence:
+                evidence = self.retriever.retrieve_with_coverage(query, filters=filters or None)
+            else:
+                evidence = self.retriever.retrieve(query, top_k, filters or None)
             accumulated = {item.id: item for item in state.historical_evidence}
             accumulated.update({item.id: item for item in evidence})
             state.historical_evidence = list(accumulated.values())

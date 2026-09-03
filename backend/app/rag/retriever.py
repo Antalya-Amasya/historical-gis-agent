@@ -2,9 +2,15 @@ from abc import ABC, abstractmethod
 import logging
 
 from backend.app.models import Evidence
+from .coverage_retrieval import (
+    DEFAULT_COVERAGE_BUDGET,
+    DEFAULT_PER_INTENT_K,
+    merge_coverage_results,
+)
 from .store import ChromaEvidenceStore
 from .evidence_ranking import diversify_route_evidence, rerank_evidence
 from .lexical_index import derive_passages
+from .retrieval_intents import decompose_movement_query
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +18,16 @@ logger = logging.getLogger(__name__)
 class HistoricalRetriever(ABC):
     @abstractmethod
     def retrieve(self, query: str, top_k: int = 5, filters: dict[str, str] | None = None) -> list[Evidence]: ...
+
+    def retrieve_with_coverage(
+        self,
+        query: str,
+        budget: int = DEFAULT_COVERAGE_BUDGET,
+        *,
+        per_intent_k: int = DEFAULT_PER_INTENT_K,
+        filters: dict[str, str] | None = None,
+    ) -> list[Evidence]:
+        return self.retrieve(query, min(budget, 20), filters)
 
 
 class EmptyHistoricalRetriever(HistoricalRetriever):
@@ -84,3 +100,21 @@ class ChromaHistoricalRetriever(HistoricalRetriever):
             if len(selected) == top_k:
                 break
         return [item.model_copy(update={"metadata": {**item.metadata, "rank": rank}}) for rank, item in enumerate(selected, 1)]
+
+    def retrieve_with_coverage(
+        self,
+        query: str,
+        budget: int = DEFAULT_COVERAGE_BUDGET,
+        *,
+        per_intent_k: int = DEFAULT_PER_INTENT_K,
+        filters: dict[str, str] | None = None,
+    ) -> list[Evidence]:
+        """Coverage-oriented retrieval for movement route queries."""
+        intents = decompose_movement_query(query)
+        if len(intents) <= 1:
+            return self.retrieve(query, min(budget, 20), filters)
+        intent_results: list[tuple] = []
+        for intent in intents:
+            items = self.retrieve(intent.query, per_intent_k, filters)
+            intent_results.append((intent, items))
+        return merge_coverage_results(query, intent_results, budget)
