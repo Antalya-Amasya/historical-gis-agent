@@ -323,6 +323,41 @@ def _eligible_same_movement_component(
     )
 
 
+def _merge_ordering_relations(
+    left: AnchorOrderingRelation,
+    right: AnchorOrderingRelation,
+) -> AnchorOrderingRelation:
+    return AnchorOrderingRelation(
+        earlier=left.earlier,
+        later=left.later,
+        rule=left.rule,
+        event_ids=tuple(sorted(set(left.event_ids) | set(right.event_ids))),
+        evidence_refs=tuple(sorted(set(left.evidence_refs) | set(right.evidence_refs))),
+    )
+
+
+def _same_movement_provenance_key(relation: AnchorOrderingRelation) -> tuple[str, str, frozenset[str]]:
+    return (relation.earlier, relation.later, frozenset(relation.evidence_refs))
+
+
+def _merge_same_movement_relations(
+    relations: list[AnchorOrderingRelation],
+) -> list[AnchorOrderingRelation]:
+    """Canonicalize sibling SAME_MOVEMENT edges without dropping supporting event ids."""
+    merged: dict[tuple[str, str, frozenset[str]], AnchorOrderingRelation] = {}
+    others: list[AnchorOrderingRelation] = []
+    for relation in relations:
+        if relation.rule is not OrderingRule.SAME_MOVEMENT_EVENT:
+            others.append(relation)
+            continue
+        key = _same_movement_provenance_key(relation)
+        if key not in merged:
+            merged[key] = relation
+            continue
+        merged[key] = _merge_ordering_relations(merged[key], relation)
+    return [*others, *merged.values()]
+
+
 def _materialize_same_movement_branch_components(
     components: list[tuple[tuple[str, ...], tuple[tuple[str, str], ...]]],
     branch_pairs: list[tuple[str, str]],
@@ -452,7 +487,7 @@ class EventAnchorRouteBuilder:
                 if tail is None or head is None or tail.canonical_name == head.canonical_name:
                     continue
                 found.append(AnchorOrderingRelation(tail.canonical_name, head.canonical_name, rule, (earlier_id, later_id), tuple(sorted(set(tail.evidence_refs) | set(head.evidence_refs)))))
-        return found
+        return _merge_same_movement_relations(found)
 
     @staticmethod
     def _inter_event_order(first: str, second: str, by_event: dict[str, list[EventAnchor]], events_by_id: dict[str, HistoricalEvent], evidence_by_id: dict[str, Evidence]) -> tuple[str, str, OrderingRule] | None:
@@ -477,8 +512,14 @@ class EventAnchorRouteBuilder:
         best: dict[tuple[str, str], AnchorOrderingRelation] = {}
         for relation in relations:
             key = (relation.earlier, relation.later)
-            if key not in best or _RULE_PRIORITY[relation.rule] < _RULE_PRIORITY[best[key].rule]:
+            if key not in best:
                 best[key] = relation
+                continue
+            current = best[key]
+            if _RULE_PRIORITY[relation.rule] < _RULE_PRIORITY[current.rule]:
+                best[key] = relation
+            elif _RULE_PRIORITY[relation.rule] == _RULE_PRIORITY[current.rule]:
+                best[key] = _merge_ordering_relations(current, relation)
         usable, contradictory, suppressed = _resolve_authority_conflicts(best)
         components: list[tuple[tuple[str, ...], tuple[tuple[str, str], ...]]] = []
         branch_pairs: list[tuple[str, str]] = []
