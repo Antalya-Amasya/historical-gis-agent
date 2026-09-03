@@ -3,6 +3,16 @@ import json, logging, re
 from time import perf_counter
 from backend.app.agent.prompts import SYSTEM_PROMPT
 from backend.app.agent.evidence_support import assess_evidence_support, assess_final_answer_provenance, event_relation_supports_answer, render_evidence_citations, validate_evidence_citations, validate_evidence_selection
+from backend.app.agent.route_orchestration import (
+    PRE_ROUTE_SUPPRESSION_MESSAGE,
+    duplicate_attempt_payload,
+    lookup_prior_resolve,
+    prior_tool_attempt_key,
+    route_is_ready,
+    route_ready_tool_schemas,
+    should_suppress_pre_route_tool,
+    visible_historical_events,
+)
 from backend.app.models import AgentProviderCallTiming, AgentState, AgentToolHistoryEntry
 
 logger = logging.getLogger(__name__)
@@ -152,25 +162,8 @@ def _model_result(tool_name: str, payload: dict, state: AgentState, remaining_se
         if result.get("status") == "search_budget_exhausted":
             return {**result, "accumulated_evidence_count": len(state.historical_evidence), "remaining_search_budget": remaining_search_budget}
         visible_evidence = state.historical_evidence[:8]
-        visible_ids = {item.id for item in visible_evidence}
-        events = []
-        for event in state.historical_events[:8]:
-            serialized = event.model_dump(mode="json")
-            refs = set(serialized.get("evidence_refs", []))
-            if not refs or not refs <= visible_ids:
-                continue
-            events.append({
-                "id": serialized["id"],
-                "name": serialized["name"],
-                "event_type": serialized.get("event_type"),
-                "summary": serialized.get("summary"),
-                "period": serialized.get("period"),
-                "temporal_grounding": serialized.get("temporal_grounding"),
-                "place_mentions": serialized.get("place_mentions", []),
-                "evidence_refs": serialized.get("evidence_refs", []),
-                "grounding_status": serialized.get("grounding_status"),
-                "limitations": serialized.get("limitations", []),
-            })
+        events = visible_historical_events(state)
+        readiness = route_is_ready(state)
         return {
             "result_count": result.get("result_count", 0),
             "unique_authors": sorted({item.author for item in state.historical_evidence}),
@@ -185,6 +178,8 @@ def _model_result(tool_name: str, payload: dict, state: AgentState, remaining_se
             "missing_subject_terms": state.missing_subject_terms,
             "evidence": [{"id": item.id, "author": item.author, "work": item.work, "locator": item.locator, "excerpt": item.excerpt[:360]} for item in visible_evidence],
             "historical_events": events,
+            "route_ready": readiness,
+            "movement_event_count": sum(1 for event in events if str(event.get("event_type", "")).upper() == "MOVEMENT"),
         }
     if tool_name == "build_historical_route":
         route = state.historical_route
@@ -227,14 +222,19 @@ class BoundedAgentLoop:
 
     @staticmethod
     def _route_builder_attempted(state: AgentState) -> bool:
-        return any(entry.tool_name == "build_historical_route" and entry.outcome in {"success", "failure"} for entry in state.tool_history)
+        return bool(state.tool_execution_stats.get("route_builder_attempted"))
 
-    def _should_attempt_deterministic_route_builder(self, state: AgentState) -> bool:
-        return (
+    def _should_attempt_deterministic_route_builder(self, state: AgentState, *, require_route_ready: bool = False) -> bool:
+        ready = (
             state.requested_output == "historical_route"
             and bool(state.historical_evidence)
             and not self._route_builder_attempted(state)
         )
+        if not ready:
+            return False
+        if require_route_ready:
+            return route_is_ready(state)
+        return True
 
     @staticmethod
     def _default_route_builder_arguments(state: AgentState) -> dict:
@@ -283,6 +283,7 @@ class BoundedAgentLoop:
             result_summary=summary, duration_ms=payload["duration_ms"],
             outcome="success" if payload["success"] else "failure", budget_source=budget_source,
         ))
+        state.tool_execution_stats["route_builder_attempted"] = 1
 
     def _refresh_evidence_support(self, state: AgentState):
         assessment = assess_evidence_support(state.user_query or "", state.requested_output, state.historical_evidence)
@@ -439,11 +440,29 @@ class BoundedAgentLoop:
             "completion_corrections": 0,
             "grounding_corrections": 0,
             "suppressed_tool_calls": 0,
+            "route_builder_attempted": 0,
         }
         self._refresh_evidence_support(state)
+        if (
+            state.requested_output == "historical_route"
+            and not state.historical_evidence
+            and _has_movement_display_intent((user_message or "").lower())
+        ):
+            bootstrap_started = perf_counter()
+            bootstrap_payload, _bootstrap_summary = self.tools.execute(
+                "search_historical_evidence",
+                {"query": user_message, "top_k": 10},
+                state,
+            )
+            self._refresh_evidence_support(state)
+            logger.info(
+                "route_discovery_bootstrap_search success=%s elapsed_ms=%s",
+                bootstrap_payload["success"],
+                int((perf_counter() - bootstrap_started) * 1000),
+            )
         messages = [{"role": "system", "content": SYSTEM_PROMPT}, *state.messages[-12:]]
         failures: dict[str, int] = {}
-        successful: dict[str, str] = {}
+        attempted: dict[str, AgentToolHistoryEntry] = {}
         corrections = 0
         grounding_corrections = 0
         for step in range(1, self.max_steps + 1):
@@ -451,7 +470,13 @@ class BoundedAgentLoop:
             logger.info("llm_%s_started step=%s", "continuation" if step > 1 else "request", step)
             provider_started = perf_counter()
             try:
-                schemas = self.tools.schemas if state.requested_output == "answer" and state.historical_evidence else [tool for tool in self.tools.schemas if tool["name"] != "submit_grounded_answer"]
+                schemas = self.tools.schemas
+                if route_is_ready(state) and not _route_is_built(state):
+                    schemas = route_ready_tool_schemas(self.tools.schemas)
+                elif state.requested_output == "answer" and state.historical_evidence:
+                    schemas = self.tools.schemas
+                else:
+                    schemas = [tool for tool in self.tools.schemas if tool["name"] != "submit_grounded_answer"]
                 response = self.provider.complete(messages, schemas)
             except Exception as exc:
                 provider_finished = perf_counter()
@@ -667,7 +692,9 @@ class BoundedAgentLoop:
             for call in response.tool_calls:
                 state.tool_execution_stats["tool_requests"] += 1
                 fingerprint = _fingerprint(call.name, call.arguments)
+                attempt_key = prior_tool_attempt_key(call.name, call.arguments)
                 budget_source = "general"
+                handled = False
                 if _should_suppress_post_route_tool(call.name, state):
                     summary = "route already built; upstream discovery suppressed"
                     payload = {
@@ -691,60 +718,123 @@ class BoundedAgentLoop:
                         "phase": "POST_ROUTE",
                         "reason": "ROUTE_ALREADY_BUILT",
                     })
-                elif fingerprint in successful:
-                    summary = f"duplicate cache hit; reuse prior successful result: {successful[fingerprint]}"
-                    payload = {"success": True, "result": {"status": "duplicate", "message": "This exact tool call already succeeded earlier in this run.", "previous_result_summary": successful[fingerprint]}, "summary": summary, "duration_ms": 0}
+                    handled = True
+                elif should_suppress_pre_route_tool(call.name, state):
+                    summary = "route-ready state established; upstream discovery suppressed"
+                    payload = {
+                        "success": False,
+                        "result": {
+                            "status": "route_ready",
+                            "reason": "ROUTE_READY",
+                            "message": PRE_ROUTE_SUPPRESSION_MESSAGE,
+                            "tool_call_suppressed": True,
+                            "tool": call.name,
+                            "phase": "PRE_ROUTE",
+                        },
+                        "summary": summary,
+                        "duration_ms": 0,
+                    }
+                    outcome = "route_ready_suppressed"
+                    state.tool_execution_stats["suppressed_tool_calls"] += 1
+                    state.tool_results.setdefault("tool_call_suppressed", []).append({
+                        "tool": call.name,
+                        "step": step,
+                        "phase": "PRE_ROUTE",
+                        "reason": "ROUTE_READY",
+                    })
+                    handled = True
+                elif call.name == "build_historical_route" and self._route_builder_attempted(state):
+                    prior = next(
+                        entry for entry in reversed(state.tool_history)
+                        if entry.tool_name == "build_historical_route"
+                    )
+                    if prior.success or state.historical_route is not None:
+                        summary = "route builder already attempted in this run"
+                        payload = {
+                            "success": state.historical_route is not None,
+                            "result": {
+                                "status": "duplicate",
+                                "message": "This exact tool call already succeeded earlier in this run.",
+                                "previous_result_summary": prior.result_summary,
+                            },
+                            "summary": summary,
+                            "duration_ms": 0,
+                        }
+                        outcome = "duplicate"
+                        state.tool_execution_stats["duplicate_tool_calls"] += 1
+                        handled = True
+                elif attempt_key in attempted and attempted[attempt_key].success:
+                    prior = attempted[attempt_key]
+                    payload, summary = duplicate_attempt_payload(prior)
                     outcome = "duplicate"
                     state.tool_execution_stats["duplicate_tool_calls"] += 1
-                elif call.name == "search_historical_evidence" and state.tool_execution_stats["rag_search_executions"] >= self.max_rag_search_executions:
-                    summary = "historical evidence search budget reached; use existing evidence or state insufficiency"
-                    payload = {"success": False, "result": {"status": "search_budget_exhausted", "message": "Historical evidence search budget reached. Use the evidence already retrieved to answer or state that evidence is insufficient."}, "summary": summary, "duration_ms": 0}
-                    outcome = "search_budget_rejected"
-                    state.tool_execution_stats["rag_search_budget_rejected"] += 1
-                elif failures.get(fingerprint, 0) >= 2:
-                    state.status = "tool_failure"
-                    state.warnings.append(f"Repeated failing tool call blocked: {call.name}")
-                    return self._finish("The agent stopped after repeated tool failures.", state, started)
-                else:
-                    completion_critical = self._is_completion_critical_tool(call.name, state)
-                    general_exhausted = state.tool_execution_stats["general_tool_executions"] >= self.max_tool_executions
-                    if general_exhausted and completion_critical and state.tool_execution_stats["completion_reserved_executions"] < self.max_completion_tool_executions:
-                        budget_source = "completion_reserved"
-                    elif general_exhausted and completion_critical:
-                        summary = "completion tool reservation already used; no further reserved execution is available"
-                        payload = {"success": False, "result": {"status": "completion_budget_rejected", "message": "Completion tool reservation has been exhausted."}, "summary": summary, "duration_ms": 0}
-                        outcome = "completion_budget_rejected"
-                        budget_source = "completion_reserved"
-                        state.tool_execution_stats["budget_rejected"] += 1
-                        state.tool_execution_stats["completion_budget_rejected"] += 1
-                    elif general_exhausted:
-                        summary = "general tool execution budget reached; use existing results to finish"
-                        payload = {"success": False, "result": {"status": "budget_rejected", "message": "General tool execution budget reached."}, "summary": summary, "duration_ms": 0}
-                        outcome = "budget_rejected"
-                        budget_source = "general"
-                        state.tool_execution_stats["budget_rejected"] += 1
-                        state.tool_execution_stats["general_budget_rejected"] += 1
+                    handled = True
+                elif call.name == "resolve_ancient_place":
+                    cached = lookup_prior_resolve(call.arguments, state)
+                    if cached is not None:
+                        result, summary = cached
+                        payload = {"success": bool(result.get("found")), "result": result, "summary": summary, "duration_ms": 0}
+                        outcome = "duplicate_resolve"
+                        state.tool_execution_stats["duplicate_tool_calls"] += 1
+                        handled = True
+                    elif attempt_key in attempted:
+                        prior = attempted[attempt_key]
+                        payload, summary = duplicate_attempt_payload(prior)
+                        outcome = "duplicate"
+                        state.tool_execution_stats["duplicate_tool_calls"] += 1
+                        handled = True
+                if not handled:
+                    if call.name == "search_historical_evidence" and state.tool_execution_stats["rag_search_executions"] >= self.max_rag_search_executions:
+                        summary = "historical evidence search budget reached; use existing evidence or state insufficiency"
+                        payload = {"success": False, "result": {"status": "search_budget_exhausted", "message": "Historical evidence search budget reached. Use the evidence already retrieved to answer or state that evidence is insufficient."}, "summary": summary, "duration_ms": 0}
+                        outcome = "search_budget_rejected"
+                        state.tool_execution_stats["rag_search_budget_rejected"] += 1
+                    elif failures.get(fingerprint, 0) >= 2:
+                        state.status = "tool_failure"
+                        state.warnings.append(f"Repeated failing tool call blocked: {call.name}")
+                        return self._finish("The agent stopped after repeated tool failures.", state, started)
                     else:
-                        budget_source = "general"
-                    if not general_exhausted or (completion_critical and state.tool_execution_stats["completion_reserved_executions"] < self.max_completion_tool_executions):
-                        logger.info("tool_execution_started tool=%s budget_source=%s", call.name, budget_source)
-                        payload, summary = self.tools.execute(call.name, call.arguments, state)
-                        logger.info("tool_execution_completed tool=%s success=%s duration_ms=%s", call.name, payload["success"], payload["duration_ms"])
-                        outcome = "success" if payload["success"] else "failure"
-                        state.tool_execution_stats["actual_tool_executions"] += 1
-                        if budget_source == "completion_reserved":
-                            state.tool_execution_stats["completion_reserved_executions"] += 1
+                        completion_critical = self._is_completion_critical_tool(call.name, state)
+                        general_exhausted = state.tool_execution_stats["general_tool_executions"] >= self.max_tool_executions
+                        if general_exhausted and completion_critical and state.tool_execution_stats["completion_reserved_executions"] < self.max_completion_tool_executions:
+                            budget_source = "completion_reserved"
+                        elif general_exhausted and completion_critical:
+                            summary = "completion tool reservation already used; no further reserved execution is available"
+                            payload = {"success": False, "result": {"status": "completion_budget_rejected", "message": "Completion tool reservation has been exhausted."}, "summary": summary, "duration_ms": 0}
+                            outcome = "completion_budget_rejected"
+                            budget_source = "completion_reserved"
+                            state.tool_execution_stats["budget_rejected"] += 1
+                            state.tool_execution_stats["completion_budget_rejected"] += 1
+                        elif general_exhausted:
+                            summary = "general tool execution budget reached; use existing results to finish"
+                            payload = {"success": False, "result": {"status": "budget_rejected", "message": "General tool execution budget reached."}, "summary": summary, "duration_ms": 0}
+                            outcome = "budget_rejected"
+                            budget_source = "general"
+                            state.tool_execution_stats["budget_rejected"] += 1
+                            state.tool_execution_stats["general_budget_rejected"] += 1
                         else:
-                            state.tool_execution_stats["general_tool_executions"] += 1
-                        if call.name == "search_historical_evidence":
-                            state.tool_execution_stats["rag_search_executions"] += 1
-                            self._refresh_evidence_support(state)
-                        if payload["success"]:
-                            successful[fingerprint] = summary
-                        else:
-                            failures[fingerprint] = failures.get(fingerprint, 0) + 1
-                            state.tool_execution_stats["tool_failures"] += 1
-                state.tool_history.append(AgentToolHistoryEntry(tool_name=call.name, arguments=call.arguments, success=payload["success"], result_summary=summary, duration_ms=payload["duration_ms"], outcome=outcome, budget_source=budget_source))
+                            budget_source = "general"
+                        if not general_exhausted or (completion_critical and state.tool_execution_stats["completion_reserved_executions"] < self.max_completion_tool_executions):
+                            logger.info("tool_execution_started tool=%s budget_source=%s", call.name, budget_source)
+                            payload, summary = self.tools.execute(call.name, call.arguments, state)
+                            logger.info("tool_execution_completed tool=%s success=%s duration_ms=%s", call.name, payload["success"], payload["duration_ms"])
+                            outcome = "success" if payload["success"] else "failure"
+                            state.tool_execution_stats["actual_tool_executions"] += 1
+                            if budget_source == "completion_reserved":
+                                state.tool_execution_stats["completion_reserved_executions"] += 1
+                            else:
+                                state.tool_execution_stats["general_tool_executions"] += 1
+                            if call.name == "search_historical_evidence":
+                                state.tool_execution_stats["rag_search_executions"] += 1
+                                self._refresh_evidence_support(state)
+                            if call.name == "build_historical_route":
+                                state.tool_execution_stats["route_builder_attempted"] = 1
+                            if not payload["success"]:
+                                failures[fingerprint] = failures.get(fingerprint, 0) + 1
+                                state.tool_execution_stats["tool_failures"] += 1
+                history_entry = AgentToolHistoryEntry(tool_name=call.name, arguments=call.arguments, success=payload["success"], result_summary=summary, duration_ms=payload["duration_ms"], outcome=outcome, budget_source=budget_source)
+                attempted[attempt_key] = history_entry
+                state.tool_history.append(history_entry)
                 logger.info("agent_step=%s tool=%s outcome=%s", step, call.name, outcome)
                 remaining_search_budget = max(0, self.max_rag_search_executions - state.tool_execution_stats["rag_search_executions"])
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": json.dumps({"tool": call.name, "outcome": outcome, "success": payload["success"], "summary": summary, "evidence_count": len(state.historical_evidence), "route_points": len(state.historical_route.ordered_points) if state.historical_route else 0, "result": _model_result(call.name, payload, state, remaining_search_budget)}, ensure_ascii=False)})

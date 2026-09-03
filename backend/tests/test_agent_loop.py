@@ -297,7 +297,7 @@ def test_missing_or_hidden_selected_evidence_id_fails_closed_after_one_correctio
     assert "missing_evidence_selection" in correction and "one (Polybius, Histories, Book III)" in correction
 
 
-def test_event_context_requires_all_event_evidence_to_be_visible():
+def test_event_context_surfaces_movement_events_beyond_first_evidence_page():
     state = AgentState(session_id="event-context")
     state.historical_evidence = [ev(str(index), "Hannibal marched") for index in range(9)]
     state.historical_events = [
@@ -306,7 +306,7 @@ def test_event_context_requires_all_event_evidence_to_be_visible():
         HistoricalEvent(id="mixed", name="Mixed", summary="mixed", event_type=HistoricalEventType.MOVEMENT, evidence_refs=["0", "8"]),
     ]
     result = _model_result("search_historical_evidence", {"result": {"result_count": 9}}, state)
-    assert [event["id"] for event in result["historical_events"]] == ["visible"]
+    assert {event["id"] for event in result["historical_events"]} == {"visible", "hidden", "mixed"}
 
 
 def test_geography_fact_requires_audited_source():
