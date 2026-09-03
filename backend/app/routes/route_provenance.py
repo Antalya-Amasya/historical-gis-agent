@@ -79,9 +79,14 @@ class HistoricalRouteTraceBuilder:
             for branch in final_route.branch_relations:
                 final_edges.setdefault((branch.earlier, branch.later), None)
         legacy_claims: list[dict[str, object]] = []
+        admission_by_claim = {
+            (item.get("origin"), item.get("destination")): item
+            for item in (legacy.diagnostics.get("legacy_episode_admission") if legacy else []) or []
+        }
         if legacy and legacy.route:
             for claim in legacy.route.claims:
                 accepted = (claim.source_place, claim.destination_place) in final_edges
+                admission = admission_by_claim.get((claim.source_place, claim.destination_place), {})
                 legacy_claims.append({
                     "claim_id": claim.id,
                     "origin": claim.source_place,
@@ -92,7 +97,8 @@ class HistoricalRouteTraceBuilder:
                     "evidence_ids": list(claim.supporting_evidence_ids),
                     "sources": _source(evidence_by_id, list(claim.supporting_evidence_ids)),
                     "accepted": accepted,
-                    "rejection_reason": None if accepted else "NOT_IN_FINAL_ROUTE_CHAIN",
+                    "rejection_reason": None if accepted else admission.get("admission_reason", "NOT_IN_FINAL_ROUTE_CHAIN"),
+                    "episode_classification": admission.get("episode_classification"),
                 })
         edges = []
         for (source, destination), claim in final_edges.items():

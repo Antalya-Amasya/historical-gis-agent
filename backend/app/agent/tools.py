@@ -226,7 +226,13 @@ class AgentToolRegistry:
                 route, diagnostics = event_first.route, dict(event_first.diagnostics)
             else:
                 # Compatibility fallback: strict legacy movement claims, never merged with event-first anchors.
-                legacy = self.route_extractor.build_with_diagnostics(state.historical_evidence, event_id=arguments["event_id"], name=arguments["name"], period=arguments["period"])
+                legacy = self.route_extractor.build_with_diagnostics(
+                    state.historical_evidence,
+                    event_id=arguments["event_id"],
+                    name=arguments["name"],
+                    period=arguments["period"],
+                    query_contexts=_route_admission_query_contexts(state),
+                )
                 route = legacy.route
                 diagnostics = {**legacy.diagnostics, "route_source": "legacy_movement_claims" if route is not None else "none", "event_anchor_diagnostics": event_first.diagnostics}
             diagnostics["provenance_trace"] = HistoricalRouteTraceBuilder.build(

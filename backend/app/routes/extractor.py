@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from backend.app.models import Evidence, ExtractedHistoricalPlaceMention, GeoJsonLineString, HistoricalClaim, HistoricalPlace, HistoricalRoute, HistoricalRoutePoint
+from backend.app.routes.episode_relevance import filter_legacy_movement_claims
 from backend.app.routes.movement_semantics import analyze_sentence
 from backend.app.routes.place_aliases import HISTORICAL_PLACE_ALIASES, HistoricalPlaceAlias
 
@@ -157,14 +158,26 @@ class HistoricalRouteExtractor:
     def build(self, evidence: list[Evidence], *, event_id: str, name: str, period: str) -> HistoricalRoute | None:
         return self.build_with_diagnostics(evidence, event_id=event_id, name=name, period=period).route
 
-    def build_with_diagnostics(self, evidence: list[Evidence], *, event_id: str, name: str, period: str) -> RouteBuildOutcome:
+    def build_with_diagnostics(
+        self,
+        evidence: list[Evidence],
+        *,
+        event_id: str,
+        name: str,
+        period: str,
+        query_contexts: tuple[str, ...] | None = None,
+    ) -> RouteBuildOutcome:
         mentions = self.mention_extractor.extract(evidence)
         claims = self.mention_extractor.movement_claims(evidence, event_id=event_id)
+        episode_diagnostics: list[dict[str, object]] = []
+        if query_contexts:
+            claims, episode_diagnostics = filter_legacy_movement_claims(claims, evidence, query_contexts)
         ordered = [claim for claim in claims if claim.sequence_status == "explicit" and claim.source_place and claim.destination_place]
         diagnostics: dict[str, object] = {
             "evidence_count": len(evidence),
             "recognized_place_mentions": len(mentions),
             "movement_claim_count": len(claims),
+            "legacy_episode_admission": episode_diagnostics,
             "explicit_edge_count": len(ordered),
             "connected_edge_count": 0,
             "unresolved_anchor_count": 0,
@@ -172,7 +185,11 @@ class HistoricalRouteExtractor:
             "reason_codes": [],
         }
         if not ordered:
-            diagnostics["reason_codes"] = ["NO_MOVEMENT_CLAIMS"]
+            diagnostics["reason_codes"] = (
+                ["NO_EPISODE_RELEVANT_LEGACY_CLAIMS"]
+                if query_contexts and episode_diagnostics and not any(item.get("admitted") for item in episode_diagnostics)
+                else ["NO_MOVEMENT_CLAIMS"]
+            )
             return RouteBuildOutcome(None, diagnostics)
         evidence_by_id = {item.id: item for item in evidence}
         claim_keys = {
@@ -220,4 +237,5 @@ class HistoricalRouteExtractor:
             points.append(HistoricalRoutePoint(sequence=len(points) + 1, historical_place=place, event_summary=supporting_claims[0].textual_basis or supporting_claims[0].text, date_or_period=period, evidence_refs=refs, confidence=min(min(claim.confidence for claim in supporting_claims), place.confidence), coordinate_role=place.coordinate_role, source_support=list(dict.fromkeys(sources)), claim_ids=[claim.id for claim in supporting_claims]))
         coordinates = [(point.historical_place.longitude, point.historical_place.latitude) for point in points]
         diagnostics["route_point_count"] = len(points)
-        return RouteBuildOutcome(HistoricalRoute(id=f"{event_id}-evidence-route", event_id=event_id, name=name, period=period, ordered_points=points, geometry=GeoJsonLineString(coordinates=coordinates), evidence_refs=list(dict.fromkeys(ref for claim in ordered for ref in claim.supporting_evidence_ids)), assumptions=["Evidence-grounded regional anchors are connected with schematic straight segments."], limitations=["Historical reconstruction only; not an exact march track or road route.", "Geometry is a model-derived connection between evidence-grounded anchors, not historical track evidence.", "Representative river, mountain, or regional coordinates are not exact passage locations."], historical_confidence=round(sum(point.confidence for point in points) / len(points), 2), claims=claims), diagnostics)
+        route_claims = [claim for claim in claims if claim.sequence_status == "explicit" and claim.source_place and claim.destination_place]
+        return RouteBuildOutcome(HistoricalRoute(id=f"{event_id}-evidence-route", event_id=event_id, name=name, period=period, ordered_points=points, geometry=GeoJsonLineString(coordinates=coordinates), evidence_refs=list(dict.fromkeys(ref for claim in ordered for ref in claim.supporting_evidence_ids)), assumptions=["Evidence-grounded regional anchors are connected with schematic straight segments."], limitations=["Historical reconstruction only; not an exact march track or road route.", "Geometry is a model-derived connection between evidence-grounded anchors, not historical track evidence.", "Representative river, mountain, or regional coordinates are not exact passage locations."], historical_confidence=round(sum(point.confidence for point in points) / len(points), 2), claims=route_claims), diagnostics)
