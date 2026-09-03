@@ -55,6 +55,10 @@ _GENERIC_FROM_OBJECT = re.compile(
     r"\bfrom\s+(?:the\s+)?(?:harbor|harbour|port|sea|shore|coast|camp|city|town|forum|field|battle|war)\b",
     re.IGNORECASE,
 )
+_GENERIC_GEO_NOUN = re.compile(
+    r"^(?:city|camp|harbor|harbour|port|mountains?|rivers?|valleys?|plains?|fields?|crossing|exile|ocean|sea)$",
+    re.IGNORECASE,
+)
 _TERRITORIAL_EXTENT = re.compile(
     r"\b(?:extended|spread|stretched|influence|power|possessions|dominion|authority|fear|"
     r"report|news|fame|renown|reputation)\b[^.]{0,40}?\b(?:as\s+far\s+as|to|into|through|from)\b",
@@ -76,6 +80,27 @@ _PLACE_SPAN = re.compile(
 )
 _DISCOURSE_FROM_THERE = re.compile(
     r"^\s*(?:and\s+)?(?:from\s+there|thence)\b",
+    re.IGNORECASE,
+)
+_DISCOURSE_ANAPHORA = re.compile(
+    r"^\s*(?:and\s+)?(?:thence|from\s+there|from\s+that\s+place|thereupon\s+from|from\s+this\s+place)\b",
+    re.IGNORECASE,
+)
+_PASSIVE_SPATIAL = re.compile(
+    r"\b(?:was|were|had\s+been)\s+"
+    r"(?:driven|forced|expelled|carried|sent|borne|transported|banished|removed)\b"
+    r"[^.]{0,140}?\b(?:from|to|into|toward|towards)\s+",
+    re.IGNORECASE,
+)
+_NON_SPATIAL_TO_INFINITIVE = re.compile(
+    r"\b(?:proceeded|went|came|returned|advanced|moved)\s+(?:on\s+)?to\s+"
+    r"(?:alter|discuss|debate|vote|appoint|elect|consider|pass|enact|execute|carry|take|hold|"
+    r"conduct|complete|finish|begin|start|make|do|see|fight|speak|ask|learn|know|understand|"
+    r"govern|rule|administer|settle|arrange|organize|organise|inquire|investigate|travel|march|advance|move)\b",
+    re.IGNORECASE,
+)
+_PARTICIPAL_DEPARTURE = re.compile(
+    r"\b(?:having|after)\s+(?:left|departed(?:\s+from)?|withdrawn\s+from|fled\s+from|escaped\s+from)\s+",
     re.IGNORECASE,
 )
 _DISCOURSE_THEN = re.compile(
@@ -146,6 +171,8 @@ def _validated_span(sentence: str, start: int, *, before: int | None = None) -> 
     surface = match.group(1).strip()
     if not surface or surface.lower() in {"he", "she", "they", "it", "there", "thence"}:
         return None
+    if _GENERIC_GEO_NOUN.match(surface):
+        return None
     absolute_start = start + match.start(1)
     fake = re.compile(re.escape(surface))
     fake_match = fake.search(sentence, absolute_start)
@@ -171,13 +198,20 @@ def _endpoint_after(
         if position >= start and (before is None or position < before)
     ]
     if alias_hits:
-        position, place, alias = alias_hits[0]
-        return MovementEndpoint(
-            surface=sentence[position:position + len(alias)],
-            canonical=place.canonical_name,
-            role=role,
-            position=position,
-        )
+        filtered_hits = [
+            (position, place, alias)
+            for position, place, alias in alias_hits
+            if not (len(alias) <= 1 and sentence[position:position + len(alias)].islower())
+            and not _GENERIC_GEO_NOUN.match(sentence[position:position + len(alias)])
+        ]
+        if filtered_hits:
+            position, place, alias = filtered_hits[0]
+            return MovementEndpoint(
+                surface=sentence[position:position + len(alias)],
+                canonical=place.canonical_name,
+                role=role,
+                position=position,
+            )
     validated = _validated_span(sentence, start, before=before)
     if validated is None:
         return None
@@ -232,19 +266,135 @@ def _clause_start(sentence: str, position: int) -> int:
     return max(sentence.rfind(",", 0, position), sentence.rfind(";", 0, position)) + 1
 
 
+def _departure_places_in_span(
+    sentence: str,
+    span_start: int,
+    span_end: int,
+    aliases: list[tuple[int, HistoricalPlaceAlias, str]],
+) -> list[MovementEndpoint]:
+    """Collect departure-origin places from a local text span (same evidence only)."""
+    span = sentence[span_start:span_end]
+    lower = span.lower()
+    found: dict[str, MovementEndpoint] = {}
+    for match in re.finditer(
+        r"\b(?:left|leaving|departed(?:\s+from)?|withdrew\s+from|fled\s+from|escaped\s+from)\s+",
+        lower,
+    ):
+        endpoint = _endpoint_after(
+            sentence, span_start + match.end(), aliases, before=span_end, role="origin",
+        )
+        if endpoint is not None:
+            found[endpoint.place_name.casefold()] = endpoint
+    for match in _PARTICIPAL_DEPARTURE.finditer(lower):
+        endpoint = _endpoint_after(
+            sentence, span_start + match.end(), aliases, before=span_end, role="origin",
+        )
+        if endpoint is not None:
+            found[endpoint.place_name.casefold()] = endpoint
+    for match in _SOURCE_MARKER.finditer(lower):
+        clause = span
+        if not _valid_source_marker(clause, match.start()):
+            continue
+        endpoint = _origin_after_from(
+            sentence, span_start + match.end(), aliases, before=span_end,
+        )
+        if endpoint is not None:
+            found[endpoint.place_name.casefold()] = endpoint
+    return list(found.values())
+
+
+def _destination_in_clause(
+    sentence: str,
+    clause_start: int,
+    clause_end: int,
+    aliases: list[tuple[int, HistoricalPlaceAlias, str]],
+) -> MovementEndpoint | None:
+    clause = sentence[clause_start:clause_end]
+    lower = clause.lower()
+    passed_to = re.search(r"\bpassed\s+to\s+", lower)
+    if passed_to:
+        return _endpoint_after(
+            sentence, clause_start + passed_to.end(), aliases, before=clause_end, role="destination",
+        )
+    to_match = re.search(r"\b(?:to|into|toward|towards)\s+", lower)
+    if to_match and _valid_target_marker(clause, to_match.start(), role_token=to_match.group(0).lower()):
+        return _endpoint_after(
+            sentence, clause_start + to_match.end(), aliases, before=clause_end, role="destination",
+        )
+    dest_match = re.search(
+        r"\b(?:reached|arrived\s+(?:at|in)|came\s+to|entered|landed\s+(?:at|in))\s+",
+        lower,
+    )
+    if dest_match:
+        place_start = _arrival_place_start(clause, dest_match.end())
+        if place_start is not None:
+            return _endpoint_after(
+                sentence, clause_start + place_start, aliases, before=clause_end, role="destination",
+            )
+    return None
+
+
+def _try_intraclause_anaphora(
+    sentence: str,
+    clause_start: int,
+    clause_end: int,
+    aliases: list[tuple[int, HistoricalPlaceAlias, str]],
+    prior_endpoints: list[MovementEndpoint],
+) -> tuple[list[MovementEdgeCandidate], list[MovementEndpoint]] | None:
+    clause = sentence[clause_start:clause_end]
+    if not _DISCOURSE_ANAPHORA.search(clause) or not _MOVEMENT_AFTER_DISCOURSE.search(clause):
+        return None
+    antecedents = [item for item in prior_endpoints if item.role in {"origin", "destination"}]
+    if not antecedents:
+        antecedents = _departure_places_in_span(sentence, 0, clause_start, aliases)
+    unique = {item.place_name.casefold(): item for item in antecedents}
+    if len(unique) != 1:
+        return None
+    antecedent = next(iter(unique.values()))
+    destination = _destination_in_clause(sentence, clause_start, clause_end, aliases)
+    origin = MovementEndpoint(
+        surface=antecedent.surface,
+        canonical=antecedent.canonical,
+        role="origin",
+        position=antecedent.position,
+    )
+    relation = "intraclause_anaphora"
+    if re.search(r"\b(?:thence|from\s+there)\s+passed\s+on\s+to\b", clause, re.IGNORECASE):
+        relation = "thence_passed_on_to"
+    candidate = _edge(origin, destination, movement_relation=relation)
+    if not candidate:
+        return None
+    endpoints = [origin]
+    if destination is not None:
+        endpoints.append(destination)
+    return [candidate], endpoints
+
+
 def _has_movement_predicate(text: str) -> bool:
     return bool(_MOVEMENT_PREDICATE.search(text))
 
 
 def _has_movement_cue(sentence: str) -> bool:
-    if _NON_MOVEMENT.search(sentence):
+    if _NON_SPATIAL_PROCEEDED.search(sentence) or _NON_SPATIAL_TO_INFINITIVE.search(sentence):
         return False
-    if _NON_SPATIAL_PROCEEDED.search(sentence):
-        return False
-    if _TERRITORIAL_EXTENT.search(sentence) and not _MOVEMENT_GOVERNED_FROM.search(sentence):
-        if not re.search(r"\b(?:marched|advanced|proceeded|travelled|traveled|sailed|went|crossed|passed)\b", sentence, re.I):
-            return False
-    return bool(_MOVEMENT_CUE.search(sentence))
+    if _PASSIVE_SPATIAL.search(sentence):
+        return True
+    clauses = re.split(r"[,;]", sentence)
+    if not clauses:
+        clauses = [sentence]
+    for clause in clauses:
+        if _NON_MOVEMENT.search(clause):
+            continue
+        if _TERRITORIAL_EXTENT.search(clause) and not _MOVEMENT_GOVERNED_FROM.search(clause):
+            if not re.search(
+                r"\b(?:marched|advanced|proceeded|travelled|traveled|sailed|went|crossed|passed)\b",
+                clause,
+                re.I,
+            ):
+                continue
+        if _MOVEMENT_CUE.search(clause):
+            return True
+    return False
 
 
 def _predicate_before(clause: str, marker_start: int) -> bool:
@@ -280,7 +430,7 @@ def _valid_source_marker(clause: str, marker_start: int) -> bool:
 def _valid_target_marker(clause: str, marker_start: int, *, role_token: str) -> bool:
     after_to = clause[marker_start + len(role_token):]
     if role_token == "to" and re.match(
-        r"\s+(?:travel|alter|discuss|vote|see|fight|make|do|take|go|march|advance|proceed|move|carry|hold|be)\b",
+        r"\s+(?:travel|alter|discuss|vote|see|fight|make|do|take|go|march|advance|proceed|move|carry|hold|be|speak|learn|govern)\b",
         after_to,
         re.I,
     ):
@@ -366,11 +516,36 @@ def _parse_clause(
     clause = sentence[clause_start:clause_end]
     lower = clause.lower()
     if not _has_movement_predicate(lower) and not re.search(r"\btravel\b", lower, re.I):
-        return [], [], False
+        if not _PASSIVE_SPATIAL.search(clause):
+            return [], [], False
 
     origins: list[MovementEndpoint] = []
     destinations: list[MovementEndpoint] = []
     traversals: list[MovementEndpoint] = []
+
+    passive = _PASSIVE_SPATIAL.search(lower)
+    if passive:
+        from_match = _SOURCE_MARKER.search(lower, passive.start())
+        to_match = _TARGET_MARKER.search(lower, passive.start())
+        origin = None
+        destination = None
+        if from_match:
+            origin = _origin_after_from(
+                sentence, clause_start + from_match.end(), aliases,
+                before=clause_start + to_match.start() if to_match else clause_end,
+            )
+        if to_match:
+            destination = _endpoint_after(
+                sentence, clause_start + to_match.end(), aliases, before=clause_end, role="destination",
+            )
+        if origin and destination:
+            candidate = _edge(origin, destination, movement_relation="passive_from_to")
+            if candidate:
+                return [candidate], [origin, destination], False
+        if origin:
+            return [], [origin], False
+        if destination:
+            return [], [destination], False
 
     for match in _SOURCE_MARKER.finditer(lower):
         if not _valid_source_marker(clause, match.start()):
@@ -494,9 +669,9 @@ def _parse_clause(
                 if candidate:
                     return [candidate], [item for item in (origin, destination) if item], False
 
-    # Crossed/repassed ... into Y
+    # Crossed/repassed ... into Y (including "crossed over into")
     crossed = re.search(r"\b(?:crossed|crossing|repassed|passing\s+over)\b", lower)
-    into = re.search(r"\binto\s+", lower[crossed.end():] if crossed else "")
+    into = re.search(r"\b(?:over\s+)?into\s+", lower[crossed.end():] if crossed else "")
     if crossed and into:
         abs_cross_end = clause_start + crossed.end()
         abs_into_end = clause_start + crossed.end() + into.end()
@@ -584,18 +759,35 @@ def _parse_clause(
                 if candidate:
                     return [candidate], [traversal], False
 
-    # Left X ... reached/arrived Y (same clause)
+    # Left X ... reached/arrived Y (same clause), optionally via traversal Z
     leave = re.search(r"\b(?:left|leaving)\s+", lower)
     arrive = _ARRIVAL_PREDICATE.search(lower)
     if leave and arrive and leave.start() < arrive.start():
         origin = _endpoint_after(sentence, clause_start + leave.end(), aliases, before=clause_start + arrive.start(), role="origin")
         place_start = _arrival_place_start(clause, arrive.end())
+        traversal = None
+        through_m = re.search(
+            r"\b(?:passed|passing|marched|went|travelled|traveled)\s+through\s+",
+            lower[leave.end():arrive.start()],
+        )
+        if through_m:
+            traversal = _endpoint_after(
+                sentence,
+                clause_start + leave.end() + through_m.end(),
+                aliases,
+                before=clause_start + arrive.start(),
+                role="traversal",
+            )
         if origin and place_start is not None:
             destination = _endpoint_after(sentence, clause_start + place_start, aliases, before=clause_end, role="destination")
             if destination:
-                candidate = _edge(origin, destination, movement_relation="departure_arrival")
+                relation = "departure_traversal_arrival" if traversal else "departure_arrival"
+                candidate = _edge(origin, destination, traversal=traversal, movement_relation=relation)
                 if candidate:
-                    return [candidate], [origin, destination], False
+                    endpoints = [origin, destination]
+                    if traversal:
+                        endpoints.append(traversal)
+                    return [candidate], endpoints, False
 
     unique_origins = {item.place_name.casefold(): item for item in origins}
     unique_dests = {item.place_name.casefold(): item for item in destinations}
@@ -641,11 +833,44 @@ def _parse_sentence_compound(
     if leave and arrive and leave.start() < arrive.start():
         origin = _endpoint_after(sentence, leave.end(), aliases, before=arrive.start(), role="origin")
         place_start = _arrival_place_start(sentence, arrive.end())
+        traversal = None
+        through_m = re.search(
+            r"\b(?:passed|passing|marched|went|travelled|traveled)\s+through\s+",
+            lower[leave.end():arrive.start()],
+        )
+        if through_m:
+            traversal = _endpoint_after(
+                sentence, leave.end() + through_m.end(), aliases, before=arrive.start(), role="traversal",
+            )
         if origin and place_start is not None:
             destination = _endpoint_after(sentence, place_start, aliases, role="destination")
-            candidate = _edge(origin, destination, movement_relation="departure_arrival")
-            if candidate:
-                return [candidate], [origin, destination]
+            if destination:
+                relation = "departure_traversal_arrival" if traversal else "departure_arrival"
+                candidate = _edge(origin, destination, traversal=traversal, movement_relation=relation)
+                if candidate:
+                    endpoints = [origin, destination]
+                    if traversal:
+                        endpoints.append(traversal)
+                    return [candidate], endpoints
+
+    put_out = re.search(r"\bput\s+out\b", lower)
+    put_in = re.search(r"\bput\s+in\b", lower)
+    if put_out and put_in and put_out.start() < put_in.start():
+        from_match = _SOURCE_MARKER.search(lower[put_out.start():put_in.start()])
+        put_in_at = re.search(r"\bput\s+in\s+(?:at|in)\s+", lower[put_in.start():])
+        if put_in_at:
+            abs_in_end = put_in.start() + put_in_at.end()
+            origin = None
+            if from_match:
+                origin = _origin_after_from(
+                    sentence, put_out.start() + from_match.end(), aliases, before=put_in.start(),
+                )
+            destination = _endpoint_after(sentence, abs_in_end, aliases, role="destination")
+            if destination is not None:
+                candidate = _edge(origin, destination, movement_relation="put_out_put_in")
+                if candidate:
+                    endpoints = [item for item in (origin, destination) if item]
+                    return [candidate], endpoints
 
     went_through = re.search(r"\bwent\s+through\s+", lower)
     landed = re.search(r"\b(?:landed|landing)\b", lower)
@@ -741,18 +966,37 @@ def _generalized_parse(
         breaks.append(match.end())
     breaks.append(len(sentence))
 
+    accumulated: list[MovementEndpoint] = []
     for index in range(len(breaks) - 1):
         clause_start = breaks[index]
         clause_end = breaks[index + 1]
+        if index > 0:
+            anaphora = _try_intraclause_anaphora(
+                sentence, clause_start, clause_end, aliases, accumulated,
+            )
+            if anaphora is not None:
+                edges.extend(anaphora[0])
+                endpoints.extend(anaphora[1])
+                accumulated.extend(anaphora[1])
+                continue
         clause_edges, clause_endpoints, ambiguous = _parse_clause(sentence, clause_start, clause_end, aliases)
         if ambiguous:
             return [], [], True, "ambiguous_clause_endpoints"
         if clause_edges:
             edges.extend(clause_edges)
         endpoints.extend(clause_endpoints)
+        accumulated.extend(clause_endpoints)
 
     if edges:
         return edges, endpoints, False, None
+
+    whole_edges, whole_endpoints, whole_ambiguous = _parse_clause(sentence, 0, len(sentence), aliases)
+    if whole_ambiguous:
+        return [], [], True, "ambiguous_clause_endpoints"
+    if whole_edges:
+        return whole_edges, whole_endpoints, False, None
+    if whole_endpoints:
+        endpoints.extend(whole_endpoints)
 
     # Whole-sentence from-to when movement predicate governs a single span
     lower = sentence.lower()
@@ -779,12 +1023,15 @@ def _discourse_continuation(
     prior_endpoints: tuple[MovementEndpoint, ...],
     endpoints: list[MovementEndpoint],
 ) -> tuple[list[MovementEdgeCandidate], list[MovementEndpoint], bool, str | None]:
-    if not prior_endpoints or not (_DISCOURSE_FROM_THERE.search(sentence) or _DISCOURSE_THEN.search(sentence)):
+    if not prior_endpoints or not (
+        _DISCOURSE_ANAPHORA.search(sentence) or _DISCOURSE_FROM_THERE.search(sentence) or _DISCOURSE_THEN.search(sentence)
+    ):
         return [], endpoints, False, None
     if not _MOVEMENT_AFTER_DISCOURSE.search(sentence):
         return [], endpoints, True, "discourse_without_movement_predicate"
     antecedents = [item for item in prior_endpoints if item.role in {"origin", "destination"}]
-    if len(antecedents) != 1:
+    unique_antecedents = {item.place_name.casefold(): item for item in antecedents}
+    if len(unique_antecedents) != 1:
         return [], endpoints, True, "ambiguous_discourse_antecedent"
     lower = sentence.lower()
     to_match = re.search(r"\b(?:to|into|toward|towards)\s+", lower)
@@ -799,7 +1046,7 @@ def _discourse_continuation(
         place_start = _arrival_place_start(sentence, dest_match.end())
         if place_start is not None:
             destination = _endpoint_after(sentence, place_start, aliases, role="destination")
-    antecedent = antecedents[0]
+    antecedent = next(iter(unique_antecedents.values()))
     origin = MovementEndpoint(
         surface=antecedent.surface,
         canonical=antecedent.canonical,
@@ -873,7 +1120,7 @@ def analyze_sentence(
             endpoints = disc_endpoints
 
     return SentenceMovementSemantics(
-        is_movement=bool(edges or endpoints),
+        is_movement=bool(edges or endpoints) or bool(_has_movement_cue(sentence) and not should_abstain),
         edges=tuple(edges),
         endpoints=tuple(endpoints),
     )

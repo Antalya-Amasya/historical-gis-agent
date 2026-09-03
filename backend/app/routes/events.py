@@ -127,10 +127,16 @@ class EvidenceGroundedHistoricalEventExtractor:
         "assassination": "violent_death", "assassinated": "violent_death", "murder": "violent_death",
         "murdered": "violent_death", "slain": "violent_death", "killed": "violent_death",
     }
-    # A narrow corpus-observed false positive: the prepositional place pattern
-    # once interpreted the author/actor Caesar as an EVENT_SITE.  This is an
-    # exact exclusion, not a general person/entity inference layer.
     _NON_PLACE_PROPER_NAMES = frozenset({"caesar"})
+    _PERSON_NAME_CONTEXT = re.compile(
+        r"\b(?:service|army|armies|forces|son|daughter|wife|brother|sister|friend|legate|general|"
+        r"command|companions?|followers?|troops|people|party|faction|faction's)\s+of\s+(?:the\s+)?$",
+        re.IGNORECASE,
+    )
+    _UNDER_WITH_PERSON = re.compile(
+        r"\b(?:under|with|by)\s+(?:the\s+)?$",
+        re.IGNORECASE,
+    )
 
     def __init__(self, mention_extractor: HistoricalPlaceMentionExtractor | None = None,
                  temporal_resolver: EvidenceTemporalResolver | None = None) -> None:
@@ -225,6 +231,15 @@ class EvidenceGroundedHistoricalEventExtractor:
             return base
         return EventPlaceRole.RELATED_PLACE
 
+    @classmethod
+    def _is_person_name_context(cls, sentence: str, position: int) -> bool:
+        prefix = sentence[:position]
+        if cls._PERSON_NAME_CONTEXT.search(prefix):
+            return True
+        if cls._UNDER_WITH_PERSON.search(prefix):
+            return not bool(cls._MOVEMENT_VERBS.search(prefix[-80:]))
+        return False
+
     def _places(self, sentence: str, evidence_id: str) -> list[HistoricalEventPlaceMention]:
         values: list[HistoricalEventPlaceMention] = []
         aliases = self.mention_extractor.aliases_in(sentence)
@@ -232,6 +247,8 @@ class EvidenceGroundedHistoricalEventExtractor:
         for match in self._PLACE_PATTERN.finditer(sentence):
             raw = match.group("place")
             if raw.casefold() in self._NON_PLACE_PROPER_NAMES:
+                continue
+            if self._is_person_name_context(sentence, match.start("place")):
                 continue
             place = alias_by_span.get((raw.lower(), match.start("place")))
             role_token = match.group("role").lower()
@@ -249,6 +266,8 @@ class EvidenceGroundedHistoricalEventExtractor:
                 validation_reason=validation.reason,
             ))
         for position, place, alias in aliases:
+            if self._is_person_name_context(sentence, position):
+                continue
             if any(item.canonical_hint == place.canonical_name for item in values):
                 continue
             values.append(HistoricalEventPlaceMention(
@@ -329,6 +348,8 @@ class EvidenceGroundedHistoricalEventExtractor:
             re.search(re.escape(endpoint.surface), sentence, re.IGNORECASE),
         )
         if validation.validation_class is PlaceMentionValidationClass.NON_PLACE_HIGH_CONFIDENCE:
+            return
+        if self._is_person_name_context(sentence, endpoint.position):
             return
         places.append(HistoricalEventPlaceMention(
             raw_text=endpoint.surface,
