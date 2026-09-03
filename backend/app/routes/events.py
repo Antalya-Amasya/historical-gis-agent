@@ -35,13 +35,13 @@ class EvidenceGroundedHistoricalEventExtractor:
         (HistoricalEventType.TREATY, r"\b(?:treaty|peace agreement|concluded peace)\b"),
         (HistoricalEventType.ELECTION, r"\b(?:elected|election|chosen as)\b"),
         (HistoricalEventType.REBELLION, r"\b(?:rebellion|revolt(?:ed)?|uprising|insurrection)\b"),
-        (HistoricalEventType.MOVEMENT, r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|arrived|entered|crossed|withdrew|retreated)\b"),
+        (HistoricalEventType.MOVEMENT, r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|arrived|entered|crossed|withdrew|retreated|fled|left|sailed|embarked|landed|went|returned|passed|repassed|travel|escaped|descended|made\s+(?:his|her|their)\s+way)\b"),
         (HistoricalEventType.MILITARY, r"\b(?:campaign|army|war|invaded|conquered|captured)\b"),
         (HistoricalEventType.POLITICAL, r"\b(?:senate .*\bdecree|tribune .*\b(?:proposed|elected|opposed)|consul .*\b(?:appointed|elected|sent)|assembly .*\b(?:elected|passed)|issued a decree)\b"),
     )
     _PLACE_PATTERN = re.compile(r"\b(?P<role>(?i:at|in|near|from|to|into|through))\s+(?:(?i:the)\s+)?(?P<place>[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*){0,3})")
     _MOVEMENT_VERBS = re.compile(
-        r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|arrived|entered|crossed|withdrew|retreated|fled|left|leaving|reached|came|passed)\b",
+        r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|arrived|entered|crossed|withdrew|retreated|fled|left|leaving|reached|came|passed|sailed|embarked|landed|went|returned|repassed|travel|escaped|descended|made\s+(?:his|her|their)\s+way)\b",
         re.IGNORECASE,
     )
     _NON_MOVEMENT_TO_CONTEXT = re.compile(
@@ -79,15 +79,15 @@ class EvidenceGroundedHistoricalEventExtractor:
         re.IGNORECASE,
     )
     _MOVEMENT_FROM_PREFIX = re.compile(
-        r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|left|leaving|withdrew|retreated|fled|came|went|crossed|crossing|returned|hastened|set\s+out|descended)\s+(?:\w+\s+){0,12}from\b",
+        r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|left|leaving|withdrew|retreated|fled|came|went|crossed|crossing|returned|hastened|set\s+out|descended|sailed|embarked|escaped|travel(?:led|ed|ing)?|made\s+(?:his|her|their)\s+way|repassed)\s+(?:\w+\s+){0,12}from\b",
         re.IGNORECASE,
     )
     _MOVEMENT_GOVERNED_FROM = re.compile(
-        r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|left|leaving|withdrew|retreated|fled|came|went|crossed|crossing|returned|hastened|set\s+out|descended)\b(?:\s+\w+){0,12}?\bfrom\b",
+        r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|left|leaving|withdrew|retreated|fled|came|went|crossed|crossing|returned|hastened|set\s+out|descended|sailed|embarked|escaped|travel(?:led|ed|ing)?|made\s+(?:his|her|their)\s+way)\b(?:\s+\w+){0,12}?\bfrom\b",
         re.IGNORECASE,
     )
     _MEDIATED_FROM_PREFIX = re.compile(
-        r"\bfrom\s+(?:the\s+)?(?:passage|valley|crossing|banks?|mouth|shores?|foot)\s+of\s+(?:the\s+)?",
+        r"\bfrom\s+(?:the\s+)?(?:passage|valley|crossing|banks?|mouth|shores?|foot|straits?)\s+of\s+(?:the\s+)?",
         re.IGNORECASE,
     )
     _NON_SPATIAL_FROM = re.compile(
@@ -379,9 +379,16 @@ class EvidenceGroundedHistoricalEventExtractor:
                 places, endpoint, role_map[endpoint.role], sentence, evidence_id,
             )
         for edge in semantics.edges:
+            traversal_as_origin = edge.movement_relation in {
+                "through_to", "maritime_from_landed", "through_landed",
+                "led_through_toward",
+            }
             if edge.origin is not None:
+                role = role_map[edge.origin.role]
+                if traversal_as_origin and edge.origin.role == "traversal" and edge.destination is not None:
+                    role = EventPlaceRole.ORIGIN
                 self._assign_movement_endpoint_role(
-                    places, edge.origin, role_map[edge.origin.role], sentence, evidence_id,
+                    places, edge.origin, role, sentence, evidence_id,
                 )
             if edge.destination is not None:
                 self._assign_movement_endpoint_role(
