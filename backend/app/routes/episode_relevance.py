@@ -157,6 +157,31 @@ def _normalized_subject_overlap(statement: str, contexts: tuple[str, ...] | None
     return bool(_query_subjects(contexts) & _narrative_subjects(statement))
 
 
+def _explicit_origin_destination_claim(claim: HistoricalClaim) -> bool:
+    return bool(claim.source_place and claim.destination_place)
+
+
+def _explicit_od_episode_compatible(
+    claim: HistoricalClaim,
+    statement: str,
+    contexts: tuple[str, ...] | None,
+) -> bool:
+    """True when explicit O→D has episode-compatibility beyond subject overlap."""
+    anchors = _query_episode_anchor_terms(contexts)
+    if not anchors:
+        return True
+    source_tokens = normalized_terms(claim.source_place or "")
+    dest_tokens = normalized_terms(claim.destination_place or "")
+    source_overlap = source_tokens & anchors
+    dest_overlap = dest_tokens & anchors
+    stmt_anchors = normalized_terms(statement) & anchors
+    if source_overlap or dest_overlap:
+        return True
+    if source_tokens:
+        return len(stmt_anchors) >= 2
+    return bool(stmt_anchors)
+
+
 def _same_subject_other_episode(
     claim: HistoricalClaim,
     statement: str,
@@ -217,7 +242,15 @@ def classify_legacy_claim_episode(
         EvidenceRelevance.DIRECT_CAMPAIGN,
         EvidenceRelevance.DIRECT_EVENT,
     }:
-        episode = EpisodeRelevance.DIRECT_QUERY_EPISODE
+        explicit_od = _explicit_origin_destination_claim(claim)
+        if (
+            tag is EvidenceRelevance.DIRECT_SUBJECT
+            and explicit_od
+            and not _explicit_od_episode_compatible(claim, statement or chunk, contexts)
+        ):
+            episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
+        else:
+            episode = EpisodeRelevance.DIRECT_QUERY_EPISODE
     elif tag is EvidenceRelevance.SAME_CONFLICT_RELEVANT:
         episode = EpisodeRelevance.SAME_CAMPAIGN_RELEVANT
     elif _normalized_subject_overlap(statement or chunk, contexts) and _episode_anchor_overlap(

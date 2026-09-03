@@ -38,7 +38,7 @@ _FRONT_MATTER = re.compile(
 )
 _STRUCTURAL_HEADING = re.compile(r"^(?:index|contents|table of contents)\.?\s*$", re.IGNORECASE)
 _ROUTE_OR_MOVEMENT_QUERY = re.compile(
-    r"\b(?:route|march(?:ed|ing)?|movement|moved|advance(?:d|ment)?|cross(?:ed|ing)?|journey|expedition)\b|路线|行军|行进|进军",
+    r"\b(?:route|march(?:ed|ing)?|movements?|moved|advance(?:d|ment)?|cross(?:ed|ing)?|journey|expedition)\b|路线|行军|行进|进军",
     re.IGNORECASE,
 )
 _MOVEMENT_STATEMENT = re.compile(
