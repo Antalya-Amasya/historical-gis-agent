@@ -23,9 +23,12 @@ from backend.app.routes.evidence_relevance import (
 if TYPE_CHECKING:
     from backend.app.models import HistoricalEvent
 
+_GENERIC_EPISODE_SUBJECTS = frozenset({
+    "commander", "general", "emperor", "king", "consul", "trace",
+})
 _NON_PERSON_SUBJECTS = frozenset({
     "synthetic", "test", "evidence", "according", "however", "meanwhile", "source",
-})
+}) | _GENERIC_EPISODE_SUBJECTS
 _ANAPHORIC_SUBJECT = re.compile(
     r"\b(?:he|she|they|his|her|their|him|them)\b",
     re.IGNORECASE,
@@ -162,6 +165,9 @@ def _movement_place_tokens(
     return tokens
 
 
+_GENERIC_PLACE_TOKENS = frozenset({
+    "region", "province", "city", "port", "gulf", "bay", "world", "event",
+})
 _EPISODE_FRAMING = frozenset({
     "trace", "route", "reconstruct", "major", "movements", "movement", "from", "through",
     "leading", "until", "after", "during", "across", "into", "toward", "towards", "first",
@@ -174,7 +180,10 @@ def _query_episode_anchor_terms(contexts: tuple[str, ...] | None) -> set[str]:
     if not contexts:
         return set()
     terms = query_terms(contexts)
-    return {term for term in terms if len(term) >= 4 and term not in _EPISODE_FRAMING}
+    return {
+        term for term in terms
+        if len(term) >= 4 and term not in _EPISODE_FRAMING and term not in _GENERIC_PLACE_TOKENS
+    }
 
 
 def _episode_anchor_overlap_places(
@@ -182,11 +191,7 @@ def _episode_anchor_overlap_places(
     place_tokens: set[str],
     contexts: tuple[str, ...] | None,
 ) -> bool:
-    anchors = _query_episode_anchor_terms(contexts)
-    if not anchors:
-        return False
-    involved = normalized_terms(statement) | place_tokens
-    return bool(involved & anchors)
+    return bool(_episode_place_anchor_terms(statement, place_tokens, contexts))
 
 
 def _episode_anchor_overlap(claim: HistoricalClaim, statement: str, contexts: tuple[str, ...] | None) -> bool:
@@ -199,6 +204,55 @@ def _normalized_subject_overlap(statement: str, contexts: tuple[str, ...] | None
     return bool(_query_subjects(contexts) & _narrative_subjects(statement))
 
 
+def _episode_subject_overlap(statement: str, contexts: tuple[str, ...] | None) -> bool:
+    if not contexts:
+        return False
+    query_subjects = _query_subjects(contexts) - _GENERIC_EPISODE_SUBJECTS
+    narrative_subjects = _narrative_subjects(statement) - _GENERIC_EPISODE_SUBJECTS
+    return bool(query_subjects & narrative_subjects)
+
+
+_DURING_EPISODE = re.compile(
+    r"\bduring\s+([A-Z][A-Za-z'’]+(?:\s+[A-Z][A-Za-z'’]+)?)",
+    re.IGNORECASE,
+)
+_GEO_PREP = re.compile(
+    r"\b(?:in|into|from|to|toward|towards|near|across|through|via|around)\s+"
+    r"([A-Z][A-Za-z'’]+(?:\s+[A-Z][A-Za-z'’]+)?)",
+    re.IGNORECASE,
+)
+
+
+def _statement_local_place_terms(statement: str, place_tokens: set[str]) -> set[str]:
+    terms: set[str] = set()
+    for pattern in (_GEO_PREP, _DURING_EPISODE):
+        for match in pattern.finditer(statement):
+            terms |= normalized_terms(match.group(1))
+    terms |= place_tokens & normalized_terms(statement)
+    return terms
+
+
+def _episode_place_anchor_terms(
+    statement: str,
+    place_tokens: set[str],
+    contexts: tuple[str, ...] | None,
+) -> set[str]:
+    anchors = _query_episode_anchor_terms(contexts)
+    if not anchors:
+        return set()
+    place_local = {
+        token for token in place_tokens & anchors if token not in _GENERIC_PLACE_TOKENS
+    }
+    local_places = _statement_local_place_terms(statement, place_tokens)
+    statement_place = (
+        (normalized_terms(statement) & anchors & local_places)
+        - _GENERIC_EPISODE_SUBJECTS
+        - _GENERIC_PLACE_TOKENS
+        - (_narrative_subjects(statement) & _query_subjects(contexts))
+    )
+    return place_local | statement_place
+
+
 def _explicit_origin_destination_claim(claim: HistoricalClaim) -> bool:
     return bool(claim.source_place and claim.destination_place)
 
@@ -209,20 +263,20 @@ def _explicit_od_episode_compatible_places(
     statement: str,
     contexts: tuple[str, ...] | None,
 ) -> bool:
-    """True when explicit O→D has episode-compatibility beyond subject overlap."""
+    """True when explicit O→D aligns with the requested episode beyond a single weak overlap."""
     anchors = _query_episode_anchor_terms(contexts)
     if not anchors:
         return True
     source_tokens = normalized_terms(source_place or "")
     dest_tokens = normalized_terms(destination_place or "")
-    source_overlap = source_tokens & anchors
-    dest_overlap = dest_tokens & anchors
-    stmt_anchors = normalized_terms(statement) & anchors
-    if source_overlap or dest_overlap:
+    source_overlap = {token for token in source_tokens & anchors if token not in _GENERIC_PLACE_TOKENS}
+    dest_overlap = {token for token in dest_tokens & anchors if token not in _GENERIC_PLACE_TOKENS}
+    place_anchor_terms = _episode_place_anchor_terms(statement, source_tokens | dest_tokens, contexts)
+    if source_overlap and dest_overlap:
         return True
-    if source_tokens:
-        return len(stmt_anchors) >= 2
-    return bool(stmt_anchors)
+    if len(place_anchor_terms) >= 2:
+        return True
+    return False
 
 
 def _explicit_od_episode_compatible(
@@ -294,31 +348,100 @@ def _episode_framing_conflict(statement: str, contexts: tuple[str, ...] | None) 
     return any(_CURRENT_EPISODE_MARKERS.search(context or "") for context in contexts)
 
 
+def _episode_local_text(statement: str, window: str | None) -> str:
+    local = (window or statement).strip()
+    return local
+
+
 def _episode_rescue_after_explicit_od_mismatch(
     source_place: str | None,
     destination_place: str | None,
     statement: str,
-    chunk: str,
+    window: str | None,
     contexts: tuple[str, ...] | None,
 ) -> bool:
-    if not _normalized_subject_overlap(chunk, contexts):
+    local = statement.strip()
+    context_text = (window or statement).strip()
+    if not local or not context_text or not _episode_subject_overlap(context_text, contexts):
         return False
-    if _query_years(contexts) and _statement_years(chunk) and not _time_incompatible(chunk, contexts):
+    if _query_years(contexts) and _statement_years(context_text) and not _time_incompatible(context_text, contexts):
         return True
     anchors = _query_episode_anchor_terms(contexts)
+    context_episode_hits = (
+        (normalized_terms(context_text) & anchors)
+        - _GENERIC_EPISODE_SUBJECTS
+        - _GENERIC_PLACE_TOKENS
+        - _narrative_subjects(context_text)
+    )
+    if context_episode_hits:
+        return True
     source_tokens = normalized_terms(source_place or "")
-    if source_tokens & anchors:
+    if {token for token in source_tokens & anchors if token not in _GENERIC_PLACE_TOKENS}:
         return True
     place_tokens = _movement_place_tokens(source_place, destination_place)
-    geo_stmt_anchors = normalized_terms(statement) & anchors
-    if len(geo_stmt_anchors) >= 2:
-        return True
-    if (
-        not _normalized_subject_overlap(statement, contexts)
-        and _episode_anchor_overlap_places(chunk, place_tokens, contexts)
-    ):
+    place_stmt_anchors = _episode_place_anchor_terms(local, place_tokens, contexts)
+    if len(place_stmt_anchors) >= 2:
         return True
     return False
+
+
+def _direct_subject_local_episode_signal(
+    probe: _MovementEpisodeProbe,
+    statement: str,
+    contexts: tuple[str, ...] | None,
+) -> bool:
+    if not (probe.source_place and probe.destination_place):
+        return False
+    local = statement.strip()
+    if not local:
+        return False
+    source_tokens = normalized_terms(probe.source_place)
+    dest_tokens = normalized_terms(probe.destination_place)
+    statement_tokens = normalized_terms(local)
+    if not (source_tokens & statement_tokens and dest_tokens & statement_tokens):
+        return False
+    anchors = _query_episode_anchor_terms(contexts)
+    if not anchors:
+        return _episode_subject_overlap(local, contexts) or bool(_query_subjects(contexts) & statement_tokens)
+    source_hits = {token for token in source_tokens & anchors if token not in _GENERIC_PLACE_TOKENS}
+    dest_hits = {token for token in dest_tokens & anchors if token not in _GENERIC_PLACE_TOKENS}
+    place_anchor_terms = _episode_place_anchor_terms(local, source_tokens | dest_tokens, contexts)
+    if dest_hits and not source_hits and len(place_anchor_terms) < 2:
+        return False
+    if len(place_anchor_terms) >= 2 or source_hits:
+        return True
+    return bool((_query_subjects(contexts) - _GENERIC_EPISODE_SUBJECTS) & statement_tokens & source_tokens)
+
+
+def _strong_direct_episode_signal(
+    statement: str,
+    window: str | None,
+    probe: _MovementEpisodeProbe,
+    contexts: tuple[str, ...] | None,
+    *,
+    subject_relevance: EvidenceRelevance | None = None,
+) -> bool:
+    explicit_od = bool(probe.source_place and probe.destination_place)
+    if explicit_od and _explicit_od_episode_compatible_places(
+        probe.source_place, probe.destination_place, statement, contexts,
+    ):
+        return True
+    if subject_relevance is EvidenceRelevance.DIRECT_SUBJECT and _direct_subject_local_episode_signal(
+        probe, statement, contexts,
+    ):
+        return True
+    if explicit_od and _episode_rescue_after_explicit_od_mismatch(
+        probe.source_place,
+        probe.destination_place,
+        statement,
+        window,
+        contexts,
+    ):
+        return True
+    if not _query_episode_anchor_terms(contexts):
+        return _episode_subject_overlap(statement.strip(), contexts)
+    place_tokens = _movement_place_tokens(probe.source_place, probe.destination_place)
+    return len(_episode_place_anchor_terms(statement.strip(), place_tokens, contexts)) >= 2
 
 
 def _time_incompatible(statement: str, contexts: tuple[str, ...] | None) -> bool:
@@ -359,13 +482,14 @@ def _classify_movement_episode(
 ) -> tuple[EpisodeRelevance, dict[str, object]]:
     statement = probe.statement.strip()
     window = _probe_statement_window(probe, evidence_by_id)
+    local = _episode_local_text(statement, window)
     chunk_parts = [statement]
     for ref in probe.supporting_evidence_ids:
         item = evidence_by_id.get(ref)
         if item is not None:
             chunk_parts.append(_evidence_text(item))
     chunk = " ".join(chunk_parts)
-    if _other_campaign_subject_conflict(statement or chunk, contexts):
+    if _other_campaign_subject_conflict(local or chunk, contexts):
         tag = EvidenceRelevance.OTHER_CAMPAIGN
     elif subject_relevance is not None:
         tag = subject_relevance
@@ -384,36 +508,25 @@ def _classify_movement_episode(
         EvidenceRelevance.DIRECT_CAMPAIGN,
         EvidenceRelevance.DIRECT_EVENT,
     }:
-        if (
-            tag is EvidenceRelevance.DIRECT_SUBJECT
-            and explicit_od
-            and not _explicit_od_episode_compatible_places(
-                probe.source_place, probe.destination_place, statement, contexts,
-            )
+        if _strong_direct_episode_signal(
+            statement, window, probe, contexts, subject_relevance=tag,
         ):
-            if _episode_rescue_after_explicit_od_mismatch(
-                probe.source_place,
-                probe.destination_place,
-                statement,
-                chunk,
-                contexts,
-            ):
-                episode = EpisodeRelevance.DIRECT_QUERY_EPISODE
-            else:
-                episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
+            episode = EpisodeRelevance.DIRECT_QUERY_EPISODE
+        elif tag is EvidenceRelevance.DIRECT_SUBJECT:
+            episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
         else:
             episode = EpisodeRelevance.DIRECT_QUERY_EPISODE
     elif tag is EvidenceRelevance.SAME_CONFLICT_RELEVANT:
         episode = EpisodeRelevance.SAME_CAMPAIGN_RELEVANT
-    elif _normalized_subject_overlap(statement or chunk, contexts) and _episode_anchor_overlap_places(
-        statement or chunk, place_tokens, contexts,
+    elif _strong_direct_episode_signal(
+        statement, window, probe, contexts, subject_relevance=tag,
     ):
         episode = EpisodeRelevance.DIRECT_QUERY_EPISODE
     elif _same_subject_other_episode_places(
-        probe.source_place, probe.destination_place, statement or chunk, contexts, relevance=tag,
+        probe.source_place, probe.destination_place, local, contexts, relevance=tag,
     ):
         episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
-    elif _time_incompatible(statement or chunk, contexts):
+    elif _time_incompatible(local, contexts):
         episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
     else:
         episode = EpisodeRelevance.UNKNOWN
