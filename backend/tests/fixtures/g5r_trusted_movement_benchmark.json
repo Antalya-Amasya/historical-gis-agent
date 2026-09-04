@@ -1,0 +1,308 @@
+{
+  "schema_version": "g5r-v1",
+  "description": "L3 trusted historical movement ground-truth benchmark. Corpus-grounded evidence IDs with statement-level movement, subject, and episode validation.",
+  "queries": [
+    {
+      "query_id": "caesar_adriatic",
+      "query": "Trace Julius Caesar's route from Italy across the Adriatic into Epirus and through the campaign leading to Pharsalus in 48 BCE.",
+      "domain": "ROMAN_REPUBLIC",
+      "subject": "Julius Caesar",
+      "episode": "48 BCE civil war: Italy / Brundisium → Adriatic / Ionian → Epirus → Pharsalus campaign",
+      "trusted_reference_ids": [
+        "g5r-caesar-001",
+        "g5r-caesar-002",
+        "g5r-caesar-003"
+      ],
+      "minimum_expected_reference_recall": 0.5,
+      "notes": "Primary L3 Roman Republic anchor for Adriatic crossing episode."
+    },
+    {
+      "query_id": "pompey_post_pharsalus_egypt",
+      "query": "Trace Pompey's movements after the defeat at Pharsalus, from Greece through the eastern Mediterranean until his arrival in Egypt in 48 BCE.",
+      "domain": "ROMAN_REPUBLIC",
+      "subject": "Pompey",
+      "episode": "Post-Pharsalus 48 BCE flight through eastern Mediterranean to Egypt",
+      "trusted_reference_ids": [
+        "g5r-pompey-001",
+        "g5r-pompey-002"
+      ],
+      "minimum_expected_reference_recall": 0.5,
+      "notes": "Pompey-life provenance; Pelusium reference is bounded-context MEDIUM."
+    },
+    {
+      "query_id": "mithridates_first_war",
+      "query": "Reconstruct the major movements of Mithridates VI during the First Mithridatic War, from Pontus through Asia Minor and Greece, and back toward Anatolia.",
+      "domain": "ROMAN_REPUBLIC",
+      "subject": "Mithridates VI",
+      "episode": "First Mithridatic War: Pontus / Asia Minor / Greece",
+      "trusted_reference_ids": [
+        "g5r-mithridates-001",
+        "g5r-mithridates-002"
+      ],
+      "minimum_expected_reference_recall": 0.5,
+      "notes": "Appian + Livy agent-of-king references; no single perfect O+D pair in corpus."
+    },
+    {
+      "query_id": "lucullus_mithridatic",
+      "query": "Trace Lucullus's campaign movements against Mithridates from Pontus through Armenia and into Asia Minor.",
+      "domain": "ROMAN_REPUBLIC",
+      "subject": "Lucullus",
+      "episode": "Lucullus vs Mithridates / Tigranes in Pontus and Armenia",
+      "trusted_reference_ids": [
+        "g5r-lucullus-001",
+        "g5r-lucullus-002"
+      ],
+      "minimum_expected_reference_recall": 0.5,
+      "notes": "Replaces Xenophon in hard L3 set: corpus lacks Anabasis primary movement references."
+    },
+    {
+      "query_id": "alexander_hydaspes",
+      "query": "Reconstruct Alexander the Great's route from Bactria through the Hindu Kush into the Indian campaign, ending near the Hydaspes.",
+      "domain": "STRESS_CONTROL",
+      "subject": "Alexander the Great",
+      "episode": "Indian campaign / Hydaspes crossing",
+      "trusted_reference_ids": [
+        "g5r-alexander-001",
+        "g5r-alexander-002"
+      ],
+      "minimum_expected_reference_recall": 0.5,
+      "notes": "Out-of-domain stress control; Hydaspes provenance is strong, Bactria→India arc is partial."
+    },
+    {
+      "query_id": "xenophon_cunaxa_return",
+      "query": "Trace the route of Xenophon and the Ten Thousand from Cunaxa back to the Greek world after the Battle of Cunaxa in 401 BCE.",
+      "domain": "STRESS_CONTROL",
+      "subject": "Xenophon / Ten Thousand",
+      "episode": "Anabasis retreat after Cunaxa 401 BCE",
+      "trusted_reference_ids": [],
+      "minimum_expected_reference_recall": null,
+      "notes": "NO_TRUSTED_REFERENCE_AVAILABLE — corpus has no Anabasis primary-source movement O+D; excluded from hard recall denominator.",
+      "status": "NO_TRUSTED_REFERENCE_AVAILABLE"
+    }
+  ],
+  "references": [
+    {
+      "benchmark_id": "g5r-caesar-001",
+      "query_id": "caesar_adriatic",
+      "evidence_id": "4e26d5ea98a327d0af826cb80ce184f9:1391:1640",
+      "source_title": "Appian, Roman History / Civil Wars",
+      "navigation_path": "[]",
+      "supporting_statement": "When the civil strife broke out into war Caesar crossed the Adriatic from Brundusium in the winter, with what forces he had, and opened his",
+      "bounded_context_optional": null,
+      "narrative_subject": "Caesar",
+      "origin": "Brundisium",
+      "destination": "Adriatic",
+      "movement_type": "crossed",
+      "episode_anchor": "civil strife / winter Adriatic crossing 48 BCE",
+      "year_if_explicit": null,
+      "quality": "HIGH",
+      "validation_notes": "VALID — Appian civil-war frame; explicit Caesar subject and Brundisium→Adriatic movement."
+    },
+    {
+      "benchmark_id": "g5r-caesar-002",
+      "query_id": "caesar_adriatic",
+      "evidence_id": "38a755dbfc5140894831cdb30436c7e9:1900:2481",
+      "source_title": "Plutarch, Parallel Lives — Caesar",
+      "navigation_path": "[\"CAESAR\"]",
+      "supporting_statement": "He marched so fast, that he left all his army behind him, except six hundred chosen horse, and five legions, with which he put to sea in the very middle of winter, about the beginning of the month January, (which corresponds pretty nearly with the Athenian month Posideon,) and having past the Ionian Sea, took Oricum",
+      "bounded_context_optional": "Caesar life; winter crossing into Epirus theatre.",
+      "narrative_subject": "Caesar",
+      "origin": "Italy / Brundisium theatre",
+      "destination": "Oricum",
+      "movement_type": "maritime crossing",
+      "episode_anchor": "winter Ionian crossing into Epirus",
+      "year_if_explicit": null,
+      "quality": "HIGH",
+      "validation_notes": "VALID — Plutarch Caesar life; explicit winter sea movement to Oricum."
+    },
+    {
+      "benchmark_id": "g5r-caesar-003",
+      "query_id": "caesar_adriatic",
+      "evidence_id": "620d708fce53e962e7cab87b307b4690:1269:1704",
+      "source_title": "Cassius Dio, Roman History Book 41",
+      "navigation_path": "[\"DIO'S ROMAN HISTORY\", \"(BOOK 41, BOISSEVAIN.)\"]",
+      "supporting_statement": "he did not suspect that his rival, in winter, at least, would venture to cross the Ionian sea. Caesar was in Brundusium, waiting for spring, but when he ascertained that Pompey was some distance off and that Epirus just opposite was rather heedlessly guarded, he seized the opportunity of the war to attack him while in a state of relaxation.",
+      "bounded_context_optional": "Preceding sentence: rival would not suspect crossing the Ionian sea in winter.",
+      "narrative_subject": "Caesar",
+      "origin": "Brundisium",
+      "destination": "Epirus",
+      "movement_type": "crossing (bounded context)",
+      "episode_anchor": "48 BCE Brundisium → Epirus theatre",
+      "year_if_explicit": null,
+      "quality": "MEDIUM",
+      "validation_notes": "VALID — Dio Book 41 civil-war frame; movement implied by Brundisium/Epirus/Ionian context in chunk."
+    },
+    {
+      "benchmark_id": "g5r-pompey-001",
+      "query_id": "pompey_post_pharsalus_egypt",
+      "evidence_id": "0e7e813af196915fa9ae7245dc4a069e:2415:2929",
+      "source_title": "Plutarch, Parallel Lives — Pompey",
+      "navigation_path": "[\"POMPEY\"]",
+      "supporting_statement": "As soon, therefore, as it was resolved upon, that he should fly into Egypt, setting sail from Cyprus in a galley of Seleucia, together with Cornelia, while the rest of his company sailed along near him, some in ships of war, and others in merchant vessels, he passed over sea without danger.",
+      "bounded_context_optional": null,
+      "narrative_subject": "Pompey",
+      "origin": "Cyprus",
+      "destination": "Egypt",
+      "movement_type": "sailed / fly into Egypt",
+      "episode_anchor": "post-Pharsalus flight to Egypt",
+      "year_if_explicit": null,
+      "quality": "HIGH",
+      "validation_notes": "VALID — Pompey life; explicit Cyprus→Egypt maritime movement after defeat."
+    },
+    {
+      "benchmark_id": "g5r-pompey-002",
+      "query_id": "pompey_post_pharsalus_egypt",
+      "evidence_id": "5d399dda816b9a526ed84fff72094795:1194:1982",
+      "source_title": "Plutarch, Parallel Lives — Marcus Brutus",
+      "navigation_path": "[\"MARCUS BRUTUS\"]",
+      "supporting_statement": "When Pompey the Great, being overthrown from his great power by Caesar, had fled to Egypt, and landed near Pelusium, the protectors of the young king consulted among themselves what was fit to be done on that occasion",
+      "bounded_context_optional": "Brutus life; Pompey as narrative subject of movement sentence.",
+      "narrative_subject": "Pompey",
+      "origin": "UNKNOWN",
+      "destination": "Pelusium / Egypt",
+      "movement_type": "fled / landed",
+      "episode_anchor": "post-Pharsalus arrival in Egypt",
+      "year_if_explicit": null,
+      "quality": "MEDIUM",
+      "validation_notes": "VALID — secondary biography frame but explicit Pompey flight and Pelusium landing."
+    },
+    {
+      "benchmark_id": "g5r-mithridates-001",
+      "query_id": "mithridates_first_war",
+      "evidence_id": "1a4fe9de985ebce305e1840937fb107e:1088:1541",
+      "source_title": "Appian, Roman History / Civil Wars — Mithridatic Wars",
+      "navigation_path": "[]",
+      "supporting_statement": "In the meantime Mithridates crossed over to the island of Cos, where he was welcomed by the inhabitants",
+      "bounded_context_optional": "Appian Mithridatic Wars narrative.",
+      "narrative_subject": "Mithridates",
+      "origin": "UNKNOWN",
+      "destination": "Cos",
+      "movement_type": "crossed over",
+      "episode_anchor": "First Mithridatic War theatre",
+      "year_if_explicit": null,
+      "quality": "MEDIUM",
+      "validation_notes": "VALID — Appian; Mithridates subject with explicit maritime movement."
+    },
+    {
+      "benchmark_id": "g5r-mithridates-002",
+      "query_id": "mithridates_first_war",
+      "evidence_id": "b9afeb28386e72f7ed224efcf34558db:357:434",
+      "source_title": "Livy, History of Rome Book LXXVIII",
+      "navigation_path": "[\"PRESERVED CONTENTS OF THE REMAINING BOOKS\", \"BOOK LXXVIII.\"]",
+      "supporting_statement": "Archelaus, one of the king's governors, invaded Greece and took Athens.",
+      "bounded_context_optional": "Archelaus as Mithridates' agent in First Mithridatic War.",
+      "narrative_subject": "Archelaus (Mithridates VI)",
+      "origin": "UNKNOWN",
+      "destination": "Athens / Greece",
+      "movement_type": "invaded",
+      "episode_anchor": "First Mithridatic War in Greece",
+      "year_if_explicit": null,
+      "quality": "MEDIUM",
+      "validation_notes": "VALID — Livy; agent movement into Greece under Mithridates' war."
+    },
+    {
+      "benchmark_id": "g5r-lucullus-001",
+      "query_id": "lucullus_mithridatic",
+      "evidence_id": "51346d62ad19cd1b6357361888a7573f:626:942",
+      "source_title": "Plutarch, Parallel Lives — Lucullus",
+      "navigation_path": "[\"LUCULLUS\"]",
+      "supporting_statement": "Wherefore hastening his march, and passing the Tigris, he came over into Armenia",
+      "bounded_context_optional": "Lucullus life; campaign against Tigranes.",
+      "narrative_subject": "Lucullus",
+      "origin": "beyond Tigris",
+      "destination": "Armenia",
+      "movement_type": "march / passing / came over",
+      "episode_anchor": "Lucullus vs Mithridates/Tigranes",
+      "year_if_explicit": null,
+      "quality": "HIGH",
+      "validation_notes": "VALID — Lucullus life; explicit march into Armenia."
+    },
+    {
+      "benchmark_id": "g5r-lucullus-002",
+      "query_id": "lucullus_mithridatic",
+      "evidence_id": "eb82a760397f57671a3f607ef6ae8d21:681:1589",
+      "source_title": "Plutarch, Parallel Lives — Lucullus",
+      "navigation_path": "[\"LUCULLUS\"]",
+      "supporting_statement": "When it was now told him that Mithridates and Tigranes were just ready to transport their forces into Lycaonia and Cilicia, with the object of entering Asia before him, he wondered much why the Armenian, supposing him to entertain any real intention to fight with the Romans, did not assist Mithridates",
+      "bounded_context_optional": "Campaign positioning in Asia Minor theatre.",
+      "narrative_subject": "Lucullus",
+      "origin": null,
+      "destination": "Asia / Cilicia theatre",
+      "movement_type": "campaign advance (bounded)",
+      "episode_anchor": "Mithridatic War / Lucullus command",
+      "year_if_explicit": null,
+      "quality": "MEDIUM",
+      "validation_notes": "VALID — Lucullus subject in Mithridatic campaign context; movement framing via enemy transport plans."
+    },
+    {
+      "benchmark_id": "g5r-alexander-001",
+      "query_id": "alexander_hydaspes",
+      "evidence_id": "25291c78efd0ed8340502b7a40941131:1063:1787",
+      "source_title": "Plutarch, Parallel Lives — Alexander",
+      "navigation_path": "[\"ALEXANDER\"]",
+      "supporting_statement": "that one stormy dark night he passed the river, at a distance from the place where the enemy lay, into a little island, with part of his foot, and the best of his horse.",
+      "bounded_context_optional": "Alexander's letter on war with Porus; Hydaspes crossing.",
+      "narrative_subject": "Alexander",
+      "origin": "Hydaspes (near bank)",
+      "destination": "island / opposite bank",
+      "movement_type": "passed the river",
+      "episode_anchor": "Hydaspes / Porus battle",
+      "year_if_explicit": null,
+      "quality": "HIGH",
+      "validation_notes": "VALID — Alexander life; explicit Hydaspes river crossing movement."
+    },
+    {
+      "benchmark_id": "g5r-alexander-002",
+      "query_id": "alexander_hydaspes",
+      "evidence_id": "25291c78efd0ed8340502b7a40941131:1787:2254",
+      "source_title": "Plutarch, Parallel Lives — Alexander",
+      "navigation_path": "[\"ALEXANDER\"]",
+      "supporting_statement": "he nevertheless quitted the island and made over to the other side.",
+      "bounded_context_optional": "Continuation of Hydaspes crossing after storm.",
+      "narrative_subject": "Alexander",
+      "origin": "island in Hydaspes",
+      "destination": "other bank",
+      "movement_type": "made over",
+      "episode_anchor": "Hydaspes crossing",
+      "year_if_explicit": null,
+      "quality": "MEDIUM",
+      "validation_notes": "VALID — same episode; second hop of Hydaspes crossing."
+    }
+  ],
+  "deprecated_references": [
+    {
+      "id": "g5m-xenophon-athens-peloponnesus",
+      "evidence_id": "3c7ef8ef4efa1d6e26cb3e199a73ba7a:1335:2228",
+      "statement": "It was therefore a very hazardous journey to travel by land from Athens to Peloponnesus;",
+      "reason": "DEPRECATED_INVALID_GROUND_TRUTH — Plutarch THESEUS, not Xenophon Anabasis",
+      "former_use": "G5M KEY_MOVEMENT_REFERENCES[XENOPHON_QUERY]"
+    },
+    {
+      "id": "g5m-caesar-epirus-term",
+      "reason": "DEPRECATED_TERM_ONLY_PROXY — single place term 'Epirus', not statement-level movement",
+      "former_use": "G5M KEY_MOVEMENT_REFERENCES[CAESAR_QUERY]"
+    },
+    {
+      "id": "g5m-pompey-egypt-term",
+      "reason": "DEPRECATED_TERM_ONLY_PROXY — single place term 'Egypt'",
+      "former_use": "G5M KEY_MOVEMENT_REFERENCES[POMPEY_QUERY]"
+    },
+    {
+      "id": "g5m-mithridates-pontus-term",
+      "reason": "DEPRECATED_TERM_ONLY_PROXY — single place term 'Pontus'",
+      "former_use": "G5M KEY_MOVEMENT_REFERENCES[MITHRIDATES_QUERY]"
+    },
+    {
+      "id": "g5m-alexander-auto-pass",
+      "reason": "DEPRECATED_AUTO_PASS — no KEY defined, recall defaulted to 1.0",
+      "former_use": "G5M metrics for alexander case"
+    },
+    {
+      "id": "g5b-x01",
+      "evidence_id": null,
+      "statement": "It was therefore a very hazardous journey to travel by land from Athens to Peloponnesus.",
+      "reason": "L1_MECHANISM_FIXTURE — synthetic campaign label 'Xenophon' is invalid for L3 recall",
+      "former_use": "g5b_movement_benchmark.json pairable YES"
+    }
+  ]
+}

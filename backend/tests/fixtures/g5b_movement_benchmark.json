@@ -2,6 +2,9 @@
   {
     "id": "g5b-x01",
     "campaign": "Xenophon",
+    "benchmark_tier": "L1_MECHANISM",
+    "invalid_as_l3_ground_truth": true,
+    "invalid_reason": "Plutarch THESEUS movement sentence; not Xenophon Anabasis episode",
     "source": "G5A",
     "text": "It was therefore a very hazardous journey to travel by land from Athens to Peloponnesus.",
     "movement_detected": "YES",
