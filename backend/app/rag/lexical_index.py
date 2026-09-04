@@ -66,7 +66,7 @@ class LexicalEvidenceIndex:
         def idf(term: str) -> float:
             post=self._postings.get(term,{})
             return math.log(1+(total+.5)/(len(post)+.5)) if post else 0.0
-        core = roles.person_terms | roles.location_match_terms | roles.action_terms
+        core = roles.person_terms | roles.location_match_terms | roles.action_terms | roles.movement_inflection_terms
         for term in core:
             weight=idf(term)
             for ident in self._postings.get(term, {}): scores[ident]+=weight

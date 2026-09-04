@@ -34,7 +34,7 @@ def _query_for(bid: str) -> str:
 
 
 def _movement_scored(roles) -> frozenset[str]:
-    return roles.action_terms | roles.expanded_action_terms
+    return roles.action_terms | roles.expanded_action_terms | roles.movement_inflection_terms
 
 
 def test_caesar_marched_into_epirus_scores_movement():

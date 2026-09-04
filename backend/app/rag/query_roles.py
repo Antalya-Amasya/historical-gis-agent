@@ -38,14 +38,35 @@ _ACTION_GROUPS = (
     frozenset({"assassination", "assassinate", "assassinated", "murder", "murdered", "slain", "killed", "stabbed"}),
     frozenset({"battle", "battled", "fought", "fight", "defeated", "defeat", "vanquished", "victory", "victorious"}),
 )
-_MOVEMENT_TERMS = frozenset({
-    "move", "moved", "moving", "march", "marched", "marching", "advance", "advanced", "advancing",
-    "proceed", "proceeded", "proceeding", "pass", "passed", "passing", "cross", "crossed", "crossing",
-    "sail", "sailed", "sailing", "depart", "departed", "departing", "leave", "left", "leaving",
-    "reach", "reached", "reaching", "arrive", "arrived", "arriving", "enter", "entered", "entering",
-    "land", "landed", "landing", "flee", "fled", "fleeing", "fly", "come", "came", "coming",
-    "go", "went", "going", "travel", "travelled", "traveled", "travelling", "traveling", "journey", "route",
+_MOVEMENT_FAMILIES: tuple[frozenset[str], ...] = (
+    frozenset({"move", "moved", "moving"}),
+    frozenset({"march", "marched", "marching"}),
+    frozenset({"advance", "advanced", "advancing"}),
+    frozenset({"proceed", "proceeded", "proceeding"}),
+    frozenset({"pass", "passed", "passing"}),
+    frozenset({"cross", "crossed", "crossing"}),
+    frozenset({"sail", "sailed", "sailing"}),
+    frozenset({"depart", "departed", "departing"}),
+    frozenset({"leave", "left", "leaving"}),
+    frozenset({"arrive", "arrived", "arriving"}),
+    frozenset({"reach", "reached", "reaching"}),
+    frozenset({"enter", "entered", "entering"}),
+    frozenset({"land", "landed", "landing"}),
+    frozenset({"flee", "fled", "fleeing", "fly"}),
+    frozenset({"come", "came", "coming"}),
+    frozenset({"go", "went", "going"}),
+    frozenset({"travel", "traveled", "travelled", "traveling", "travelling"}),
+    frozenset({"journey", "journeyed"}),
+    frozenset({"route"}),
+)
+_MOVEMENT_TERMS = frozenset().union(*_MOVEMENT_FAMILIES)
+_MOVEMENT_TERM_TO_FAMILY = {term: family for family in _MOVEMENT_FAMILIES for term in family}
+_GENERIC_MOVEMENT_TRIGGERS = frozenset({
+    "route", "routes", "movement", "movements", "travel", "journey", "trace", "reconstruct",
 })
+_GENERIC_EXPANSION_FAMILIES = tuple(
+    family for family in _MOVEMENT_FAMILIES if family != frozenset({"route"})
+)
 _ACTION_UNION = frozenset().union(*_ACTION_GROUPS) | _MOVEMENT_TERMS
 # Closed praenomen set used only to reject a different named person who shares a surname.
 _PRAENOMINA = frozenset({
@@ -69,6 +90,7 @@ class QueryRoleAnalysis:
     generic_terms: frozenset[str]
     context_terms: frozenset[str]
     expanded_action_terms: frozenset[str]
+    movement_inflection_terms: frozenset[str]
     stop_terms: frozenset[str]
 
     @property
@@ -79,13 +101,34 @@ class QueryRoleAnalysis:
         return frozenset(aliases)
 
 
+def _movement_family_expansions(action_terms: frozenset[str]) -> frozenset[str]:
+    """Sibling inflections for explicit movement terms (person-gated at score time)."""
+    expanded: set[str] = set()
+    for term in action_terms & _MOVEMENT_TERMS:
+        expanded.update(_MOVEMENT_TERM_TO_FAMILY[term] - action_terms)
+    return frozenset(expanded)
+
+
+def _generic_movement_expansions(norms: list[str], person_sequence: tuple[str, ...], action_terms: frozenset[str]) -> frozenset[str]:
+    """Route/movement intent expands verb families on subject-gated passages only."""
+    if not person_sequence or not (set(norms) & _GENERIC_MOVEMENT_TRIGGERS):
+        return frozenset()
+    expanded: set[str] = set()
+    for family in _GENERIC_EXPANSION_FAMILIES:
+        expanded.update(family)
+    return frozenset(expanded - action_terms)
+
+
 def analyze_query(query: str) -> QueryRoleAnalysis:
     """Assign PERSON / LOCATION / ACTION / GENERIC roles from the raw query."""
     normalized = unicodedata.normalize("NFKD", query or "").replace("æ", "ae").replace("Æ", "AE")
     pairs = tuple((match.group(), match.group().casefold()) for match in _WORD.finditer(normalized))
     norms = [norm for _, norm in pairs]
     action_terms = frozenset(token for token in norms if token in _ACTION_UNION)
-    expanded = frozenset().union(*(group for group in _ACTION_GROUPS if action_terms & group)) - action_terms
+    movement_inflection = _movement_family_expansions(action_terms)
+    expanded = (
+        frozenset().union(*(group for group in _ACTION_GROUPS if action_terms & group))
+    ) - action_terms
     stop_in_query = frozenset(token for token in norms if token in _STOP_WORDS)
     location: set[str] = set()
     for index, norm in enumerate(norms):
@@ -109,6 +152,7 @@ def analyze_query(query: str) -> QueryRoleAnalysis:
     else:
         person_sequence = [norm for _, _, norm in leftover]
         context = []
+    expanded |= _generic_movement_expansions(norms, tuple(person_sequence), action_terms)
     return QueryRoleAnalysis(
         person_terms=frozenset(person_sequence),
         person_sequence=tuple(person_sequence),
@@ -117,6 +161,7 @@ def analyze_query(query: str) -> QueryRoleAnalysis:
         generic_terms=generic,
         context_terms=frozenset(context),
         expanded_action_terms=expanded,
+        movement_inflection_terms=movement_inflection,
         stop_terms=stop_in_query,
     )
 
@@ -147,7 +192,7 @@ def location_support(roles: QueryRoleAnalysis, text_tokens: frozenset[str]) -> f
 
 def action_support(roles: QueryRoleAnalysis, text_tokens: frozenset[str], *, person: float, location: float) -> float:
     native = bool(roles.action_terms & text_tokens)
-    expanded = bool(roles.expanded_action_terms & text_tokens)
+    expanded = bool((roles.expanded_action_terms | roles.movement_inflection_terms) & text_tokens)
     if person > 0 or location > 0:
         matched = native or expanded
     else:
