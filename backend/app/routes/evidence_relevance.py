@@ -351,12 +351,24 @@ def relation_admission_allowed(
     if final is EvidenceRelevance.OTHER_CAMPAIGN:
         return False
     if rule.value == "SAME_MOVEMENT_EVENT":
-        return final in _STATEMENT_ADMISSIBLE
-    if rule.value == "TEMPORAL_ORDER":
-        return final in _ROUTE_ADMISSIBLE or final is EvidenceRelevance.UNKNOWN
-    if rule.value == "SOURCE_STRUCTURAL_ORDER":
-        return final in _ROUTE_ADMISSIBLE
-    return True
+        evidence_allowed = final in _STATEMENT_ADMISSIBLE
+    elif rule.value == "TEMPORAL_ORDER":
+        evidence_allowed = final in _ROUTE_ADMISSIBLE or final is EvidenceRelevance.UNKNOWN
+    elif rule.value == "SOURCE_STRUCTURAL_ORDER":
+        evidence_allowed = final in _ROUTE_ADMISSIBLE
+    else:
+        evidence_allowed = True
+    if not evidence_allowed:
+        return False
+    from backend.app.routes.episode_relevance import (
+        classify_event_anchor_episode,
+        episode_route_admission_allowed,
+    )
+
+    episode, _ = classify_event_anchor_episode(
+        relation, events_by_id, evidence_by_id, contexts, subject_relevance=final,
+    )
+    return episode_route_admission_allowed(episode)
 
 
 def classify_relation_relevance(
@@ -432,6 +444,11 @@ def relation_admission_diagnostic(
     allowed = relation_admission_allowed(
         relation, events_by_id, evidence_by_id, contexts, rule=rule,
     )
+    from backend.app.routes.episode_relevance import classify_event_anchor_episode
+
+    episode, episode_detail = classify_event_anchor_episode(
+        relation, events_by_id, evidence_by_id, contexts, subject_relevance=final,
+    )
     return {
         "relation_type": rule.value,
         "earlier": relation.earlier,
@@ -442,8 +459,13 @@ def relation_admission_diagnostic(
         "window_relevance": window_tags,
         "chunk_relevance": chunk_tags,
         "final_relation_relevance": final.value,
+        "episode_classification": episode.value,
+        "episode_admitted": episode_detail.get("admitted"),
         "admission": "ALLOW" if allowed else "REJECT",
-        "reason": "LOCAL_STATEMENT_RELEVANCE" if allowed and rule is OrderingRule.SAME_MOVEMENT_EVENT else (
-            "CAMPAIGN_RELEVANCE_REJECTED" if not allowed else "ADMISSIBLE"
+        "reason": (
+            f"EPISODE_{episode_detail.get('admission_reason')}"
+            if allowed is False and not episode_detail.get("admitted")
+            else "LOCAL_STATEMENT_RELEVANCE" if allowed and rule is OrderingRule.SAME_MOVEMENT_EVENT
+            else "CAMPAIGN_RELEVANCE_REJECTED" if not allowed else "ADMISSIBLE"
         ),
     }

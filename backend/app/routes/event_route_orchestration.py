@@ -25,7 +25,8 @@ from backend.app.models import (
     TemporalPrecision,
 )
 from backend.app.routes.event_anchors import EventAnchor, project_event_anchors
-from backend.app.routes.evidence_relevance import relation_admission_allowed
+from backend.app.routes.episode_relevance import classify_event_anchor_episode
+from backend.app.routes.evidence_relevance import EvidenceRelevance, classify_relation_relevance, relation_admission_allowed
 from backend.app.routes.extractor import evidence_structural_key
 
 
@@ -60,18 +61,56 @@ def _filter_relations_for_query(
     kept: list[AnchorOrderingRelation] = []
     rejected: list[dict[str, object]] = []
     for relation in relations:
+        final = classify_relation_relevance(
+            relation, events_by_id, evidence_by_id, query_contexts, rule=relation.rule,
+        )
         if relation_admission_allowed(
             relation, events_by_id, evidence_by_id, query_contexts, rule=relation.rule,
         ):
             kept.append(relation)
             continue
+        _, episode_detail = classify_event_anchor_episode(
+            relation,
+            events_by_id,
+            evidence_by_id,
+            query_contexts,
+            subject_relevance=final,
+        )
+        evidence_rejected = (
+            final is EvidenceRelevance.OTHER_CAMPAIGN
+            or (
+                relation.rule.value == "SAME_MOVEMENT_EVENT"
+                and final not in {
+                    EvidenceRelevance.DIRECT_SUBJECT,
+                    EvidenceRelevance.DIRECT_CAMPAIGN,
+                    EvidenceRelevance.DIRECT_EVENT,
+                    EvidenceRelevance.SAME_CONFLICT_RELEVANT,
+                }
+            )
+            or (
+                relation.rule.value in {"TEMPORAL_ORDER", "SOURCE_STRUCTURAL_ORDER"}
+                and final not in {
+                    EvidenceRelevance.DIRECT_SUBJECT,
+                    EvidenceRelevance.DIRECT_CAMPAIGN,
+                    EvidenceRelevance.DIRECT_EVENT,
+                    EvidenceRelevance.SAME_CONFLICT_RELEVANT,
+                }
+                and final is not EvidenceRelevance.UNKNOWN
+            )
+        )
         rejected.append({
-            "reason": "CAMPAIGN_RELEVANCE_REJECTED",
+            "reason": (
+                "CAMPAIGN_RELEVANCE_REJECTED"
+                if evidence_rejected
+                else "EPISODE_RELEVANCE_REJECTED"
+            ),
             "rule": relation.rule.value,
             "earlier": relation.earlier,
             "later": relation.later,
             "event_ids": list(relation.event_ids),
             "evidence_refs": list(relation.evidence_refs),
+            "episode_classification": episode_detail.get("episode_classification"),
+            "admission_reason": episode_detail.get("admission_reason"),
         })
     return kept, rejected
 

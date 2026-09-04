@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from backend.app.models import Evidence, HistoricalClaim
 from backend.app.routes.evidence_relevance import (
@@ -13,8 +15,13 @@ from backend.app.routes.evidence_relevance import (
     normalized_terms,
     query_proper_nouns,
     query_terms,
+    relation_supporting_statements,
+    statement_evidence_window,
     _spatial_role_proper_nouns,
 )
+
+if TYPE_CHECKING:
+    from backend.app.models import HistoricalEvent
 
 _NON_PERSON_SUBJECTS = frozenset({
     "synthetic", "test", "evidence", "according", "however", "meanwhile", "source",
@@ -43,6 +50,25 @@ class EpisodeRelevance(str, Enum):
     SAME_SUBJECT_OTHER_EPISODE = "SAME_SUBJECT_OTHER_EPISODE"
     OTHER_CAMPAIGN = "OTHER_CAMPAIGN"
     UNKNOWN = "UNKNOWN"
+
+
+_EPISODE_ROUTE_ADMISSIBLE = frozenset({
+    EpisodeRelevance.DIRECT_QUERY_EPISODE,
+    EpisodeRelevance.SAME_CAMPAIGN_RELEVANT,
+    EpisodeRelevance.UNKNOWN,
+})
+
+
+def episode_route_admission_allowed(episode: EpisodeRelevance) -> bool:
+    return episode in _EPISODE_ROUTE_ADMISSIBLE
+
+
+@dataclass(frozen=True)
+class _MovementEpisodeProbe:
+    source_place: str | None
+    destination_place: str | None
+    statement: str
+    supporting_evidence_ids: tuple[str, ...]
 
 
 def _normalize_subject_name(value: str) -> str:
@@ -120,8 +146,16 @@ def _statement_years(text: str) -> set[int]:
 
 
 def _claim_place_tokens(claim: HistoricalClaim) -> set[str]:
+    return _movement_place_tokens(claim.source_place, claim.destination_place, claim.traversed_place)
+
+
+def _movement_place_tokens(
+    source_place: str | None,
+    destination_place: str | None,
+    traversed_place: str | None = None,
+) -> set[str]:
     tokens: set[str] = set()
-    for value in (claim.source_place, claim.destination_place, claim.traversed_place):
+    for value in (source_place, destination_place, traversed_place):
         if not value:
             continue
         tokens |= normalized_terms(value)
@@ -143,12 +177,20 @@ def _query_episode_anchor_terms(contexts: tuple[str, ...] | None) -> set[str]:
     return {term for term in terms if len(term) >= 4 and term not in _EPISODE_FRAMING}
 
 
-def _episode_anchor_overlap(claim: HistoricalClaim, statement: str, contexts: tuple[str, ...] | None) -> bool:
+def _episode_anchor_overlap_places(
+    statement: str,
+    place_tokens: set[str],
+    contexts: tuple[str, ...] | None,
+) -> bool:
     anchors = _query_episode_anchor_terms(contexts)
     if not anchors:
         return False
-    involved = normalized_terms(statement) | _claim_place_tokens(claim)
+    involved = normalized_terms(statement) | place_tokens
     return bool(involved & anchors)
+
+
+def _episode_anchor_overlap(claim: HistoricalClaim, statement: str, contexts: tuple[str, ...] | None) -> bool:
+    return _episode_anchor_overlap_places(statement, _claim_place_tokens(claim), contexts)
 
 
 def _normalized_subject_overlap(statement: str, contexts: tuple[str, ...] | None) -> bool:
@@ -161,8 +203,9 @@ def _explicit_origin_destination_claim(claim: HistoricalClaim) -> bool:
     return bool(claim.source_place and claim.destination_place)
 
 
-def _explicit_od_episode_compatible(
-    claim: HistoricalClaim,
+def _explicit_od_episode_compatible_places(
+    source_place: str | None,
+    destination_place: str | None,
     statement: str,
     contexts: tuple[str, ...] | None,
 ) -> bool:
@@ -170,8 +213,8 @@ def _explicit_od_episode_compatible(
     anchors = _query_episode_anchor_terms(contexts)
     if not anchors:
         return True
-    source_tokens = normalized_terms(claim.source_place or "")
-    dest_tokens = normalized_terms(claim.destination_place or "")
+    source_tokens = normalized_terms(source_place or "")
+    dest_tokens = normalized_terms(destination_place or "")
     source_overlap = source_tokens & anchors
     dest_overlap = dest_tokens & anchors
     stmt_anchors = normalized_terms(statement) & anchors
@@ -182,8 +225,19 @@ def _explicit_od_episode_compatible(
     return bool(stmt_anchors)
 
 
-def _same_subject_other_episode(
+def _explicit_od_episode_compatible(
     claim: HistoricalClaim,
+    statement: str,
+    contexts: tuple[str, ...] | None,
+) -> bool:
+    return _explicit_od_episode_compatible_places(
+        claim.source_place, claim.destination_place, statement, contexts,
+    )
+
+
+def _same_subject_other_episode_places(
+    source_place: str | None,
+    destination_place: str | None,
     statement: str,
     contexts: tuple[str, ...] | None,
     *,
@@ -197,12 +251,74 @@ def _same_subject_other_episode(
         return False
     if not _CAMPAIGN_OBJECTIVE.search(" ".join(contexts)):
         return False
-    if _episode_anchor_overlap(claim, statement, contexts):
+    place_tokens = _movement_place_tokens(source_place, destination_place)
+    if _episode_anchor_overlap_places(statement, place_tokens, contexts):
         return False
     anchors = _query_episode_anchor_terms(contexts)
     if not anchors:
         return False
     return True
+
+
+def _same_subject_other_episode(
+    claim: HistoricalClaim,
+    statement: str,
+    contexts: tuple[str, ...] | None,
+    *,
+    relevance: EvidenceRelevance,
+) -> bool:
+    return _same_subject_other_episode_places(
+        claim.source_place,
+        claim.destination_place,
+        statement,
+        contexts,
+        relevance=relevance,
+    )
+
+
+_PRIOR_EPISODE_MARKERS = re.compile(
+    r"\b(?:earlier|previous|prior|former)\s+(?:war|campaign|conflict|march|expedition)\b",
+    re.IGNORECASE,
+)
+_CURRENT_EPISODE_MARKERS = re.compile(
+    r"\b(?:current|this|present)\s+(?:war|campaign|conflict|march|expedition)\b",
+    re.IGNORECASE,
+)
+
+
+def _episode_framing_conflict(statement: str, contexts: tuple[str, ...] | None) -> bool:
+    if not contexts or not statement.strip():
+        return False
+    if not _PRIOR_EPISODE_MARKERS.search(statement):
+        return False
+    return any(_CURRENT_EPISODE_MARKERS.search(context or "") for context in contexts)
+
+
+def _episode_rescue_after_explicit_od_mismatch(
+    source_place: str | None,
+    destination_place: str | None,
+    statement: str,
+    chunk: str,
+    contexts: tuple[str, ...] | None,
+) -> bool:
+    if not _normalized_subject_overlap(chunk, contexts):
+        return False
+    if _query_years(contexts) and _statement_years(chunk) and not _time_incompatible(chunk, contexts):
+        return True
+    anchors = _query_episode_anchor_terms(contexts)
+    source_tokens = normalized_terms(source_place or "")
+    if source_tokens & anchors:
+        return True
+    place_tokens = _movement_place_tokens(source_place, destination_place)
+    geo_stmt_anchors = normalized_terms(statement) & anchors
+    if len(geo_stmt_anchors) >= 2:
+        return True
+    if (
+        not _normalized_subject_overlap(statement, contexts)
+        and _episode_anchor_overlap_places(chunk, place_tokens, contexts)
+    ):
+        return True
+    return False
 
 
 def _time_incompatible(statement: str, contexts: tuple[str, ...] | None) -> bool:
@@ -216,67 +332,156 @@ def _time_incompatible(statement: str, contexts: tuple[str, ...] | None) -> bool
     return all(abs(year - query_year) > 2 for year in statement_years)
 
 
-def classify_legacy_claim_episode(
-    claim: HistoricalClaim,
+def _probe_statement_window(
+    probe: _MovementEpisodeProbe,
+    evidence_by_id: dict[str, Evidence],
+) -> str | None:
+    statement = probe.statement.strip()
+    if not statement:
+        return None
+    for ref in probe.supporting_evidence_ids:
+        item = evidence_by_id.get(ref)
+        if item is None:
+            continue
+        sentences = _split_sentences(_evidence_text(item))
+        for index, sentence in enumerate(sentences):
+            if statement in sentence or sentence in statement:
+                return bounded_window_text(sentences, index)
+    return None
+
+
+def _classify_movement_episode(
+    probe: _MovementEpisodeProbe,
     evidence_by_id: dict[str, Evidence],
     contexts: tuple[str, ...] | None,
+    *,
+    subject_relevance: EvidenceRelevance | None = None,
 ) -> tuple[EpisodeRelevance, dict[str, object]]:
-    statement = (claim.textual_basis or claim.text or "").strip()
-    window = _claim_statement_window(claim, evidence_by_id)
+    statement = probe.statement.strip()
+    window = _probe_statement_window(probe, evidence_by_id)
     chunk_parts = [statement]
-    for ref in claim.supporting_evidence_ids:
+    for ref in probe.supporting_evidence_ids:
         item = evidence_by_id.get(ref)
         if item is not None:
             chunk_parts.append(_evidence_text(item))
     chunk = " ".join(chunk_parts)
     if _other_campaign_subject_conflict(statement or chunk, contexts):
         tag = EvidenceRelevance.OTHER_CAMPAIGN
+    elif subject_relevance is not None:
+        tag = subject_relevance
     else:
         tag = classify_evidence_relevance(statement or chunk, contexts, window_text=window)
         if tag is EvidenceRelevance.OTHER_CAMPAIGN:
             tag = EvidenceRelevance.UNKNOWN
+    explicit_od = bool(probe.source_place and probe.destination_place)
+    place_tokens = _movement_place_tokens(probe.source_place, probe.destination_place)
     if tag is EvidenceRelevance.OTHER_CAMPAIGN:
         episode = EpisodeRelevance.OTHER_CAMPAIGN
+    elif _episode_framing_conflict(statement, contexts):
+        episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
     elif tag in {
         EvidenceRelevance.DIRECT_SUBJECT,
         EvidenceRelevance.DIRECT_CAMPAIGN,
         EvidenceRelevance.DIRECT_EVENT,
     }:
-        explicit_od = _explicit_origin_destination_claim(claim)
         if (
             tag is EvidenceRelevance.DIRECT_SUBJECT
             and explicit_od
-            and not _explicit_od_episode_compatible(claim, statement or chunk, contexts)
+            and not _explicit_od_episode_compatible_places(
+                probe.source_place, probe.destination_place, statement, contexts,
+            )
         ):
-            episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
+            if _episode_rescue_after_explicit_od_mismatch(
+                probe.source_place,
+                probe.destination_place,
+                statement,
+                chunk,
+                contexts,
+            ):
+                episode = EpisodeRelevance.DIRECT_QUERY_EPISODE
+            else:
+                episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
         else:
             episode = EpisodeRelevance.DIRECT_QUERY_EPISODE
     elif tag is EvidenceRelevance.SAME_CONFLICT_RELEVANT:
         episode = EpisodeRelevance.SAME_CAMPAIGN_RELEVANT
-    elif _normalized_subject_overlap(statement or chunk, contexts) and _episode_anchor_overlap(
-        claim, statement or chunk, contexts,
+    elif _normalized_subject_overlap(statement or chunk, contexts) and _episode_anchor_overlap_places(
+        statement or chunk, place_tokens, contexts,
     ):
         episode = EpisodeRelevance.DIRECT_QUERY_EPISODE
-    elif _same_subject_other_episode(claim, statement or chunk, contexts, relevance=tag):
+    elif _same_subject_other_episode_places(
+        probe.source_place, probe.destination_place, statement or chunk, contexts, relevance=tag,
+    ):
         episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
     elif _time_incompatible(statement or chunk, contexts):
         episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
     else:
         episode = EpisodeRelevance.UNKNOWN
-    admitted = episode in {
-        EpisodeRelevance.DIRECT_QUERY_EPISODE,
-        EpisodeRelevance.SAME_CAMPAIGN_RELEVANT,
-        EpisodeRelevance.UNKNOWN,
-    }
+    admitted = episode_route_admission_allowed(episode)
     return episode, {
-        "origin": claim.source_place,
-        "destination": claim.destination_place,
+        "origin": probe.source_place,
+        "destination": probe.destination_place,
         "source_statement": statement[:240] if statement else None,
         "subject_relevance": tag.value,
         "episode_classification": episode.value,
         "admitted": admitted,
         "admission_reason": "EPISODE_RELEVANT" if admitted else f"REJECT_{episode.value}",
     }
+
+
+def classify_event_anchor_episode(
+    relation,
+    events_by_id: dict[str, HistoricalEvent],
+    evidence_by_id: dict[str, Evidence],
+    contexts: tuple[str, ...] | None,
+    *,
+    subject_relevance: EvidenceRelevance,
+) -> tuple[EpisodeRelevance, dict[str, object]]:
+    statements: list[str] = []
+    for event_id in relation.event_ids:
+        event = events_by_id.get(event_id)
+        if event is None:
+            continue
+        statements.extend(relation_supporting_statements(event))
+    statement = next((item for item in statements if item.strip()), "")
+    if not statement:
+        for event_id in relation.event_ids:
+            event = events_by_id.get(event_id)
+            if event is not None and event.summary:
+                statement = event.summary
+                break
+    refs: list[str] = list(relation.evidence_refs)
+    for event_id in relation.event_ids:
+        event = events_by_id.get(event_id)
+        if event is not None:
+            refs.extend(event.evidence_refs)
+    probe = _MovementEpisodeProbe(
+        source_place=relation.earlier,
+        destination_place=relation.later,
+        statement=statement,
+        supporting_evidence_ids=tuple(dict.fromkeys(refs)),
+    )
+    episode, detail = _classify_movement_episode(
+        probe, evidence_by_id, contexts, subject_relevance=subject_relevance,
+    )
+    detail["earlier"] = relation.earlier
+    detail["later"] = relation.later
+    detail["event_ids"] = list(relation.event_ids)
+    return episode, detail
+
+
+def classify_legacy_claim_episode(
+    claim: HistoricalClaim,
+    evidence_by_id: dict[str, Evidence],
+    contexts: tuple[str, ...] | None,
+) -> tuple[EpisodeRelevance, dict[str, object]]:
+    probe = _MovementEpisodeProbe(
+        source_place=claim.source_place,
+        destination_place=claim.destination_place,
+        statement=(claim.textual_basis or claim.text or "").strip(),
+        supporting_evidence_ids=tuple(claim.supporting_evidence_ids),
+    )
+    return _classify_movement_episode(probe, evidence_by_id, contexts)
 
 
 def filter_legacy_movement_claims(
