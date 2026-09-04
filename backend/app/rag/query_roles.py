@@ -27,7 +27,7 @@ _GENERIC_TERMS = frozenset({
     "action", "actions", "affairs", "campaign", "campaigns", "event", "events",
     "history", "historical", "military", "operation", "operations",
 })
-_LOCATION_PREP = frozenset({"in", "at", "near", "from", "into"})
+_LOCATION_PREP = frozenset({"in", "at", "near", "from", "into", "through"})
 _LOCATION_OF_HEADS = frozenset({"battle", "siege", "war"})
 _LOCATION_ALIASES = {
     "spain": frozenset({"spain", "spanish", "hispania"}),
@@ -117,6 +117,30 @@ def _generic_movement_expansions(norms: list[str], person_sequence: tuple[str, .
     for family in _GENERIC_EXPANSION_FAMILIES:
         expanded.update(family)
     return frozenset(expanded - action_terms)
+
+
+_EPISODE_CONTEXT_SCAFFOLD = _STOP_WORDS | _QUERY_SCAFFOLD | frozenset({
+    "s", "his", "her", "their", "from", "into", "through", "across", "until", "after",
+    "during", "leading", "against", "over", "near", "between", "around", "upon",
+})
+
+
+def route_movement_query(norms: frozenset[str] | list[str], roles: QueryRoleAnalysis) -> bool:
+    norm_set = set(norms)
+    return bool(norm_set & _GENERIC_MOVEMENT_TRIGGERS) or bool(roles.action_terms & _MOVEMENT_TERMS)
+
+
+def episode_context_terms(roles: QueryRoleAnalysis) -> frozenset[str]:
+    """Episode/location anchors for conjunctive route scoring."""
+    context = frozenset(
+        term for term in roles.context_terms
+        if term not in _EPISODE_CONTEXT_SCAFFOLD and term not in _MOVEMENT_TERMS
+    )
+    return roles.location_match_terms | context
+
+
+def movement_scoring_terms(roles: QueryRoleAnalysis) -> frozenset[str]:
+    return (roles.action_terms & _MOVEMENT_TERMS) | roles.movement_inflection_terms | roles.expanded_action_terms
 
 
 def analyze_query(query: str) -> QueryRoleAnalysis:

@@ -4,7 +4,13 @@ from collections import defaultdict
 from dataclasses import dataclass
 import math, re
 from typing import Any
-from backend.app.rag.query_roles import analyze_query, normalized_tokens
+from backend.app.rag.query_roles import (
+    analyze_query,
+    episode_context_terms,
+    movement_scoring_terms,
+    normalized_tokens,
+    route_movement_query,
+)
 
 _SENTENCE = re.compile(r"[^.!?\n]+(?:[.!?]+|$)", re.MULTILINE)
 _GENERIC_TERM_WEIGHT = 0.25
@@ -62,14 +68,19 @@ class LexicalEvidenceIndex:
     def query(self, query: str, top_k: int, filters: dict[str,str]|None=None)->list[LexicalCandidate]:
         self.ensure_built()
         roles = analyze_query(query)
-        scores=defaultdict(float); total=len(self._passages)
+        query_norms = normalized_tokens(query)
+        mov_terms = movement_scoring_terms(roles)
+        scores=defaultdict(float); movement_scores=defaultdict(float); total=len(self._passages)
         def idf(term: str) -> float:
             post=self._postings.get(term,{})
             return math.log(1+(total+.5)/(len(post)+.5)) if post else 0.0
         core = roles.person_terms | roles.location_match_terms | roles.action_terms | roles.movement_inflection_terms
         for term in core:
             weight=idf(term)
-            for ident in self._postings.get(term, {}): scores[ident]+=weight
+            for ident in self._postings.get(term, {}):
+                scores[ident]+=weight
+                if term in mov_terms:
+                    movement_scores[ident]+=weight
         for term in roles.generic_terms:
             weight=_GENERIC_TERM_WEIGHT * idf(term)
             for ident in self._postings.get(term, {}): scores[ident]+=weight
@@ -81,6 +92,16 @@ class LexicalEvidenceIndex:
                 for ident in self._postings.get(term, {}):
                     if ident in person_ids:
                         scores[ident]+=weight
+                        movement_scores[ident]+=weight
+        if route_movement_query(query_norms, roles):
+            episode_terms = episode_context_terms(roles)
+            if episode_terms:
+                for ident, mov in movement_scores.items():
+                    if mov <= 0:
+                        continue
+                    overlap = [term for term in episode_terms if ident in self._postings.get(term, {})]
+                    if overlap:
+                        scores[ident] += sum(idf(term) for term in overlap)
         out=[]
         for ident,score in scores.items():
             source_id,start,end,index=self._passages[ident]
