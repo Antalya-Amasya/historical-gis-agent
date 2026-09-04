@@ -103,29 +103,11 @@ def _cumulative_event_query_contexts(
 
 
 def _route_admission_query_contexts(state: AgentState) -> tuple[str, ...] | None:
-    """Use only the user's request and evidence-producing searches for route admission."""
-    parts: list[str] = []
-    seen: set[str] = set()
-
-    def _append(value: str) -> None:
-        normalized = value.strip()
-        if not normalized or normalized in seen:
-            return
-        seen.add(normalized)
-        parts.append(normalized)
-
-    if state.user_query:
-        _append(state.user_query)
-    for entry in state.tool_history:
-        if entry.tool_name != "search_historical_evidence" or not entry.success:
-            continue
-        prior_query = entry.arguments.get("query")
-        if not isinstance(prior_query, str):
-            continue
-        if _retrieval_evidence_count(entry.result_summary) <= 0:
-            continue
-        _append(prior_query)
-    return tuple(parts) if parts else None
+    """Canonical user request only; retrieval subqueries must not widen episode admission."""
+    if not state.user_query:
+        return None
+    normalized = state.user_query.strip()
+    return (normalized,) if normalized else None
 
 
 class AgentToolRegistry:
