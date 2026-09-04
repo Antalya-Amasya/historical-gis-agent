@@ -38,7 +38,15 @@ _ACTION_GROUPS = (
     frozenset({"assassination", "assassinate", "assassinated", "murder", "murdered", "slain", "killed", "stabbed"}),
     frozenset({"battle", "battled", "fought", "fight", "defeated", "defeat", "vanquished", "victory", "victorious"}),
 )
-_ACTION_UNION = frozenset().union(*_ACTION_GROUPS)
+_MOVEMENT_TERMS = frozenset({
+    "move", "moved", "moving", "march", "marched", "marching", "advance", "advanced", "advancing",
+    "proceed", "proceeded", "proceeding", "pass", "passed", "passing", "cross", "crossed", "crossing",
+    "sail", "sailed", "sailing", "depart", "departed", "departing", "leave", "left", "leaving",
+    "reach", "reached", "reaching", "arrive", "arrived", "arriving", "enter", "entered", "entering",
+    "land", "landed", "landing", "flee", "fled", "fleeing", "fly", "come", "came", "coming",
+    "go", "went", "going", "travel", "travelled", "traveled", "travelling", "traveling", "journey", "route",
+})
+_ACTION_UNION = frozenset().union(*_ACTION_GROUPS) | _MOVEMENT_TERMS
 # Closed praenomen set used only to reject a different named person who shares a surname.
 _PRAENOMINA = frozenset({
     "lucius", "marcus", "gaius", "caius", "quintus", "publius", "gnaeus",
