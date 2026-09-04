@@ -6,6 +6,7 @@ weak topical remainder.  No NER, LLM, or query-specific branches.
 """
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -141,6 +142,32 @@ def episode_context_terms(roles: QueryRoleAnalysis) -> frozenset[str]:
 
 def movement_scoring_terms(roles: QueryRoleAnalysis) -> frozenset[str]:
     return (roles.action_terms & _MOVEMENT_TERMS) | roles.movement_inflection_terms | roles.expanded_action_terms
+
+
+_SUBJECT_CONTEXT_SKIP = frozenset({"book", "chapter", "contents", "part", "preserved", "section", "volume"})
+_KNOWN_NARRATIVE_PERSONS = frozenset({"alexander", "brutus", "caesar", "cato", "cicero", "hercules", "lucullus", "mithridates", "pompey", "theseus", "xenophon"})
+
+def _biography_subject_label(label: str) -> bool:
+    label = label.strip()
+    head = label.split()[0].casefold().rstrip("'s") if label else ""
+    return len(label) >= 3 and label == label.upper() and head not in _SUBJECT_CONTEXT_SKIP and not re.fullmatch(r"[ivxlc]+", label, re.I)
+
+def extract_subject_context_terms(metadata: dict) -> frozenset[str]:
+    """Local biography-subject tokens from navigation_path / heading only."""
+    terms: set[str] = set()
+    nav_raw = metadata.get("navigation_path_json") or metadata.get("navigation_path")
+    if isinstance(nav_raw, str):
+        try: nav_raw = json.loads(nav_raw)
+        except json.JSONDecodeError: nav_raw = []
+    for item in nav_raw or []:
+        label = str(item).strip()
+        if len(label.split()) == 1 and _biography_subject_label(label): terms.update(normalized_tokens(label))
+    heading = str(metadata.get("heading") or "").strip()
+    if heading and _biography_subject_label(heading): terms.update(normalized_tokens(heading))
+    return frozenset(terms)
+
+def body_conflicting_person(query_person: frozenset[str], body_tokens: frozenset[str]) -> bool:
+    return bool((body_tokens & _KNOWN_NARRATIVE_PERSONS) - query_person)
 
 
 def analyze_query(query: str) -> QueryRoleAnalysis:
