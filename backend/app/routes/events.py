@@ -123,6 +123,11 @@ class EvidenceGroundedHistoricalEventExtractor:
         r"\b(?:the\s+)?(?:army|armies|senate|assembly|people|romans|carthaginians|rebels|consul|tribune|leader|reformer|commander|king|queen)\b",
         re.IGNORECASE,
     )
+    _MOVEMENT_CLAUSE_SPLIT = re.compile(r"[,;]|\bbut\b|\band\b", re.IGNORECASE)
+    _NEGATED_AUXILIARIES = frozenset(
+        {"did", "does", "do", "had", "has", "have", "was", "were", "is", "are", "could", "would", "should", "might", "may"}
+    )
+    _NEGATION_WINDOW = 3
     _QUERY_STOP = frozenset("a an and at by for from how in of on or the to what which who why with military actions battle history event political province".split())
     _ACTION_EQUIVALENTS = {
         "assassination": "violent_death", "assassinated": "violent_death", "murder": "violent_death",
@@ -170,14 +175,55 @@ class EvidenceGroundedHistoricalEventExtractor:
     def _sentences(text: str) -> list[str]:
         return [part.strip() for part in re.split(r"(?<=[.!?;])\s+|\n+", text) if part.strip()]
 
+    @classmethod
+    def _movement_clauses(cls, sentence: str) -> list[str]:
+        return [part.strip() for part in cls._MOVEMENT_CLAUSE_SPLIT.split(sentence) if part.strip()]
+
+    @classmethod
+    def _negation_governs_movement_predicate(cls, clause: str, predicate_match: re.Match[str]) -> bool:
+        prefix = clause[:predicate_match.start()]
+        tokens = [match.group(0).casefold() for match in re.finditer(r"\b[\w'\u2019]+\b", prefix)]
+        if not tokens:
+            return False
+        for index in range(len(tokens) - 1, max(-1, len(tokens) - 7), -1):
+            token = tokens[index]
+            gap = len(tokens) - index - 1
+            if gap > cls._NEGATION_WINDOW:
+                continue
+            if token == "never":
+                return True
+            if token == "not":
+                if gap == 0 or (index > 0 and tokens[index - 1] in cls._NEGATED_AUXILIARIES):
+                    return True
+            if token == "longer" and index > 0 and tokens[index - 1] == "no":
+                return True
+            if token.endswith("n't"):
+                return True
+        return False
+
+    @classmethod
+    def _clause_has_positive_movement(cls, clause: str) -> bool:
+        if not _has_movement_cue(clause) and not cls._MOVEMENT_VERBS.search(clause):
+            return False
+        matches = list(cls._MOVEMENT_VERBS.finditer(clause))
+        if matches:
+            return any(not cls._negation_governs_movement_predicate(clause, match) for match in matches)
+        return _has_movement_cue(clause)
+
+    @classmethod
+    def _has_positive_movement_assertion(cls, sentence: str) -> bool:
+        return any(cls._clause_has_positive_movement(clause) for clause in cls._movement_clauses(sentence))
+
     def _event_type(self, sentence: str) -> HistoricalEventType:
         # A retrospective reference can name a battle or death while the main
         # assertion describes another event.  Classify the asserted clause.
         lower = self._RETROSPECTIVE.sub("", sentence).lower()
         for event_type, pattern in self._TYPE_PATTERNS:
             if re.search(pattern, lower):
+                if event_type is HistoricalEventType.MOVEMENT and not self._has_positive_movement_assertion(sentence):
+                    continue
                 return event_type
-        if _has_movement_cue(sentence):
+        if _has_movement_cue(sentence) and self._has_positive_movement_assertion(sentence):
             return HistoricalEventType.MOVEMENT
         return HistoricalEventType.UNKNOWN
 
