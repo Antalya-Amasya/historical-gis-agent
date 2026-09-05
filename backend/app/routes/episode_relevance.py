@@ -19,6 +19,7 @@ from backend.app.routes.evidence_relevance import (
     statement_evidence_window,
     _spatial_role_proper_nouns,
 )
+from backend.app.routes.temporal import EvidenceTemporalResolver
 
 if TYPE_CHECKING:
     from backend.app.models import HistoricalEvent
@@ -39,7 +40,6 @@ _EPISODE_ADMISSIBLE = frozenset({
     EvidenceRelevance.DIRECT_EVENT,
     EvidenceRelevance.SAME_CONFLICT_RELEVANT,
 })
-_BCE_YEAR = re.compile(r"\b(\d{1,4})\s*(?:bce|bc)\b", re.IGNORECASE)
 _CAMPAIGN_OBJECTIVE = re.compile(
     r"\b(?:march|route|campaign|crossing|flight|escape|retreat|advance|movement|"
     r"arrival|defeat|battle|war|siege|expedition)\b",
@@ -64,6 +64,52 @@ _EPISODE_ROUTE_ADMISSIBLE = frozenset({
 
 def episode_route_admission_allowed(episode: EpisodeRelevance) -> bool:
     return episode in _EPISODE_ROUTE_ADMISSIBLE
+
+
+_TEMPORAL_RESOLVER = EvidenceTemporalResolver()
+
+
+def _explicit_temporal_intervals(text: str) -> list[tuple[int, int]]:
+    readings, codes = _TEMPORAL_RESOLVER.resolve(text, "probe")
+    if not readings or "TEMPORAL_CONFLICT" in codes:
+        return []
+    intervals: list[tuple[int, int]] = []
+    for item in readings:
+        if item.normalized_start is None:
+            continue
+        start = int(item.normalized_start)
+        end = int(item.normalized_end) if item.normalized_end is not None else start
+        if start > end:
+            start, end = end, start
+        intervals.append((start, end))
+    return intervals
+
+
+def _intervals_overlap(left: tuple[int, int], right: tuple[int, int]) -> bool:
+    return not (left[1] < right[0] or right[1] < left[0])
+
+
+def _explicit_temporal_contradiction(
+    statement: str,
+    contexts: tuple[str, ...] | None,
+    window: str | None = None,
+) -> bool:
+    if not contexts:
+        return False
+    query_intervals: list[tuple[int, int]] = []
+    for context in contexts:
+        query_intervals.extend(_explicit_temporal_intervals(context or ""))
+    if not query_intervals:
+        return False
+    local = (window or statement).strip()
+    statement_intervals = _explicit_temporal_intervals(local) or _explicit_temporal_intervals(statement)
+    if not statement_intervals:
+        return False
+    return not any(
+        _intervals_overlap(query, stmt)
+        for query in query_intervals
+        for stmt in statement_intervals
+    )
 
 
 @dataclass(frozen=True)
@@ -132,20 +178,6 @@ def _claim_statement_window(claim: HistoricalClaim, evidence_by_id: dict[str, Ev
             if statement in sentence or sentence in statement:
                 return bounded_window_text(sentences, index)
     return None
-
-
-def _query_years(contexts: tuple[str, ...] | None) -> set[int]:
-    years: set[int] = set()
-    if not contexts:
-        return years
-    for context in contexts:
-        for match in _BCE_YEAR.finditer(context or ""):
-            years.add(int(match.group(1)))
-    return years
-
-
-def _statement_years(text: str) -> set[int]:
-    return {int(match.group(1)) for match in _BCE_YEAR.finditer(text)}
 
 
 def _claim_place_tokens(claim: HistoricalClaim) -> set[str]:
@@ -364,7 +396,13 @@ def _episode_rescue_after_explicit_od_mismatch(
     context_text = (window or statement).strip()
     if not local or not context_text or not _episode_subject_overlap(context_text, contexts):
         return False
-    if _query_years(contexts) and _statement_years(context_text) and not _time_incompatible(context_text, contexts):
+    query_intervals: list[tuple[int, int]] = []
+    for context in contexts or ():
+        query_intervals.extend(_explicit_temporal_intervals(context or ""))
+    statement_intervals = _explicit_temporal_intervals(context_text)
+    if query_intervals and statement_intervals and not _explicit_temporal_contradiction(
+        context_text, contexts, window,
+    ):
         return True
     anchors = _query_episode_anchor_terms(contexts)
     context_episode_hits = (
@@ -421,6 +459,8 @@ def _strong_direct_episode_signal(
     *,
     subject_relevance: EvidenceRelevance | None = None,
 ) -> bool:
+    if _explicit_temporal_contradiction(statement, contexts, window):
+        return False
     explicit_od = bool(probe.source_place and probe.destination_place)
     if explicit_od and _explicit_od_episode_compatible_places(
         probe.source_place, probe.destination_place, statement, contexts,
@@ -442,17 +482,6 @@ def _strong_direct_episode_signal(
         return _episode_subject_overlap(statement.strip(), contexts)
     place_tokens = _movement_place_tokens(probe.source_place, probe.destination_place)
     return len(_episode_place_anchor_terms(statement.strip(), place_tokens, contexts)) >= 2
-
-
-def _time_incompatible(statement: str, contexts: tuple[str, ...] | None) -> bool:
-    query_years = _query_years(contexts)
-    if len(query_years) != 1:
-        return False
-    statement_years = _statement_years(statement)
-    if not statement_years:
-        return False
-    (query_year,) = tuple(query_years)
-    return all(abs(year - query_year) > 2 for year in statement_years)
 
 
 def _probe_statement_window(
@@ -499,8 +528,11 @@ def _classify_movement_episode(
             tag = EvidenceRelevance.UNKNOWN
     explicit_od = bool(probe.source_place and probe.destination_place)
     place_tokens = _movement_place_tokens(probe.source_place, probe.destination_place)
+    temporal_conflict = _explicit_temporal_contradiction(local, contexts, window)
     if tag is EvidenceRelevance.OTHER_CAMPAIGN:
         episode = EpisodeRelevance.OTHER_CAMPAIGN
+    elif temporal_conflict:
+        episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
     elif _episode_framing_conflict(statement, contexts):
         episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
     elif tag in {
@@ -525,8 +557,6 @@ def _classify_movement_episode(
     elif _same_subject_other_episode_places(
         probe.source_place, probe.destination_place, local, contexts, relevance=tag,
     ):
-        episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
-    elif _time_incompatible(local, contexts):
         episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
     else:
         episode = EpisodeRelevance.UNKNOWN

@@ -69,10 +69,10 @@ class EvidenceTemporalResolver:
         re.compile(r"公元前\s*(?P<first>\d{1,4})\s*年?\s*(?:至|到|[-–—])\s*公元前?\s*(?P<second>\d{1,4})\s*年", re.I),
     )
     _YEAR_PATTERNS = (
-        re.compile(r"\b(?:B\.\s*C\.\s*|BC\s*|BCE\s*)(?P<year>\d{1,4})\b", re.I),
+        re.compile(r"\b(?P<era>BCE|BC|B\.\s*C\.)\s*(?P<year>\d{1,4})\b", re.I),
         re.compile(r"\b(?P<year>\d{1,4})\s*(?P<era>BCE|BC)\b", re.I),
         re.compile(r"\b(?P<year>\d{1,4})\s*B\.\s*C\.", re.I),
-        re.compile(r"\b(?:A\.\s*D\.\s*|AD\s*|CE\s*)(?P<year>\d{1,4})\b", re.I),
+        re.compile(r"\b(?P<era>AD|CE|A\.\s*D\.)\s*(?P<year>\d{1,4})\b", re.I),
         re.compile(r"\b(?P<year>\d{1,4})\s*(?P<era>CE|AD)\b", re.I),
         re.compile(r"\b(?P<year>\d{1,4})\s*A\.\s*D\.", re.I),
         re.compile(r"公元前\s*(?P<year>\d{1,4})\s*年", re.I),
@@ -104,7 +104,13 @@ class EvidenceTemporalResolver:
         # The patterns require an era marker; zero is never a valid historical year.
         if number == 0:
             raise ValueError("year zero is not valid in the historical-year convention")
-        bce = "公元前" in raw or (era or "").upper() in {"BC", "BCE"} or bool(re.search(r"\bB\.\s*C\.", raw, re.I))
+        era_token = re.sub(r"\s+", "", (era or "").upper())
+        bce = (
+            "公元前" in raw
+            or era_token in {"BC", "BCE"}
+            or bool(re.search(r"B\.\s*C\.", era or "", re.I))
+            or bool(re.search(r"\bB\.\s*C\.", raw, re.I))
+        )
         return -number if bce else number
 
     @staticmethod
