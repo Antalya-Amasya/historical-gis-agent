@@ -278,6 +278,37 @@ def _weakly_connected_components(usable: dict[tuple[str, str], AnchorOrderingRel
     return sorted(groups.values(), key=lambda nodes: sorted(nodes))
 
 
+def _anchors_for_path_place(
+    place_name: str,
+    path_relations: list[AnchorOrderingRelation],
+    places_by_name: dict[str, list[EventAnchor]],
+) -> list[EventAnchor]:
+    relevant_event_ids = {
+        event_id
+        for relation in path_relations
+        if place_name in (relation.earlier, relation.later)
+        for event_id in relation.event_ids
+    }
+    return [
+        anchor for anchor in places_by_name.get(place_name, [])
+        if anchor.event_id in relevant_event_ids
+    ]
+
+
+def _path_place_coordinates_consistent(
+    path: list[str],
+    path_relations: list[AnchorOrderingRelation],
+    places_by_name: dict[str, list[EventAnchor]],
+) -> bool:
+    for place_name in path:
+        anchors = _anchors_for_path_place(place_name, path_relations, places_by_name)
+        if not anchors:
+            return False
+        if len({(anchor.latitude, anchor.longitude) for anchor in anchors}) > 1:
+            return False
+    return True
+
+
 def _can_chain_relations(left: AnchorOrderingRelation, right: AnchorOrderingRelation) -> bool:
     """Allow adjacent chaining only when the junction shares an event occurrence."""
     if left.later != right.earlier:
@@ -449,9 +480,6 @@ class EventAnchorRouteBuilder:
         places: dict[str, list[EventAnchor]] = {}
         for anchor in anchors:
             places.setdefault(anchor.canonical_name, []).append(anchor)
-        if any(len({(anchor.latitude, anchor.longitude) for anchor in group}) > 1 for group in places.values()):
-            diagnostics["reason_codes"] = ["PLACE_RESOLUTION_FAILED"]
-            return EventRouteOutcome(None, (), diagnostics)
         diagnostics["distinct_place_count"] = len(places)
         if len(places) < 2:
             diagnostics["reason_codes"] = ["INSUFFICIENT_PLACES"]
@@ -648,6 +676,8 @@ class EventAnchorRouteBuilder:
         component_models: list[HistoricalRouteComponent] = []
         for component_number, (path, edges) in enumerate(assembly.components, start=1):
             component_relations = [assembly.usable[edge] for edge in edges]
+            if not _path_place_coordinates_consistent(list(path), component_relations, places):
+                continue
             retained.extend(component_relations)
             component_claim_ids: list[str] = []
             for relation in component_relations:
@@ -785,7 +815,7 @@ class EventAnchorRouteBuilder:
             relation_evidence[relation.later].update(relation.evidence_refs)
         points: list[HistoricalRoutePoint] = []
         for position, place_name in enumerate(chain, start=1):
-            group = places[place_name]
+            group = _anchors_for_path_place(place_name, path_relations, places)
             anchor = group[0]
             refs = sorted({ref for item in group for ref in item.evidence_refs} | relation_evidence.get(place_name, set()))
             source_events = [events_by_id[item.event_id] for item in group if item.event_id in events_by_id]
