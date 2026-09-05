@@ -124,6 +124,7 @@ class EvidenceGroundedHistoricalEventExtractor:
         re.IGNORECASE,
     )
     _MOVEMENT_CLAUSE_SPLIT = re.compile(r"[,;]|\bbut\b|\band\b", re.IGNORECASE)
+    _POLARITY_CLAUSE_SPLIT = re.compile(r"[,;]|\bbut\b", re.IGNORECASE)
     _NEGATED_AUXILIARIES = frozenset(
         {"did", "does", "do", "had", "has", "have", "was", "were", "is", "are", "could", "would", "should", "might", "may"}
     )
@@ -182,6 +183,11 @@ class EvidenceGroundedHistoricalEventExtractor:
     @classmethod
     def _negation_governs_movement_predicate(cls, clause: str, predicate_match: re.Match[str]) -> bool:
         prefix = clause[:predicate_match.start()]
+        last_boundary = None
+        for match in re.finditer(r"\b(?:and|but)\b", prefix, re.IGNORECASE):
+            last_boundary = match
+        if last_boundary is not None:
+            prefix = prefix[last_boundary.end():]
         tokens = [match.group(0).casefold() for match in re.finditer(r"\b[\w'\u2019]+\b", prefix)]
         if not tokens:
             return False
@@ -236,6 +242,154 @@ class EvidenceGroundedHistoricalEventExtractor:
         return max(sentence.rfind(",", 0, position), sentence.rfind(";", 0, position)) + 1
 
     @classmethod
+    def _movement_clause_boundaries(cls, sentence: str, *, split: re.Pattern[str]) -> list[tuple[int, int]]:
+        boundaries: list[tuple[int, int]] = []
+        start = 0
+        for match in split.finditer(sentence):
+            end = match.start()
+            if sentence[start:end].strip():
+                boundaries.append((start, end))
+            start = match.end()
+        if sentence[start:].strip():
+            boundaries.append((start, len(sentence)))
+        return boundaries or [(0, len(sentence))]
+
+    @classmethod
+    def _local_clause(cls, sentence: str, position: int) -> tuple[str, int]:
+        for start, end in cls._movement_clause_boundaries(sentence, split=cls._POLARITY_CLAUSE_SPLIT):
+            if start <= position < end:
+                return sentence[start:end], start
+        return sentence, 0
+
+    @classmethod
+    def _negated_destination_marker(cls, clause: str, marker_start: int, role_token: str) -> bool:
+        if role_token not in {"to", "into"}:
+            return False
+        return bool(re.search(r"\bnot\s+(?:to|into)\s*$", clause[:marker_start], re.IGNORECASE))
+
+    @classmethod
+    def _governing_movement_match(cls, clause: str, marker_start: int) -> re.Match[str] | None:
+        prefix = clause[:marker_start]
+        matches = list(cls._MOVEMENT_VERBS.finditer(prefix))
+        if matches:
+            return matches[-1]
+        governed = [match for match in cls._MOVEMENT_GOVERNED_FROM.finditer(clause) if match.start() < marker_start]
+        return governed[-1] if governed else None
+
+    @classmethod
+    def _governs_movement_endpoint_clause_local(
+        cls, clause: str, marker_start: int, place_end: int, role_token: str,
+    ) -> bool:
+        prefix = clause[:marker_start]
+        local = clause[:marker_start]
+        governed = clause[:marker_start + len(role_token)]
+        if role_token in {"to", "into"}:
+            if re.search(r"\baccording\s+$", prefix, re.IGNORECASE):
+                return False
+            if cls._NON_MOVEMENT_TO_CONTEXT.search(clause[max(0, marker_start - 60):marker_start]):
+                return False
+            if cls._ATTRIBUTIVE_AFTER_PLACE.match(clause[place_end:]):
+                return False
+            return bool(cls._MOVEMENT_TO_PREFIX.search(governed) or cls._MOVEMENT_TO_PREFIX.search(prefix[-80:]))
+        if role_token == "from":
+            from_window = clause[max(0, marker_start - 60):marker_start + len(role_token)]
+            if cls._NON_SPATIAL_FROM.search(from_window):
+                return False
+            if cls._DISTANCE_FROM.search(from_window):
+                return False
+            if cls._REFERENCE_FROM.search(from_window):
+                return False
+            if cls._TROOP_PROVENANCE_FROM.search(from_window):
+                return False
+            if cls._MOVEMENT_FROM_PREFIX.search(governed) or cls._MOVEMENT_FROM_PREFIX.search(local):
+                return True
+            mediated_clause = clause[:place_end]
+            if cls._MEDIATED_FROM_PREFIX.search(mediated_clause) and cls._MOVEMENT_GOVERNED_FROM.search(mediated_clause):
+                return True
+            return not local.strip() and bool(cls._MOVEMENT_VERBS.search(clause[place_end:]))
+        return True
+
+    @classmethod
+    def _positive_movement_governs_endpoint(
+        cls, sentence: str, marker_start: int, place_end: int, role_token: str,
+    ) -> bool:
+        clause, clause_start = cls._local_clause(sentence, marker_start)
+        rel_marker = marker_start - clause_start
+        rel_place_end = place_end - clause_start
+        if cls._negated_destination_marker(clause, rel_marker, role_token):
+            return False
+        governed = (
+            cls._governs_movement_endpoint_clause_local(clause, rel_marker, rel_place_end, role_token)
+            or cls._governs_movement_endpoint(sentence, marker_start, place_end, role_token)
+        )
+        if not governed:
+            return False
+        governing = cls._governing_movement_match(clause, rel_marker)
+        if governing is None:
+            prefix = sentence[clause_start:marker_start]
+            matches = list(cls._MOVEMENT_VERBS.finditer(prefix))
+            governing = matches[-1] if matches else None
+        if governing is None:
+            tail = cls._MOVEMENT_VERBS.search(sentence[place_end:])
+            if tail is not None:
+                gov_abs = place_end + tail.start()
+                gov_clause, gov_clause_start = cls._local_clause(sentence, gov_abs)
+                gov_match = next(
+                    (
+                        match for match in cls._MOVEMENT_VERBS.finditer(gov_clause)
+                        if gov_clause_start + match.start() == gov_abs
+                    ),
+                    None,
+                )
+                if gov_match is not None:
+                    return not cls._negation_governs_movement_predicate(gov_clause, gov_match)
+            return False
+        gov_abs = clause_start + governing.start()
+        gov_clause, gov_clause_start = cls._local_clause(sentence, gov_abs)
+        gov_match = next(
+            (
+                match for match in cls._MOVEMENT_VERBS.finditer(gov_clause)
+                if gov_clause_start + match.start() == gov_abs
+            ),
+            None,
+        )
+        if gov_match is None:
+            return False
+        return not cls._negation_governs_movement_predicate(gov_clause, gov_match)
+
+    @staticmethod
+    def _movement_role_marker(
+        sentence: str, mention: HistoricalEventPlaceMention,
+    ) -> tuple[int, str, int] | None:
+        for match in re.finditer(re.escape(mention.raw_text), sentence, re.IGNORECASE):
+            place_end = match.end()
+            if mention.role is EventPlaceRole.ORIGIN:
+                markers = list(re.finditer(r"\bfrom\b", sentence[:match.start()], re.IGNORECASE))
+                if markers:
+                    marker = markers[-1]
+                    return marker.start(), place_end, "from"
+            elif mention.role is EventPlaceRole.DESTINATION:
+                for pattern in (r"\binto\b", r"\bto\b"):
+                    markers = list(re.finditer(pattern, sentence[:match.start()], re.IGNORECASE))
+                    if markers:
+                        marker = markers[-1]
+                        return marker.start(), place_end, marker.group(0).lower()
+        return None
+
+    def _enforce_movement_endpoint_polarity(
+        self, sentence: str, places: list[HistoricalEventPlaceMention],
+    ) -> list[HistoricalEventPlaceMention]:
+        for mention in places:
+            if mention.role not in {EventPlaceRole.ORIGIN, EventPlaceRole.DESTINATION}:
+                continue
+            marker = self._movement_role_marker(sentence, mention)
+            if marker is None:
+                continue
+            if not self._positive_movement_governs_endpoint(sentence, *marker):
+                mention.role = EventPlaceRole.RELATED_PLACE
+        return places
+
+    @classmethod
     def _governs_movement_endpoint(cls, sentence: str, endpoint_start: int, place_end: int, role_token: str) -> bool:
         prefix = sentence[:endpoint_start]
         local = sentence[cls._clause_start(sentence, endpoint_start):endpoint_start]
@@ -274,7 +428,7 @@ class EvidenceGroundedHistoricalEventExtractor:
         base = cls._role(role_token)
         if base not in {EventPlaceRole.ORIGIN, EventPlaceRole.DESTINATION}:
             return base
-        if cls._governs_movement_endpoint(sentence, match.start(), match.end("place"), role_token):
+        if cls._positive_movement_governs_endpoint(sentence, match.start(), match.end("place"), role_token):
             return base
         return EventPlaceRole.RELATED_PLACE
 
@@ -348,13 +502,13 @@ class EvidenceGroundedHistoricalEventExtractor:
                 )
                 if from_prep:
                     from_window = sentence[max(0, from_prep.start() - 40):from_prep.end()]
-                    if self._TROOP_PROVENANCE_FROM.search(from_window) or not self._governs_movement_endpoint(
+                    if self._TROOP_PROVENANCE_FROM.search(from_window) or not self._positive_movement_governs_endpoint(
                         sentence, from_prep.start(), position, "from"
                     ):
                         continue
             elif role is EventPlaceRole.DESTINATION:
                 to_prep = re.search(r"\b(to|into)\s+(?:the\s+)?$", prefix, re.IGNORECASE)
-                if to_prep and not self._governs_movement_endpoint(
+                if to_prep and not self._positive_movement_governs_endpoint(
                     sentence, to_prep.start(), position, to_prep.group(1).lower()
                 ):
                     continue
@@ -577,6 +731,7 @@ class EvidenceGroundedHistoricalEventExtractor:
                 )
                 if origin is not None:
                     places.insert(0, origin)
+                places = self._enforce_movement_endpoint_polarity(sentence, places)
                 if event_type is HistoricalEventType.MOVEMENT:
                     prior_endpoints = analyze_sentence(
                         sentence,
