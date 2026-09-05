@@ -6,11 +6,12 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from backend.app.models import Evidence, HistoricalClaim
+from backend.app.models import Evidence, HistoricalClaim, EventPlaceRole
 from backend.app.routes.evidence_relevance import (
     EvidenceRelevance,
     bounded_window_text,
     classify_evidence_relevance,
+    event_relevance,
     narrative_subject_proper_nouns,
     normalized_terms,
     query_proper_nouns,
@@ -653,6 +654,58 @@ def _classify_movement_episode(
     }
 
 
+def _movement_probe_for_event(event: HistoricalEvent) -> _MovementEpisodeProbe | None:
+    origin = next((item for item in event.place_bindings if item.role is EventPlaceRole.ORIGIN), None)
+    destination = next((item for item in event.place_bindings if item.role is EventPlaceRole.DESTINATION), None)
+    if origin is None or destination is None:
+        return None
+    statement = next((item for item in relation_supporting_statements(event) if item.strip()), "")
+    if not statement:
+        statement = (event.summary or "").strip()
+    if not statement:
+        return None
+    return _MovementEpisodeProbe(
+        source_place=origin.place.canonical_name,
+        destination_place=destination.place.canonical_name,
+        statement=statement,
+        supporting_evidence_ids=tuple(dict.fromkeys(event.evidence_refs)),
+    )
+
+
+def _participant_episode_admissions(
+    relation,
+    events_by_id: dict[str, HistoricalEvent],
+    evidence_by_id: dict[str, Evidence],
+    contexts: tuple[str, ...] | None,
+) -> list[dict[str, object]]:
+    admissions: list[dict[str, object]] = []
+    for event_id in dict.fromkeys(relation.event_ids):
+        event = events_by_id.get(event_id)
+        if event is None:
+            admissions.append({
+                "event_id": event_id,
+                "admitted": False,
+                "admission_reason": "REJECT_MISSING_EVENT",
+                "episode_classification": EpisodeRelevance.UNKNOWN.value,
+            })
+            continue
+        probe = _movement_probe_for_event(event)
+        if probe is None:
+            admissions.append({
+                "event_id": event_id,
+                "admitted": False,
+                "admission_reason": "REJECT_MISSING_MOVEMENT",
+                "episode_classification": EpisodeRelevance.UNKNOWN.value,
+            })
+            continue
+        tag = event_relevance(event, evidence_by_id, contexts)
+        _, detail = _classify_movement_episode(
+            probe, evidence_by_id, contexts, subject_relevance=tag,
+        )
+        admissions.append({"event_id": event_id, **detail})
+    return admissions
+
+
 def classify_event_anchor_episode(
     relation,
     events_by_id: dict[str, HistoricalEvent],
@@ -688,6 +741,20 @@ def classify_event_anchor_episode(
     episode, detail = _classify_movement_episode(
         probe, evidence_by_id, contexts, subject_relevance=subject_relevance,
     )
+    participant_admissions = _participant_episode_admissions(
+        relation, events_by_id, evidence_by_id, contexts,
+    )
+    if len(dict.fromkeys(relation.event_ids)) > 1:
+        detail = dict(detail)
+        detail["participant_episode_admission"] = participant_admissions
+        rejected = next((item for item in participant_admissions if not item["admitted"]), None)
+        if rejected is not None:
+            detail["admitted"] = False
+            detail["episode_classification"] = rejected["episode_classification"]
+            detail["admission_reason"] = rejected["admission_reason"]
+            episode = EpisodeRelevance(rejected["episode_classification"])
+        else:
+            detail["admitted"] = all(item["admitted"] for item in participant_admissions)
     detail["earlier"] = relation.earlier
     detail["later"] = relation.later
     detail["event_ids"] = list(relation.event_ids)
