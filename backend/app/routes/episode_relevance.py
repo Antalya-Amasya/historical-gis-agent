@@ -540,6 +540,32 @@ def _probe_statement_window(
     return None
 
 
+def _query_endpoint_scope_terms(contexts: tuple[str, ...] | None) -> set[str]:
+    if not contexts:
+        return set()
+    terms: set[str] = set()
+    for context in contexts:
+        for name in _spatial_role_proper_nouns(context or ""):
+            terms |= normalized_terms(name)
+    return {term for term in terms if term not in _GENERIC_PLACE_TOKENS}
+
+
+def _query_has_episode_constraints(contexts: tuple[str, ...] | None) -> bool:
+    if not contexts:
+        return False
+    for context in contexts:
+        if _explicit_temporal_intervals(context or ""):
+            return True
+    query_subjects = _query_subjects(contexts) - _GENERIC_EPISODE_SUBJECTS
+    episode_anchors = {
+        _normalize_subject_name(term)
+        for term in _query_episode_anchor_terms(contexts)
+    } - query_subjects - _GENERIC_EPISODE_SUBJECTS
+    if episode_anchors:
+        return True
+    return bool(_query_endpoint_scope_terms(contexts))
+
+
 def _classify_movement_episode(
     probe: _MovementEpisodeProbe,
     evidence_by_id: dict[str, Evidence],
@@ -608,8 +634,14 @@ def _classify_movement_episode(
     else:
         episode = EpisodeRelevance.UNKNOWN
     admitted = episode_route_admission_allowed(episode)
-    if episode is EpisodeRelevance.UNKNOWN and tag is EvidenceRelevance.DIRECT_SUBJECT:
-        admitted = False
+    if episode is EpisodeRelevance.UNKNOWN:
+        if not explicit_od:
+            admitted = False
+        elif tag is EvidenceRelevance.DIRECT_SUBJECT:
+            if _query_has_episode_constraints(contexts):
+                admitted = False
+            elif not _episode_subject_overlap(local, contexts):
+                admitted = False
     return episode, {
         "origin": probe.source_place,
         "destination": probe.destination_place,
