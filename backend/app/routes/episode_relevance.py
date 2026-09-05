@@ -101,8 +101,9 @@ def _explicit_temporal_contradiction(
         query_intervals.extend(_explicit_temporal_intervals(context or ""))
     if not query_intervals:
         return False
-    local = (window or statement).strip()
-    statement_intervals = _explicit_temporal_intervals(local) or _explicit_temporal_intervals(statement)
+    statement_intervals = _explicit_temporal_intervals(statement.strip())
+    if not statement_intervals and window:
+        statement_intervals = _explicit_temporal_intervals(window.strip())
     if not statement_intervals:
         return False
     return not any(
@@ -565,7 +566,7 @@ def _classify_movement_episode(
             tag = EvidenceRelevance.UNKNOWN
     explicit_od = bool(probe.source_place and probe.destination_place)
     place_tokens = _movement_place_tokens(probe.source_place, probe.destination_place)
-    temporal_conflict = _explicit_temporal_contradiction(local, contexts, window)
+    temporal_conflict = _explicit_temporal_contradiction(statement, contexts, window)
     if tag is EvidenceRelevance.OTHER_CAMPAIGN:
         episode = EpisodeRelevance.OTHER_CAMPAIGN
     elif temporal_conflict:
