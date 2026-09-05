@@ -10,7 +10,7 @@ from .coverage_retrieval import (
 from .store import ChromaEvidenceStore
 from .evidence_ranking import diversify_route_evidence, rerank_evidence
 from .lexical_index import derive_passages
-from .retrieval_intents import decompose_movement_query
+from .retrieval_intents import RetrievalIntent, decompose_movement_query
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +113,10 @@ class ChromaHistoricalRetriever(HistoricalRetriever):
         intents = decompose_movement_query(query)
         if len(intents) <= 1:
             return self.retrieve(query, min(budget, 20), filters)
-        intent_results: list[tuple] = []
+        coverage_k = min(budget, 20)
+        intent_results: list[tuple] = [
+            (RetrievalIntent("CANONICAL", query), self.retrieve(query, coverage_k, filters)),
+        ]
         for intent in intents:
             items = self.retrieve(intent.query, per_intent_k, filters)
             intent_results.append((intent, items))

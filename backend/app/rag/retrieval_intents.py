@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from backend.app.rag.query_roles import QueryRoleAnalysis, analyze_query, normalized_tokens
 
-_RETRIEVAL_INTENTS = frozenset({"SUBJECT", "EPISODE", "MOVEMENT", "ENDPOINT", "FEATURE", "REGION"})
+_RETRIEVAL_INTENTS = frozenset({"CANONICAL", "SUBJECT", "EPISODE", "MOVEMENT", "ENDPOINT", "FEATURE", "REGION"})
 _YEAR_RE = re.compile(r"\b(\d{1,4})\s*(?:bce|bc)\b", re.IGNORECASE)
 _SUBJECT_SCAFFOLD = frozenset({
     "trace", "reconstruct", "show", "map", "follow", "route", "routes", "movements", "movement",
