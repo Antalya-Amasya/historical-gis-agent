@@ -19,7 +19,7 @@ from backend.app.models import (
     TemporalPrecision,
 )
 from backend.app.routes.extractor import HistoricalPlaceMentionExtractor
-from backend.app.routes.evidence_relevance import movement_eligibility_with_context
+from backend.app.routes.evidence_relevance import movement_eligibility_with_context, narrative_subject_proper_nouns
 from backend.app.routes.movement_semantics import MovementEndpoint, analyze_sentence, _has_movement_cue
 from backend.app.routes.place_mention_validation import validate_broad_place_mention
 from backend.app.routes.temporal import EvidenceTemporalResolver, TemporalResolutionContext
@@ -624,7 +624,50 @@ class HistoricalEventConsolidator:
             return f"normalized:{event.temporal_grounding.normalized_start}:{event.temporal_grounding.normalized_end}"
         return (event.temporal_grounding.raw_expression or "<unresolved>").casefold()
 
+    @staticmethod
+    def _movement_route_key(event: HistoricalEvent) -> tuple[str, str] | None:
+        origin = next((mention for mention in event.place_mentions if mention.role is EventPlaceRole.ORIGIN), None)
+        destination = next((mention for mention in event.place_mentions if mention.role is EventPlaceRole.DESTINATION), None)
+        if origin is None or destination is None:
+            return None
+        return (
+            (origin.canonical_hint or origin.raw_text).casefold(),
+            (destination.canonical_hint or destination.raw_text).casefold(),
+        )
+
+    @staticmethod
+    def _movement_actor_key(event: HistoricalEvent) -> str:
+        statement = (event.source_statements or [event.summary])[0]
+        subjects = narrative_subject_proper_nouns(statement)
+        if not subjects:
+            return "<unknown>"
+        if len(subjects) == 1:
+            return next(iter(subjects))
+        return ",".join(sorted(subjects))
+
+    @staticmethod
+    def _occurrence_key(event: HistoricalEvent) -> str:
+        statement = (event.source_statements or [event.summary])[0].casefold().strip()
+        return hashlib.sha256(statement.encode("utf-8")).hexdigest()[:12]
+
+    def _movement_key(self, event: HistoricalEvent) -> str | None:
+        route = self._movement_route_key(event)
+        if route is None:
+            return None
+        origin, destination = route
+        return "|".join(
+            (
+                "MOVEMENT",
+                self._movement_actor_key(event),
+                f"{origin}>{destination}",
+                self._temporal_key(event),
+                self._occurrence_key(event),
+            )
+        )
+
     def _key(self, event: HistoricalEvent) -> str | None:
+        if event.event_type is HistoricalEventType.MOVEMENT:
+            return self._movement_key(event)
         places = self._place_key(event)
         if not places:
             return None
