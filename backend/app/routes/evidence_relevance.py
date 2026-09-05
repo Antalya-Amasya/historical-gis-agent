@@ -360,15 +360,12 @@ def relation_admission_allowed(
         evidence_allowed = True
     if not evidence_allowed:
         return False
-    from backend.app.routes.episode_relevance import (
-        classify_event_anchor_episode,
-        episode_route_admission_allowed,
-    )
+    from backend.app.routes.episode_relevance import classify_event_anchor_episode
 
-    episode, _ = classify_event_anchor_episode(
+    episode, detail = classify_event_anchor_episode(
         relation, events_by_id, evidence_by_id, contexts, subject_relevance=final,
     )
-    return episode_route_admission_allowed(episode)
+    return bool(detail["admitted"])
 
 
 def classify_relation_relevance(

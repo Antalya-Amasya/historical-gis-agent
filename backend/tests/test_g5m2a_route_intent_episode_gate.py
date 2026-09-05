@@ -81,7 +81,7 @@ def test_hispania_italia_legacy_edge_rejected_for_caesar_query():
     )
     evidence = [ev("ev1", claim.text, author="Plutarch", work="Lives")]
     episode, detail = classify_legacy_claim_episode(claim, {evidence[0].id: evidence[0]}, (CAESAR_QUERY,))
-    assert episode is EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
+    assert episode is EpisodeRelevance.UNKNOWN
     assert detail["admitted"] is False
 
 

@@ -77,7 +77,7 @@ def test_pompey_rejects_theseus_athenae_peloponnesus_live_shape():
         (POMPEY_QUERY,),
         subject_relevance=EvidenceRelevance.DIRECT_SUBJECT,
     )
-    assert episode is EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
+    assert episode is EpisodeRelevance.UNKNOWN
     assert detail["admitted"] is False
     assert not relation_admission_allowed(
         rel, {event.id: event}, evidence_by_id, (POMPEY_QUERY,), rule=rel.rule,
@@ -159,7 +159,7 @@ def test_chunk_noise_cannot_override_local_statement():
         (POMPEY_QUERY,),
         subject_relevance=EvidenceRelevance.DIRECT_SUBJECT,
     )
-    assert episode is EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
+    assert episode is EpisodeRelevance.UNKNOWN
 
 
 def test_caesar_legacy_controls_still_hold():
@@ -186,5 +186,5 @@ def test_caesar_legacy_controls_still_hold():
     )
     evidence = [ev("ev1", claim.text, author="Plutarch", work="Lives")]
     episode, detail = classify_legacy_claim_episode(claim, {evidence[0].id: evidence[0]}, (CAESAR_QUERY,))
-    assert episode is EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
+    assert episode is EpisodeRelevance.UNKNOWN
     assert detail["admitted"] is False

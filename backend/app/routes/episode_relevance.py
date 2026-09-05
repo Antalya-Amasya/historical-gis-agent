@@ -321,6 +321,47 @@ def _explicit_od_episode_compatible(
     )
 
 
+def _positive_same_subject_other_episode_evidence(
+    source_place: str | None,
+    destination_place: str | None,
+    statement: str,
+    contexts: tuple[str, ...] | None,
+    *,
+    require_anchor_overlap: bool,
+) -> bool:
+    """True only when explicit evidence supports a different episode, not mere non-overlap."""
+    if not contexts:
+        return False
+    if not _normalized_subject_overlap(statement, contexts):
+        return False
+    if not _CAMPAIGN_OBJECTIVE.search(" ".join(contexts)):
+        return False
+    anchors = _query_episode_anchor_terms(contexts)
+    if not anchors:
+        return False
+    if not (source_place and destination_place):
+        return False
+    place_tokens = _movement_place_tokens(source_place, destination_place)
+    anchor_hits = {
+        token
+        for token in place_tokens & anchors
+        if token not in _GENERIC_PLACE_TOKENS
+    }
+    has_overlap = bool(anchor_hits) or _episode_anchor_overlap_places(
+        statement, place_tokens, contexts,
+    )
+    if require_anchor_overlap:
+        if not has_overlap:
+            return False
+    elif has_overlap:
+        return False
+    if _explicit_od_episode_compatible_places(
+        source_place, destination_place, statement, contexts,
+    ):
+        return False
+    return True
+
+
 def _same_subject_other_episode_places(
     source_place: str | None,
     destination_place: str | None,
@@ -329,21 +370,17 @@ def _same_subject_other_episode_places(
     *,
     relevance: EvidenceRelevance,
 ) -> bool:
-    if not contexts or relevance in _EPISODE_ADMISSIBLE:
-        return False
     if relevance is EvidenceRelevance.OTHER_CAMPAIGN:
         return False
-    if not _normalized_subject_overlap(statement, contexts):
+    if relevance in _EPISODE_ADMISSIBLE:
         return False
-    if not _CAMPAIGN_OBJECTIVE.search(" ".join(contexts)):
-        return False
-    place_tokens = _movement_place_tokens(source_place, destination_place)
-    if _episode_anchor_overlap_places(statement, place_tokens, contexts):
-        return False
-    anchors = _query_episode_anchor_terms(contexts)
-    if not anchors:
-        return False
-    return True
+    return _positive_same_subject_other_episode_evidence(
+        source_place,
+        destination_place,
+        statement,
+        contexts,
+        require_anchor_overlap=False,
+    )
 
 
 def _same_subject_other_episode(
@@ -545,7 +582,16 @@ def _classify_movement_episode(
         ):
             episode = EpisodeRelevance.DIRECT_QUERY_EPISODE
         elif tag is EvidenceRelevance.DIRECT_SUBJECT:
-            episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
+            if _positive_same_subject_other_episode_evidence(
+                probe.source_place,
+                probe.destination_place,
+                local,
+                contexts,
+                require_anchor_overlap=True,
+            ):
+                episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
+            else:
+                episode = EpisodeRelevance.UNKNOWN
         else:
             episode = EpisodeRelevance.DIRECT_QUERY_EPISODE
     elif tag is EvidenceRelevance.SAME_CONFLICT_RELEVANT:
@@ -561,6 +607,8 @@ def _classify_movement_episode(
     else:
         episode = EpisodeRelevance.UNKNOWN
     admitted = episode_route_admission_allowed(episode)
+    if episode is EpisodeRelevance.UNKNOWN and tag is EvidenceRelevance.DIRECT_SUBJECT:
+        admitted = False
     return episode, {
         "origin": probe.source_place,
         "destination": probe.destination_place,
