@@ -119,6 +119,26 @@ _SENTENCE_INITIAL_NON_NAMES = frozenset({
     "now", "here", "still", "also", "but", "and", "or", "the", "this", "that",
     "these", "those", "where", "once", "soon", "next", "finally", "meanwhile",
 })
+_TEMPORAL_ERA_SUBJECTS = frozenset({"bce", "bc", "ce", "ad"})
+_VERB_HEAD = re.compile(
+    r"\b(?:marched|marches|marching|led|commanded|crossed|fought|besieged|sailed|withdrew|"
+    r"advanced|proceeded|departed|returned|said|declared|was|were|had|have|having)\b",
+    re.IGNORECASE,
+)
+
+
+def _proper_nouns_before_verb(fragment: str, spatial: set[str]) -> set[str]:
+    verb = _VERB_HEAD.search(fragment)
+    if not verb:
+        return set()
+    prefix = fragment[:verb.start()]
+    names: set[str] = set()
+    for match in re.finditer(r"\b([A-Z][A-Za-zÀ-ÖØ-öø-ÿÆæŒœ']{2,})\b", prefix):
+        token = match.group(1).casefold()
+        if token in _TEMPORAL_ERA_SUBJECTS or token in spatial or token in _SENTENCE_INITIAL_NON_NAMES:
+            continue
+        names.add(token)
+    return names
 
 
 def _named_proper_nouns(value: str) -> set[str]:
@@ -148,6 +168,10 @@ def narrative_subject_proper_nouns(value: str) -> set[str]:
     subjects: set[str] = set()
     for match in _SUBJECT_VERB_CONTEXT.finditer(value):
         name = match.group("name").casefold()
+        match_text = match.group(0)
+        if name in _TEMPORAL_ERA_SUBJECTS:
+            subjects |= _proper_nouns_before_verb(match_text, spatial)
+            continue
         if name in spatial or name in _SENTENCE_INITIAL_NON_NAMES:
             continue
         subjects.add(name)
