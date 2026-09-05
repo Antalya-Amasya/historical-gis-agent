@@ -8,6 +8,7 @@ from typing import Protocol
 
 from backend.app.models import Evidence, ExtractedHistoricalPlaceMention, GeoJsonLineString, HistoricalClaim, HistoricalPlace, HistoricalRoute, HistoricalRoutePoint
 from backend.app.routes.episode_relevance import filter_legacy_movement_claims
+from backend.app.routes.evidence_relevance import normalized_terms
 from backend.app.routes.movement_semantics import analyze_sentence
 from backend.app.routes.place_aliases import HISTORICAL_PLACE_ALIASES, HistoricalPlaceAlias
 
@@ -29,6 +30,47 @@ def evidence_structural_key(item: Evidence) -> tuple[str, int, int] | None:
     if not document_id or not isinstance(spine_index, int) or not isinstance(start_offset, int):
         return None
     return document_id, spine_index, start_offset
+
+
+def _legacy_od_has_positive_authority(
+    sentence: str,
+    source_place: str,
+    destination_place: str,
+    *,
+    source_surface: str | None = None,
+    destination_surface: str | None = None,
+) -> bool:
+    from backend.app.routes.events import EvidenceGroundedHistoricalEventExtractor
+
+    if not EvidenceGroundedHistoricalEventExtractor._has_positive_movement_assertion(sentence):
+        return False
+
+    def place_tokens(*names: str | None) -> set[str]:
+        tokens: set[str] = set()
+        for name in names:
+            if name:
+                tokens |= normalized_terms(name)
+        return tokens
+
+    source_tokens = place_tokens(source_place, source_surface)
+    dest_tokens = place_tokens(destination_place, destination_surface)
+    positive_clauses = [
+        clause
+        for clause in EvidenceGroundedHistoricalEventExtractor._movement_clauses(sentence)
+        if EvidenceGroundedHistoricalEventExtractor._clause_has_positive_movement(clause)
+    ]
+    if not positive_clauses:
+        return False
+    for clause in positive_clauses:
+        clause_tokens = normalized_terms(clause)
+        if source_tokens & clause_tokens and dest_tokens & clause_tokens:
+            return True
+    if len(positive_clauses) >= 2:
+        has_source = any(source_tokens & normalized_terms(clause) for clause in positive_clauses)
+        has_dest = any(dest_tokens & normalized_terms(clause) for clause in positive_clauses)
+        if has_source and has_dest:
+            return True
+    return False
 
 
 class HistoricalPlaceMentionExtractor:
@@ -99,6 +141,14 @@ class HistoricalPlaceMentionExtractor:
                 claim_number += 1
                 for edge in semantics.edges:
                     if edge.origin and edge.destination:
+                        if not _legacy_od_has_positive_authority(
+                            sentence,
+                            edge.origin.place_name,
+                            edge.destination.place_name,
+                            source_surface=edge.origin.surface,
+                            destination_surface=edge.destination.surface,
+                        ):
+                            continue
                         claims.append(HistoricalClaim(
                             id=f"{event_id}-movement-{claim_number}",
                             claim_type="MOVEMENT",
@@ -116,6 +166,14 @@ class HistoricalPlaceMentionExtractor:
                     if edge.traversal and edge.destination and edge.movement_relation in {
                         "crossing_into", "crossing_arrival",
                     }:
+                        if not _legacy_od_has_positive_authority(
+                            sentence,
+                            edge.traversal.place_name,
+                            edge.destination.place_name,
+                            source_surface=edge.traversal.surface,
+                            destination_surface=edge.destination.surface,
+                        ):
+                            continue
                         claims.append(HistoricalClaim(
                             id=f"{event_id}-movement-{claim_number}",
                             claim_type="MOVEMENT",
