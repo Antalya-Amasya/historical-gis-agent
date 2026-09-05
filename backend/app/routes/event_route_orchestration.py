@@ -279,17 +279,10 @@ def _weakly_connected_components(usable: dict[tuple[str, str], AnchorOrderingRel
 
 
 def _can_chain_relations(left: AnchorOrderingRelation, right: AnchorOrderingRelation) -> bool:
-    """Allow adjacent chaining only when ordering authority supports the junction."""
+    """Allow adjacent chaining only when the junction shares an event occurrence."""
     if left.later != right.earlier:
         return False
-    if set(left.event_ids) & set(right.event_ids):
-        return True
-  # Cross-event chaining requires an explicit temporal or structural bridge relation.
-    if right.rule in {OrderingRule.TEMPORAL_ORDER, OrderingRule.SOURCE_STRUCTURAL_ORDER}:
-        return True
-    if left.rule in {OrderingRule.TEMPORAL_ORDER, OrderingRule.SOURCE_STRUCTURAL_ORDER}:
-        return True
-    return False
+    return bool(set(left.event_ids) & set(right.event_ids))
 
 
 def _path_from_edges(
