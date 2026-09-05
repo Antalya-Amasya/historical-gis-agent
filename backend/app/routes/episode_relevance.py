@@ -15,6 +15,7 @@ from backend.app.routes.evidence_relevance import (
     has_normalized_subject_overlap,
     narrative_subject_proper_nouns,
     normalize_subject_name,
+    normalized_query_subject_terms,
     normalized_terms,
     query_proper_nouns,
     query_terms,
@@ -136,6 +137,15 @@ def _query_campaign_phrase_terms(contexts: tuple[str, ...] | None) -> set[str]:
     for context in contexts:
         for match in _CAMPAIGN_EPISODE_PHRASE.finditer(context or ""):
             terms |= normalized_terms(match.group(1))
+    return terms
+
+
+def _campaign_phrase_modifier_terms(text: str) -> set[str]:
+    terms: set[str] = set()
+    for match in _EVIDENCE_CAMPAIGN_PHRASE.finditer(text):
+        fragment = match.group(1) or match.group(2)
+        if fragment:
+            terms |= normalized_terms(fragment)
     return terms
 
 
@@ -271,6 +281,64 @@ def _episode_subject_overlap(statement: str, contexts: tuple[str, ...] | None) -
     return bool(query_subjects & narrative_subjects)
 
 
+_QUERY_ORIGIN_DESTINATION = re.compile(
+    r"\bfrom\s+(?:the\s+)?([A-Z][A-Za-z'’\u2019-]+(?:\s+[A-Z][A-Za-z'’\u2019-]+)?)\s+to\s+(?:the\s+)?"
+    r"([A-Z][A-Za-z'’\u2019-]+(?:\s+[A-Z][A-Za-z'’\u2019-]+)?)",
+    re.IGNORECASE,
+)
+_SUBJECT_CONSTRAINT_NOISE = frozenset({
+    "bce", "ce", "trace", "route", "during", "campaign", "war", "expedition",
+})
+
+
+def _query_explicit_origin_destination(contexts: tuple[str, ...] | None) -> tuple[str, str] | None:
+    if not contexts:
+        return None
+    for context in contexts:
+        match = _QUERY_ORIGIN_DESTINATION.search(context or "")
+        if match:
+            return match.group(1), match.group(2)
+    return None
+
+
+def _movement_contradicts_query_endpoints(
+    source_place: str | None,
+    destination_place: str | None,
+    contexts: tuple[str, ...] | None,
+) -> bool:
+    pair = _query_explicit_origin_destination(contexts)
+    if not pair or not (source_place and destination_place):
+        return False
+    query_origin, query_dest = pair
+    query_o = normalized_terms(query_origin)
+    query_d = normalized_terms(query_dest)
+    move_o = normalized_terms(source_place)
+    move_d = normalized_terms(destination_place)
+    if (move_o & query_o) or (move_d & query_d) or (move_o & query_d) or (move_d & query_o):
+        return False
+    return True
+
+
+def _explicit_query_subject_satisfied(combined: str, contexts: tuple[str, ...] | None) -> bool:
+    if not contexts:
+        return True
+    campaign_terms = _query_campaign_phrase_terms(contexts)
+    query_persons = normalized_query_subject_terms(contexts) - campaign_terms - _SUBJECT_CONSTRAINT_NOISE
+    query_persons -= _GENERIC_EPISODE_SUBJECTS
+    if not query_persons:
+        return True
+    spatial = {_normalize_subject_name(name) for name in _spatial_role_proper_nouns(combined)}
+    evidence_persons = {
+        _normalize_subject_name(name) for name in _named_proper_nouns(combined)
+    } - spatial - campaign_terms - _campaign_phrase_modifier_terms(combined) - _SUBJECT_CONSTRAINT_NOISE
+    evidence_persons -= _GENERIC_EPISODE_SUBJECTS
+    if evidence_persons:
+        return bool(query_persons & evidence_persons)
+    if _other_campaign_subject_conflict(combined, contexts):
+        return False
+    return has_normalized_subject_overlap(combined, contexts)
+
+
 _DURING_EPISODE = re.compile(
     r"\bduring\s+([A-Z][A-Za-z'’]+(?:\s+[A-Z][A-Za-z'’]+)?)",
     re.IGNORECASE,
@@ -278,6 +346,12 @@ _DURING_EPISODE = re.compile(
 _CAMPAIGN_EPISODE_PHRASE = re.compile(
     r"\b(?:during|in|throughout|for)\s+(?:the\s+)?"
     r"([A-Z][A-Za-z'’\u2019-]+(?:\s+(?:the\s+)?[A-Z][A-Za-z'’\u2019-]+){0,4})\s+campaign\b",
+    re.IGNORECASE,
+)
+_EVIDENCE_CAMPAIGN_PHRASE = re.compile(
+    r"(?:\b(?:during|in|throughout|for)\s+(?:the\s+)?"
+    r"([A-Z][A-Za-z'’\u2019-]+(?:\s+(?:the\s+)?[A-Z][A-Za-z'’\u2019-]+){0,4})\s+campaign\b"
+    r"|\b(?:the\s+)?([A-Z][A-Za-z'’\u2019-]+(?:\s+(?:the\s+)?[A-Z][A-Za-z'’\u2019-]+){0,4})\s+campaign\b(?!\s+[A-Z]))",
     re.IGNORECASE,
 )
 _GEO_PREP = re.compile(
@@ -521,10 +595,55 @@ def _direct_subject_local_episode_signal(
 
 
 def _statement_supports_query_campaign(statement: str, contexts: tuple[str, ...] | None) -> bool:
-    campaign_terms = _query_campaign_phrase_terms(contexts)
-    if not campaign_terms:
+    query_terms = _query_campaign_phrase_terms(contexts)
+    if not query_terms:
         return False
-    return bool(normalized_terms(statement) & campaign_terms)
+    evidence_terms = _campaign_phrase_modifier_terms(statement)
+    if not evidence_terms:
+        return False
+    return bool(query_terms & evidence_terms)
+
+
+def _explicit_query_constraints_satisfied(
+    statement: str,
+    window: str | None,
+    contexts: tuple[str, ...] | None,
+) -> bool:
+    if not contexts:
+        return True
+    combined = " ".join(part for part in (statement.strip(), (window or "").strip()) if part)
+    if not _explicit_query_subject_satisfied(combined, contexts):
+        return False
+    if _query_has_campaign_episode_phrase(contexts):
+        if not _statement_supports_query_campaign(combined, contexts):
+            return False
+    query_intervals: list[tuple[int, int]] = []
+    for context in contexts:
+        query_intervals.extend(_explicit_temporal_intervals(context or ""))
+    if query_intervals:
+        statement_intervals = _explicit_temporal_intervals(statement.strip())
+        if not statement_intervals and window:
+            statement_intervals = _explicit_temporal_intervals(window.strip())
+        if not statement_intervals:
+            return False
+        if _explicit_temporal_contradiction(statement, contexts, window):
+            return False
+    return True
+
+
+def _explicit_endpoint_constraint_satisfied(
+    source_place: str | None,
+    destination_place: str | None,
+    statement: str,
+    contexts: tuple[str, ...] | None,
+) -> bool:
+    if not _query_endpoint_scope_terms(contexts):
+        return True
+    if not (source_place and destination_place):
+        return True
+    return _explicit_od_episode_compatible_places(
+        source_place, destination_place, statement, contexts,
+    )
 
 
 def _strong_direct_episode_signal(
@@ -537,8 +656,14 @@ def _strong_direct_episode_signal(
 ) -> bool:
     if _explicit_temporal_contradiction(statement, contexts, window):
         return False
-    if _statement_supports_query_campaign(statement, contexts) and has_normalized_subject_overlap(
-        statement, contexts,
+    combined = " ".join(part for part in (statement.strip(), (window or "").strip()) if part)
+    if (
+        _statement_supports_query_campaign(combined, contexts)
+        and has_normalized_subject_overlap(statement, contexts)
+        and _explicit_query_constraints_satisfied(statement, window, contexts)
+        and _explicit_endpoint_constraint_satisfied(
+            probe.source_place, probe.destination_place, statement, contexts,
+        )
     ):
         return True
     explicit_od = bool(probe.source_place and probe.destination_place)
@@ -678,7 +803,20 @@ def _classify_movement_episode(
     else:
         episode = EpisodeRelevance.UNKNOWN
     admitted = episode_route_admission_allowed(episode)
-    if episode is EpisodeRelevance.UNKNOWN:
+    if episode is EpisodeRelevance.DIRECT_QUERY_EPISODE:
+        combined = " ".join(part for part in (statement.strip(), (window or "").strip()) if part)
+        if not _explicit_query_constraints_satisfied(statement, window, contexts):
+            if not _explicit_query_subject_satisfied(combined, contexts):
+                episode = EpisodeRelevance.OTHER_CAMPAIGN
+            else:
+                episode = EpisodeRelevance.UNKNOWN
+            admitted = False
+        elif _movement_contradicts_query_endpoints(
+            probe.source_place, probe.destination_place, contexts,
+        ):
+            episode = EpisodeRelevance.UNKNOWN
+            admitted = False
+    elif episode is EpisodeRelevance.UNKNOWN:
         if not explicit_od:
             admitted = False
         elif tag is EvidenceRelevance.DIRECT_SUBJECT:
