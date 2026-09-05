@@ -92,7 +92,7 @@ def test_weak_semantic_child_does_not_inherit_parent_near_one_relevance():
     score = rerank_evidence("murder of the governor", [weak])[0].metadata["retrieval_ranking"]
     assert score["parent_semantic_prior"] == 1.0
     assert score["passage_local_support"] == 0.0
-    assert score["semantic_relevance"] == 0.2
+    assert score["semantic_relevance"] == 0.0
 
 
 def test_strong_lexical_only_factual_passage_beats_weak_semantic_child():
@@ -174,7 +174,7 @@ def test_channel_pool_size_change_does_not_make_weak_child_near_top():
     weak = evidence("weak", "The weather was mild.", .1, semantic_candidate=True, vector_rank=1)
     fillers = [evidence(f"f{index}", "Unrelated weather account.", .1, semantic_candidate=True, vector_rank=index + 2) for index in range(19)]
     details = rerank_evidence("murder governor", [weak, *fillers])[0].metadata["retrieval_ranking"]
-    assert details["semantic_relevance"] <= .2
+    assert details["semantic_relevance"] == 0.0
 
 
 def test_non_overlapping_passage_identities_remain_distinct_before_suppression():

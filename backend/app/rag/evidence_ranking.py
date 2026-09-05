@@ -164,8 +164,9 @@ def diversify_route_evidence(query: str, ranked: list[Evidence]) -> list[Evidenc
 def rerank_evidence(query: str, evidence: list[Evidence]) -> list[Evidence]:
     """Return the same evidence with transparent, deterministic ordering data.
 
-    Score components remain modest: vector similarity is still the primary
-    semantic signal; role-aware supports only order a bounded candidate set.
+    Semantic parent retrieval admits source chunks into the candidate pool.
+    Child ordering uses passage-local role and lexical signals only; parent
+    vector rank is retained as provenance, not propagated as child relevance.
     """
     roles = analyze_query(query)
     semantic_items = [item for item in evidence if item.metadata.get("semantic_candidate")]
@@ -188,7 +189,7 @@ def rerank_evidence(query: str, evidence: list[Evidence]) -> list[Evidence]:
         joint = 0.04 if person > 0 and location > 0 else 0.0
         entity_support = person
         local_support = min(1.0, (person / 0.08) * 0.40 + (action / 0.12) * 0.40 + (location / 0.06) * 0.10 + (statement_bonus / 0.04) * 0.10) if (person or action or location or statement_bonus) else 0.0
-        semantic_relevance = parent_semantic_prior * (0.20 + 0.80 * local_support) if item.metadata.get("semantic_candidate") else 0.0
+        semantic_relevance = local_support if item.metadata.get("semantic_candidate") else 0.0
         lexical_rank_relevance = percentile(lexical_order.get(item.id), len(lexical_items))
         lexical_score = float(item.metadata.get("lexical_score", 0.0))
         lexical_score_relevance = lexical_score / (lexical_score + lexical_median) if lexical_score > 0 and lexical_median > 0 else 0.0
