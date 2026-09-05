@@ -68,14 +68,21 @@ class EvidenceTemporalResolver:
         re.compile(r"\b(?P<first>\d{1,4})\s*(?P<era>BCE|BC)\s+to\s+(?P<second>\d{1,4})\s*(?:BCE|BC)\b", re.I),
         re.compile(r"公元前\s*(?P<first>\d{1,4})\s*年?\s*(?:至|到|[-–—])\s*公元前?\s*(?P<second>\d{1,4})\s*年", re.I),
         re.compile(r"\b(?P<first>\d{1,4})\s*(?:–|—|-)\s*(?P<second>\d{1,4})\s*(?P<era>CE|AD)\b", re.I),
+        re.compile(r"\b(?P<first>\d{1,4})\s+to\s+(?P<second>\d{1,4})\s*(?P<era>CE|AD)\b", re.I),
         re.compile(r"\b(?P<first>\d{1,4})\s*(?P<era>CE|AD)\s+to\s+(?P<second>\d{1,4})\s*(?:CE|AD)\b", re.I),
         re.compile(r"\b(?P<era>BCE|BC|B\.\s*C\.)\s*(?P<first>\d{1,4})\s*(?:–|—|-)\s*(?P<second>\d{1,4})\b", re.I),
+        re.compile(r"\b(?P<era>BCE|BC|B\.\s*C\.)\s*(?P<first>\d{1,4})\s+to\s+(?P<second>\d{1,4})\b", re.I),
         re.compile(r"\b(?P<era>CE|AD|A\.\s*D\.)\s*(?P<first>\d{1,4})\s*(?:–|—|-)\s*(?P<second>\d{1,4})\b", re.I),
+        re.compile(r"\b(?P<first>\d{1,4})\s*--\s*(?P<second>\d{1,4})\s*(?P<era>BCE|BC|CE|AD)\b", re.I),
     )
     _RANGE_LIKE = re.compile(
         r"\b(?:"
         r"(?:(?:BCE|BC|CE|AD|B\.\s*C\.|A\.\s*D\.)\s*)?"
-        r"\d{1,4}\s*(?:–|—|-)\s*\d{1,4}\s*(?:BCE|BC|CE|AD|B\.\s*C\.|A\.\s*D\.)?"
+        r"\d{1,4}\s*"
+        r"(?:–|—|--|-|\bto\b|\buntil\b|/)"
+        r"\s*"
+        r"\d{1,4}\s*"
+        r"(?:BCE|BC|CE|AD|B\.\s*C\.|A\.\s*D\.)?"
         r")\b",
         re.I,
     )
