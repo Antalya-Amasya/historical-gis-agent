@@ -261,9 +261,20 @@ def filter_resolution_candidates(
 
     original_count = len(places) if status == "CURATED" else len(candidates)
     count = len(surviving_candidates)
+    excluded_filters = {
+        filter_name
+        for item in diagnostics
+        if not item.get("passed")
+        for filter_name in item.get("failed_filters", [])
+    }
+    survivor_by_contextual_exclusion = (
+        original_count >= 2
+        and count == 1
+        and "geo_basin_incompatible" in excluded_filters
+    )
     if count == 0:
         return ("AMBIGUOUS" if original_count else status), (), (), diagnostics
-    if count == 1 and len(surviving_places) == 1:
+    if count == 1 and len(surviving_places) == 1 and not survivor_by_contextual_exclusion:
         return "UNIQUE", tuple(surviving_places), tuple(surviving_candidates), diagnostics
     if count == 1 and not surviving_places:
         return "UNLOCATED", (), tuple(surviving_candidates), diagnostics
