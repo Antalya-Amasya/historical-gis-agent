@@ -67,7 +67,12 @@ def query_terms(contexts: tuple[str, ...] | None) -> set[str]:
         return terms
     for context in contexts:
         if context and context.strip():
-            terms |= normalized_terms(context)
+            terms |= {
+                normalize_subject_name(term)
+                if re.search(r"(?:'s|'s)$", term)
+                else term
+                for term in normalized_terms(context)
+            }
     return terms
 
 
@@ -78,6 +83,33 @@ def query_proper_nouns(contexts: tuple[str, ...] | None) -> set[str]:
     for context in contexts:
         nouns.update(re.findall(r"\b[A-Z][A-Za-zÀ-ÖØ-öø-ÿÆæŒœ']{2,}", context or ""))
     return {noun.casefold() for noun in nouns}
+
+
+def normalize_subject_name(value: str) -> str:
+    return re.sub(r"(?:'s|'s)$", "", value.casefold())
+
+
+def normalized_query_subject_terms(contexts: tuple[str, ...] | None) -> set[str]:
+    if not contexts:
+        return set()
+    terms = {normalize_subject_name(name) for name in query_proper_nouns(contexts)}
+    terms |= {normalize_subject_name(name) for name in narrative_subject_proper_nouns(" ".join(contexts))}
+    return terms
+
+
+def normalized_narrative_subjects(text: str) -> set[str]:
+    return {normalize_subject_name(name) for name in narrative_subject_proper_nouns(text)}
+
+
+def has_normalized_subject_overlap(text: str, contexts: tuple[str, ...] | None) -> bool:
+    query_subjects = normalized_query_subject_terms(contexts)
+    if not query_subjects:
+        return False
+    evidence_subjects = normalized_narrative_subjects(text)
+    if query_subjects & evidence_subjects:
+        return True
+    evidence_nouns = {normalize_subject_name(noun) for noun in _named_proper_nouns(text)}
+    return bool(query_subjects & evidence_nouns)
 
 
 _SENTENCE_INITIAL_NON_NAMES = frozenset({
@@ -138,10 +170,10 @@ def has_subject_campaign_conflict(text: str, contexts: tuple[str, ...] | None) -
     """True when evidence names a narrative subject absent from the query subjects."""
     if not contexts:
         return False
-    query_subjects = query_proper_nouns(contexts) | narrative_subject_proper_nouns(" ".join(contexts))
+    query_subjects = normalized_query_subject_terms(contexts)
     if not query_subjects:
         return False
-    evidence_subjects = narrative_subject_proper_nouns(text)
+    evidence_subjects = normalized_narrative_subjects(text)
     if not evidence_subjects:
         return False
     if evidence_subjects & query_subjects:
@@ -162,8 +194,12 @@ def classify_evidence_relevance(
     combined = " ".join(part for part in (window_text, text) if part).strip() or text
     if has_subject_campaign_conflict(text, contexts):
         return EvidenceRelevance.OTHER_CAMPAIGN
+    if has_normalized_subject_overlap(text, contexts):
+        return EvidenceRelevance.DIRECT_SUBJECT
     if has_query_term_overlap(text, contexts):
-        if query_proper_nouns(contexts) & _named_proper_nouns(text):
+        if normalized_query_subject_terms(contexts) & {
+            normalize_subject_name(noun) for noun in _named_proper_nouns(text)
+        }:
             return EvidenceRelevance.DIRECT_SUBJECT
         return EvidenceRelevance.DIRECT_CAMPAIGN
     if window_text and has_query_term_overlap(window_text, contexts):

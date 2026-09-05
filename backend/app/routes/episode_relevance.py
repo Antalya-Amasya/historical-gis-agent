@@ -12,12 +12,15 @@ from backend.app.routes.evidence_relevance import (
     bounded_window_text,
     classify_evidence_relevance,
     event_relevance,
+    has_normalized_subject_overlap,
     narrative_subject_proper_nouns,
+    normalize_subject_name,
     normalized_terms,
     query_proper_nouns,
     query_terms,
     relation_supporting_statements,
     statement_evidence_window,
+    _named_proper_nouns,
     _spatial_role_proper_nouns,
 )
 from backend.app.routes.temporal import EvidenceTemporalResolver
@@ -123,7 +126,23 @@ class _MovementEpisodeProbe:
 
 
 def _normalize_subject_name(value: str) -> str:
-    return re.sub(r"(?:'s|’s)$", "", value.casefold())
+    return normalize_subject_name(value)
+
+
+def _query_campaign_phrase_terms(contexts: tuple[str, ...] | None) -> set[str]:
+    if not contexts:
+        return set()
+    terms: set[str] = set()
+    for context in contexts:
+        for match in _CAMPAIGN_EPISODE_PHRASE.finditer(context or ""):
+            terms |= normalized_terms(match.group(1))
+    return terms
+
+
+def _query_has_campaign_episode_phrase(contexts: tuple[str, ...] | None) -> bool:
+    if not contexts:
+        return False
+    return any(_CAMPAIGN_EPISODE_PHRASE.search(context or "") for context in contexts)
 
 
 def _narrative_subjects(value: str) -> set[str]:
@@ -139,7 +158,13 @@ def _narrative_subjects(value: str) -> set[str]:
 def _query_subjects(contexts: tuple[str, ...] | None) -> set[str]:
     if not contexts:
         return set()
-    return {_normalize_subject_name(name) for name in query_proper_nouns(contexts)}
+    campaign_terms = _query_campaign_phrase_terms(contexts)
+    subjects = {_normalize_subject_name(name) for name in query_proper_nouns(contexts)}
+    subjects |= {
+        _normalize_subject_name(name)
+        for name in narrative_subject_proper_nouns(" ".join(contexts))
+    }
+    return {subject for subject in subjects if subject not in campaign_terms}
 
 
 def _other_campaign_subject_conflict(text: str, contexts: tuple[str, ...] | None) -> bool:
@@ -233,14 +258,14 @@ def _episode_anchor_overlap(claim: HistoricalClaim, statement: str, contexts: tu
 
 
 def _normalized_subject_overlap(statement: str, contexts: tuple[str, ...] | None) -> bool:
-    if not contexts:
-        return False
-    return bool(_query_subjects(contexts) & _narrative_subjects(statement))
+    return has_normalized_subject_overlap(statement, contexts)
 
 
 def _episode_subject_overlap(statement: str, contexts: tuple[str, ...] | None) -> bool:
     if not contexts:
         return False
+    if has_normalized_subject_overlap(statement, contexts):
+        return True
     query_subjects = _query_subjects(contexts) - _GENERIC_EPISODE_SUBJECTS
     narrative_subjects = _narrative_subjects(statement) - _GENERIC_EPISODE_SUBJECTS
     return bool(query_subjects & narrative_subjects)
@@ -248,6 +273,11 @@ def _episode_subject_overlap(statement: str, contexts: tuple[str, ...] | None) -
 
 _DURING_EPISODE = re.compile(
     r"\bduring\s+([A-Z][A-Za-z'’]+(?:\s+[A-Z][A-Za-z'’]+)?)",
+    re.IGNORECASE,
+)
+_CAMPAIGN_EPISODE_PHRASE = re.compile(
+    r"\b(?:during|in|throughout|for)\s+(?:the\s+)?"
+    r"([A-Z][A-Za-z'’\u2019-]+(?:\s+(?:the\s+)?[A-Z][A-Za-z'’\u2019-]+){0,4})\s+campaign\b",
     re.IGNORECASE,
 )
 _GEO_PREP = re.compile(
@@ -490,6 +520,13 @@ def _direct_subject_local_episode_signal(
     return bool((_query_subjects(contexts) - _GENERIC_EPISODE_SUBJECTS) & statement_tokens & source_tokens)
 
 
+def _statement_supports_query_campaign(statement: str, contexts: tuple[str, ...] | None) -> bool:
+    campaign_terms = _query_campaign_phrase_terms(contexts)
+    if not campaign_terms:
+        return False
+    return bool(normalized_terms(statement) & campaign_terms)
+
+
 def _strong_direct_episode_signal(
     statement: str,
     window: str | None,
@@ -500,6 +537,10 @@ def _strong_direct_episode_signal(
 ) -> bool:
     if _explicit_temporal_contradiction(statement, contexts, window):
         return False
+    if _statement_supports_query_campaign(statement, contexts) and has_normalized_subject_overlap(
+        statement, contexts,
+    ):
+        return True
     explicit_od = bool(probe.source_place and probe.destination_place)
     if explicit_od and _explicit_od_episode_compatible_places(
         probe.source_place, probe.destination_place, statement, contexts,
@@ -557,6 +598,8 @@ def _query_has_episode_constraints(contexts: tuple[str, ...] | None) -> bool:
     for context in contexts:
         if _explicit_temporal_intervals(context or ""):
             return True
+    if _query_has_campaign_episode_phrase(contexts):
+        return True
     query_subjects = _query_subjects(contexts) - _GENERIC_EPISODE_SUBJECTS
     episode_anchors = {
         _normalize_subject_name(term)
