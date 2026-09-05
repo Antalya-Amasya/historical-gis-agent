@@ -202,7 +202,7 @@ class HistoricalRouteOrchestrator:
         if intent.intent != "historical_route":
             raise RouteOrchestrationError("only historical_route intents can be reconstructed")
         reviewed, barrier_context = self._reconstruction_plan(historical_route)
-        terrain_graph_provider = self._terrain_graph_provider_for(intent)
+        terrain_graph_provider = self._terrain_graph_provider_for(intent, historical_route)
         effective_cell_size_m = self.cell_size_m if cell_size_m is None else cell_size_m
         if effective_cell_size_m <= 0:
             raise ValueError("cell_size_m must be positive")
@@ -268,7 +268,7 @@ class HistoricalRouteOrchestrator:
         route_geojson["properties"] = route_properties
         geojson = dict(presentation.geojson)
         crossing_features = [self._crossing_feature(crossing)] if crossing is not None else []
-        geojson["features"] = [route_geojson, *presentation.geojson["features"][1:], *crossing_features, *self._corridor_features(intent)]
+        geojson["features"] = [route_geojson, *presentation.geojson["features"][1:], *crossing_features, *self._corridor_features(historical_route)]
         presentation = presentation.model_copy(update={"route_geojson": route_geojson, "geojson": geojson})
         panels = [
             KnowledgePanelBuilder().build(waypoint, summary_provider=lambda view: summaries.get(view.id))
@@ -285,13 +285,19 @@ class HistoricalRouteOrchestrator:
             presentation_summary=display_summary,
         )
 
-    def _terrain_graph_provider_for(self, intent: HistoricalRouteIntent):
+    def _terrain_graph_provider_for(self, intent: HistoricalRouteIntent, historical_route: HistoricalRoute):
         if self.terrain_graph_provider is not None:
             return self.terrain_graph_provider
-        constraints = ["synthetic_mock_terrain"]
-        if intent.campaign_id == _HANNIBAL_CORRIDOR.campaign_id:
-            constraints.extend(["mock_ocean_blocking", "mock_reviewed_corridor_mask", "mock_alpine_terrain_multiplier"])
-        return OfflineMockTerrainGraphProvider(self._terrain_constraints_for(intent), applied_constraints=constraints)
+        constraints = [
+            "synthetic_mock_terrain",
+            "mock_ocean_blocking",
+            "mock_route_search_bounds",
+            "mock_alpine_terrain_multiplier",
+        ]
+        return OfflineMockTerrainGraphProvider(
+            self._terrain_constraints_for(historical_route),
+            applied_constraints=constraints,
+        )
 
     @staticmethod
     def _crossing_feature(crossing) -> dict[str, object]:
@@ -314,18 +320,29 @@ class HistoricalRouteOrchestrator:
         }
 
     @staticmethod
-    def _terrain_constraints_for(intent: HistoricalRouteIntent) -> Callable[[GridPoint, float, float], TerrainOverride | None]:
-        corridor = _HANNIBAL_CORRIDOR if intent.campaign_id == _HANNIBAL_CORRIDOR.campaign_id else None
+    def _route_search_bounds(historical_route: HistoricalRoute, padding_deg: float = 2.0) -> HistoricalRouteCorridorRegion:
+        longitudes = [point.historical_place.longitude for point in historical_route.ordered_points]
+        latitudes = [point.historical_place.latitude for point in historical_route.ordered_points]
+        return HistoricalRouteCorridorRegion(
+            name="route-derived search bounds",
+            min_longitude=min(longitudes) - padding_deg,
+            min_latitude=min(latitudes) - padding_deg,
+            max_longitude=max(longitudes) + padding_deg,
+            max_latitude=max(latitudes) + padding_deg,
+        )
+
+    @staticmethod
+    def _terrain_constraints_for(historical_route: HistoricalRoute) -> Callable[[GridPoint, float, float], TerrainOverride | None]:
+        search_bounds = HistoricalRouteOrchestrator._route_search_bounds(historical_route)
 
         def rule(point: GridPoint, longitude: float, latitude: float) -> TerrainOverride | None:
-            # This conservative mask is a local display-demo constraint, not a coastline dataset
-            # and not a claim about Hannibal's exact route.
+            # Conservative mock-ocean bands for the offline Mediterranean demo surface.
             if 0.0 < longitude < 4.75 and latitude < 41.25:
                 return TerrainOverride(terrain="ocean", terrain_multiplier=20.0, blocked=True)
             if 4.75 <= longitude < 7.2 and latitude < 42.75:
                 return TerrainOverride(terrain="ocean", terrain_multiplier=20.0, blocked=True)
-            if corridor is not None and not corridor.allows(longitude, latitude):
-                return TerrainOverride(terrain="outside_reviewed_corridor", terrain_multiplier=20.0, blocked=True)
+            if not search_bounds.contains(longitude, latitude):
+                return TerrainOverride(terrain="outside_route_search_bounds", terrain_multiplier=20.0, blocked=True)
             # A coarse Alpine terrain classification affects only movement cost; it proves no fact.
             if 6.0 <= longitude <= 9.5 and 43.0 <= latitude <= 46.0:
                 return TerrainOverride(terrain="high_mountain", terrain_multiplier=5.0, blocked=False)
@@ -334,9 +351,8 @@ class HistoricalRouteOrchestrator:
         return rule
 
     @staticmethod
-    def _corridor_features(intent: HistoricalRouteIntent) -> list[dict[str, object]]:
-        if intent.campaign_id != _HANNIBAL_CORRIDOR.campaign_id:
-            return []
+    def _corridor_features(historical_route: HistoricalRoute) -> list[dict[str, object]]:
+        region = HistoricalRouteOrchestrator._route_search_bounds(historical_route)
         return [
             {
                 "type": "Feature",
@@ -350,10 +366,9 @@ class HistoricalRouteOrchestrator:
                 "properties": {
                     "layer_type": "uncertainty_corridor",
                     "label": region.name,
-                    "explanation": "Broad reviewed search area, not an asserted historical corridor or route.",
+                    "explanation": "Route-derived search bounds, not an asserted historical corridor or route.",
                 },
             }
-            for region in _HANNIBAL_CORRIDOR.regions
         ]
 
     @staticmethod
@@ -378,7 +393,7 @@ class HistoricalRouteOrchestrator:
             ).model_dump(mode="json"),
             HistoricalDataSource(
                 source_type="reviewed_annotation",
-                dataset_name="hannibal_reconstruction_constraints",
+                dataset_name="mock_terrain_reconstruction_constraints",
                 version="phase-18", license="project configuration", confidence=0.6,
             ).model_dump(mode="json"),
             HistoricalDataSource(

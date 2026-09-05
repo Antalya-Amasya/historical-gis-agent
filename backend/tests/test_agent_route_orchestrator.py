@@ -86,7 +86,7 @@ def test_hannibal_route_request_returns_terrain_reconstruction_presentation_from
     assert quality["waypoint_order_preserved"] is True
     assert quality["terrain_source"] == "offline_mock_terrain"
     assert quality["terrain_constrained"] is True
-    assert quality["applied_constraints"] == ["synthetic_mock_terrain", "mock_ocean_blocking", "mock_reviewed_corridor_mask", "mock_alpine_terrain_multiplier"]
+    assert quality["applied_constraints"] == ["synthetic_mock_terrain", "mock_ocean_blocking", "mock_route_search_bounds", "mock_alpine_terrain_multiplier"]
     assert quality["elevation_gain"] >= 0
     assert quality["max_slope"] >= 0
     assert quality["mountain_penalty"] >= 0
