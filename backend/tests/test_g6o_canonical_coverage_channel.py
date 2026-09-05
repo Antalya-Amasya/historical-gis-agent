@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from backend.app.models import Evidence
-from backend.app.rag.coverage_retrieval import DEFAULT_COVERAGE_BUDGET, DEFAULT_PER_INTENT_K
+from backend.app.rag.coverage_retrieval import DEFAULT_COVERAGE_BUDGET, DEFAULT_RAW_OBSERVATION_K
 from backend.app.rag.retrieval_intents import RetrievalIntent
 from backend.app.rag.retriever import ChromaHistoricalRetriever
 from backend.tests.g5r_trusted_benchmark import hard_benchmark_queries, references_for_query, trusted_references
@@ -34,15 +34,20 @@ def _evidence(identifier: str, text: str, *, score: float = 0.5) -> Evidence:
     )
 
 
-def _tracking_retriever(responses: dict[tuple[str, int], list[Evidence]] | None = None):
+def _tracking_retriever(responses: dict[str, list[Evidence]] | None = None):
     retriever = ChromaHistoricalRetriever(object(), None)
     calls: list[tuple[str, int]] = []
     responses = responses or {}
 
+    def tracked_candidates(query: str, observation_k: int = DEFAULT_RAW_OBSERVATION_K, filters=None):
+        calls.append((query, observation_k))
+        return list(responses.get(query, []))
+
     def tracked_retrieve(query: str, top_k: int = 5, filters=None):
         calls.append((query, top_k))
-        return responses.get((query, top_k), responses.get((query, top_k), []))
+        return list(responses.get(query, []))[:top_k]
 
+    retriever.retrieve_candidates = tracked_candidates  # type: ignore[method-assign]
     retriever.retrieve = tracked_retrieve  # type: ignore[method-assign]
     return retriever, calls
 
@@ -50,14 +55,14 @@ def _tracking_retriever(responses: dict[tuple[str, int], list[Evidence]] | None 
 def test_a_canonical_executes_once_for_multi_intent_query():
     retriever, calls = _tracking_retriever()
     retriever.retrieve_with_coverage(CAESAR_QUERY)
-    canonical_calls = [call for call in calls if call[0] == CAESAR_QUERY and call[1] == DEFAULT_COVERAGE_BUDGET]
+    canonical_calls = [call for call in calls if call[0] == CAESAR_QUERY]
     assert len(canonical_calls) == 1
     assert len(calls) > len(canonical_calls)
 
 
 def test_b_canonical_only_candidate_enters_coverage_pool():
     canon_only = _evidence("canon-only", "Caesar marched from Italy across the Adriatic into Epirus.")
-    retriever, _calls = _tracking_retriever({(CAESAR_QUERY, DEFAULT_COVERAGE_BUDGET): [canon_only]})
+    retriever, _calls = _tracking_retriever({CAESAR_QUERY: [canon_only]})
     merged = retriever.retrieve_with_coverage(CAESAR_QUERY)
     assert "canon-only" in {item.id for item in merged}
 
@@ -65,37 +70,31 @@ def test_b_canonical_only_candidate_enters_coverage_pool():
 def test_c_canonical_does_not_bypass_normal_ranking_policy():
     weak = _evidence("canon-weak", "Generic campaign prose without movement detail.", score=0.1)
     strong = _evidence("intent-strong", "Caesar marched from Italy to Epirus after crossing the sea.", score=0.99)
-    responses = {
-        (CAESAR_QUERY, DEFAULT_COVERAGE_BUDGET): [weak],
-    }
+    responses = {CAESAR_QUERY: [weak]}
     retriever, _calls = _tracking_retriever(responses)
 
-    def tracked_retrieve(query: str, top_k: int = 5, filters=None):
-        _calls.append((query, top_k))
-        if query == CAESAR_QUERY and top_k == DEFAULT_COVERAGE_BUDGET:
+    def tracked_candidates(query: str, observation_k: int = DEFAULT_RAW_OBSERVATION_K, filters=None):
+        _calls.append((query, observation_k))
+        if query == CAESAR_QUERY:
             return [weak]
-        if top_k == DEFAULT_PER_INTENT_K:
-            return [strong]
-        return []
+        return [strong]
 
-    retriever.retrieve = tracked_retrieve  # type: ignore[method-assign]
+    retriever.retrieve_candidates = tracked_candidates  # type: ignore[method-assign]
     merged = retriever.retrieve_with_coverage(CAESAR_QUERY, budget=3)
     assert merged[0].id == "intent-strong"
 
 
 def test_d_duplicate_canonical_and_intent_evidence_dedups():
     shared = _evidence("shared-id", "Caesar marched from Italy to Epirus after Pharsalus.")
-    retriever, _calls = _tracking_retriever({(CAESAR_QUERY, DEFAULT_COVERAGE_BUDGET): [shared]})
+    retriever, _calls = _tracking_retriever({CAESAR_QUERY: [shared]})
 
-    def tracked_retrieve(query: str, top_k: int = 5, filters=None):
-        _calls.append((query, top_k))
-        if query == CAESAR_QUERY and top_k == DEFAULT_COVERAGE_BUDGET:
+    def tracked_candidates(query: str, observation_k: int = DEFAULT_RAW_OBSERVATION_K, filters=None):
+        _calls.append((query, observation_k))
+        if query == CAESAR_QUERY:
             return [shared]
-        if top_k == DEFAULT_PER_INTENT_K:
-            return [shared.model_copy(update={"score": 0.8})]
-        return []
+        return [shared.model_copy(update={"score": 0.8})]
 
-    retriever.retrieve = tracked_retrieve  # type: ignore[method-assign]
+    retriever.retrieve_candidates = tracked_candidates  # type: ignore[method-assign]
     merged = retriever.retrieve_with_coverage(CAESAR_QUERY, budget=5)
     assert len(merged) == len({item.id for item in merged})
     assert merged.count(shared) == 0
@@ -118,15 +117,15 @@ def test_f_authority_and_identity_unchanged():
         "Caesar marched from Italy to Epirus.",
         score=0.7,
     )
-    retriever, _calls = _tracking_retriever({(CAESAR_QUERY, DEFAULT_COVERAGE_BUDGET): [original]})
+    retriever, _calls = _tracking_retriever({CAESAR_QUERY: [original]})
 
-    def tracked_retrieve(query: str, top_k: int = 5, filters=None):
-        _calls.append((query, top_k))
-        if query == CAESAR_QUERY and top_k == DEFAULT_COVERAGE_BUDGET:
+    def tracked_candidates(query: str, observation_k: int = DEFAULT_RAW_OBSERVATION_K, filters=None):
+        _calls.append((query, observation_k))
+        if query == CAESAR_QUERY:
             return [original]
         return []
 
-    retriever.retrieve = tracked_retrieve  # type: ignore[method-assign]
+    retriever.retrieve_candidates = tracked_candidates  # type: ignore[method-assign]
     merged = retriever.retrieve_with_coverage(CAESAR_QUERY, budget=DEFAULT_COVERAGE_BUDGET)
     item = next(entry for entry in merged if entry.id == "parent:10:20")
     assert item.text == original.text
