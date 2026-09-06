@@ -76,12 +76,14 @@ class EvidenceTemporalResolver:
         re.compile(r"\b(?P<first>\d{1,4})\s*--\s*(?P<second>\d{1,4})\s*(?P<era>BCE|BC|CE|AD)\b", re.I),
         re.compile(r"\bbetween\s+(?P<first>\d{1,4})\s+and\s+(?P<second>\d{1,4})\s*(?P<era>BCE|BC|CE|AD)\b", re.I),
         re.compile(r"\bbetween\s+(?P<era>BCE|BC|B\.\s*C\.)\s+(?P<first>\d{1,4})\s+and\s+(?P<second>\d{1,4})\b", re.I),
+        re.compile(r"\bfrom\s+(?P<first>\d{1,4})\s+through\s+(?P<second>\d{1,4})\s*(?P<era>BCE|BC|CE|AD)\b", re.I),
+        re.compile(r"\bfrom\s+(?P<era>BCE|BC|B\.\s*C\.)\s*(?P<first>\d{1,4})\s+through\s+(?P<second>\d{1,4})\b", re.I),
     )
     _RANGE_LIKE = re.compile(
         r"\b(?:"
         r"(?:(?:BCE|BC|CE|AD|B\.\s*C\.|A\.\s*D\.)\s*)?"
         r"\d{1,4}\s*"
-        r"(?:–|—|--|-|\bto\b|\buntil\b|/)"
+        r"(?:–|—|--|-|\bto\b|\buntil\b|\bthrough\b|\bthru\b|\bup to\b|/)"
         r"\s*"
         r"\d{1,4}\s*"
         r"(?:BCE|BC|CE|AD|B\.\s*C\.|A\.\s*D\.)?"
