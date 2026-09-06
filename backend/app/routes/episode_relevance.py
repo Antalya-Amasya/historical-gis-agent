@@ -15,8 +15,11 @@ from backend.app.routes.evidence_relevance import (
     has_normalized_subject_overlap,
     narrative_subject_proper_nouns,
     normalize_subject_name,
+    normalized_query_person_identities,
     normalized_query_subject_terms,
     normalized_terms,
+    person_identities_conflict,
+    person_identities_match,
     query_proper_nouns,
     query_terms,
     relation_supporting_statements,
@@ -193,6 +196,10 @@ def _other_campaign_subject_conflict(text: str, contexts: tuple[str, ...] | None
     """True only when narrative subjects are wholly disjoint from query subjects."""
     if not contexts:
         return False
+    if person_identities_conflict(text, contexts):
+        return True
+    if any(len(query_id) >= 2 for query_id in normalized_query_person_identities(contexts)):
+        return False
     query_subjects = _query_subjects(contexts)
     evidence_subjects = _narrative_subjects(text)
     if not query_subjects or not evidence_subjects:
@@ -288,6 +295,8 @@ def _episode_subject_overlap(statement: str, contexts: tuple[str, ...] | None) -
         return False
     if has_normalized_subject_overlap(statement, contexts):
         return True
+    if any(len(query_id) >= 2 for query_id in normalized_query_person_identities(contexts)):
+        return False
     query_subjects = _query_subjects(contexts) - _GENERIC_EPISODE_SUBJECTS
     narrative_subjects = _narrative_subjects(statement) - _GENERIC_EPISODE_SUBJECTS
     return bool(query_subjects & narrative_subjects)
@@ -373,6 +382,12 @@ def _explicit_query_subject_satisfied(combined: str, contexts: tuple[str, ...] |
         _normalize_subject_name(name) for name in _named_proper_nouns(combined)
     } - spatial - campaign_terms - _campaign_phrase_modifier_terms(combined) - _SUBJECT_CONSTRAINT_NOISE
     evidence_persons -= _GENERIC_EPISODE_SUBJECTS
+    if normalized_query_person_identities(contexts):
+        if person_identities_match(combined, contexts):
+            return True
+        if person_identities_conflict(combined, contexts):
+            return False
+        return False
     if evidence_persons:
         return bool(query_persons & evidence_persons)
     if _other_campaign_subject_conflict(combined, contexts):

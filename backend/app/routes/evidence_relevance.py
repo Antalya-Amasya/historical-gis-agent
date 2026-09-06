@@ -89,6 +89,86 @@ def normalize_subject_name(value: str) -> str:
     return re.sub(r"(?:'s|'s)$", "", value.casefold())
 
 
+def _person_name_tokens(prefix: str, spatial: set[str]) -> tuple[str, ...] | None:
+    match = _PERSON_NAME_TAIL.search(prefix.strip())
+    if not match:
+        return None
+    tokens: list[str] = []
+    for part in match.group(1).split():
+        token = normalize_subject_name(part)
+        if token in _TEMPORAL_ERA_SUBJECTS or token in spatial or token in _SENTENCE_INITIAL_NON_NAMES:
+            continue
+        if _NUMERIC_YEAR.match(token):
+            continue
+        tokens.append(token)
+    return tuple(tokens) if tokens else None
+
+
+def explicit_person_identities(value: str) -> list[tuple[str, ...]]:
+    spatial = _spatial_role_proper_nouns(value)
+    identities: list[tuple[str, ...]] = []
+    for sentence in re.split(r"(?<=[.!?;])\s+|\n+", value):
+        if not sentence.strip():
+            continue
+        verb = _VERB_HEAD.search(sentence)
+        if verb is None:
+            continue
+        name = _person_name_tokens(sentence[:verb.start()], spatial)
+        if name:
+            identities.append(name)
+    return list(dict.fromkeys(identities))
+
+
+def normalized_query_person_identities(contexts: tuple[str, ...] | None) -> list[tuple[str, ...]]:
+    if not contexts:
+        return []
+    identities: list[tuple[str, ...]] = []
+    for context in contexts:
+        match = _QUERY_PERSON.search(context or "")
+        if not match:
+            continue
+        tokens = tuple(normalize_subject_name(part) for part in match.group(1).split())
+        if tokens:
+            identities.append(tokens)
+    return list(dict.fromkeys(identities))
+
+
+def person_identities_match(text: str, contexts: tuple[str, ...] | None) -> bool:
+    query_ids = normalized_query_person_identities(contexts)
+    evidence_ids = explicit_person_identities(text)
+    if query_ids:
+        for query_id in query_ids:
+            for evidence_id in evidence_ids:
+                if query_id == evidence_id:
+                    return True
+                if len(query_id) == 1 and len(evidence_id) == 1 and query_id[0] == evidence_id[0]:
+                    return True
+        if all(len(query_id) == 1 for query_id in query_ids):
+            query_tokens = {token for query_id in query_ids for token in query_id}
+            evidence_tokens = {token for evidence_id in evidence_ids for token in evidence_id}
+            evidence_tokens |= normalized_narrative_subjects(text)
+            return bool(query_tokens & evidence_tokens)
+        return False
+    query_subjects = normalized_query_subject_terms(contexts)
+    if not query_subjects:
+        return False
+    evidence_subjects = normalized_narrative_subjects(text)
+    if query_subjects & evidence_subjects:
+        return True
+    evidence_nouns = {normalize_subject_name(noun) for noun in _named_proper_nouns(text)}
+    return bool(query_subjects & evidence_nouns)
+
+
+def person_identities_conflict(text: str, contexts: tuple[str, ...] | None) -> bool:
+    query_ids = normalized_query_person_identities(contexts)
+    evidence_ids = explicit_person_identities(text)
+    multi_query = [query_id for query_id in query_ids if len(query_id) >= 2]
+    multi_evidence = [evidence_id for evidence_id in evidence_ids if len(evidence_id) >= 2]
+    if multi_query and multi_evidence:
+        return all(evidence_id not in multi_query for evidence_id in multi_evidence)
+    return False
+
+
 def normalized_query_subject_terms(contexts: tuple[str, ...] | None) -> set[str]:
     if not contexts:
         return set()
@@ -102,14 +182,7 @@ def normalized_narrative_subjects(text: str) -> set[str]:
 
 
 def has_normalized_subject_overlap(text: str, contexts: tuple[str, ...] | None) -> bool:
-    query_subjects = normalized_query_subject_terms(contexts)
-    if not query_subjects:
-        return False
-    evidence_subjects = normalized_narrative_subjects(text)
-    if query_subjects & evidence_subjects:
-        return True
-    evidence_nouns = {normalize_subject_name(noun) for noun in _named_proper_nouns(text)}
-    return bool(query_subjects & evidence_nouns)
+    return person_identities_match(text, contexts)
 
 
 _SENTENCE_INITIAL_NON_NAMES = frozenset({
@@ -125,6 +198,16 @@ _VERB_HEAD = re.compile(
     r"advanced|proceeded|departed|returned|said|declared|was|were|had|have|having)\b",
     re.IGNORECASE,
 )
+_QUERY_PERSON = re.compile(
+    r"\b(?:trace|reconstruct|follow)\s+"
+    r"((?:[A-Z][A-Za-z'’\u2019-]+(?:\s+[A-Z][A-Za-z'’\u2019-]+){0,3}))"
+    r"(?:['\u2019]s)?\s+route\b",
+    re.IGNORECASE,
+)
+_PERSON_NAME_TAIL = re.compile(
+    r"((?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿÆæŒœ'’\u2019-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿÆæŒœ'’\u2019-]+){0,3}))\s*$",
+)
+_NUMERIC_YEAR = re.compile(r"^\d{1,4}$")
 
 
 def _proper_nouns_before_verb(fragment: str, spatial: set[str]) -> set[str]:
@@ -194,6 +277,10 @@ def has_subject_campaign_conflict(text: str, contexts: tuple[str, ...] | None) -
     """True when evidence names a narrative subject absent from the query subjects."""
     if not contexts:
         return False
+    if person_identities_conflict(text, contexts):
+        return True
+    if any(len(query_id) >= 2 for query_id in normalized_query_person_identities(contexts)):
+        return False
     query_subjects = normalized_query_subject_terms(contexts)
     if not query_subjects:
         return False
@@ -221,9 +308,7 @@ def classify_evidence_relevance(
     if has_normalized_subject_overlap(text, contexts):
         return EvidenceRelevance.DIRECT_SUBJECT
     if has_query_term_overlap(text, contexts):
-        if normalized_query_subject_terms(contexts) & {
-            normalize_subject_name(noun) for noun in _named_proper_nouns(text)
-        }:
+        if person_identities_match(text, contexts):
             return EvidenceRelevance.DIRECT_SUBJECT
         return EvidenceRelevance.DIRECT_CAMPAIGN
     if window_text and has_query_term_overlap(window_text, contexts):
