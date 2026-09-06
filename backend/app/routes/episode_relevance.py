@@ -1109,6 +1109,11 @@ def _classify_movement_episode(
         if item is not None:
             chunk_parts.append(_evidence_text(item))
     chunk = " ".join(chunk_parts)
+    chain_window = " ".join(
+        _evidence_text(evidence_by_id[ref])
+        for ref in probe.supporting_evidence_ids
+        if ref in evidence_by_id
+    )
     if _other_campaign_subject_conflict(local or chunk, contexts):
         tag = EvidenceRelevance.OTHER_CAMPAIGN
     elif subject_relevance is not None:
@@ -1162,14 +1167,32 @@ def _classify_movement_episode(
         episode = EpisodeRelevance.UNKNOWN
     if contexts and not _explicit_query_constraints_satisfied(statement, None, contexts):
         episode = EpisodeRelevance.OTHER_CAMPAIGN
+    elif (
+        episode is EpisodeRelevance.UNKNOWN
+        and _explicit_query_constraints_satisfied(statement, None, contexts)
+        and _proven_query_chain_member(
+            probe.source_place,
+            probe.destination_place,
+            statement,
+            chain_window,
+            contexts,
+        )
+    ):
+        episode = EpisodeRelevance.DIRECT_QUERY_EPISODE
     admitted = episode_route_admission_allowed(episode)
     endpoint_contradiction = _movement_contradicts_query_endpoints(
         probe.source_place,
         probe.destination_place,
         contexts,
         statement=statement,
-        window=window,
+        window=chain_window or window,
     )
+    if endpoint_contradiction and _explicit_endpoint_alignment(
+        probe.source_place, probe.destination_place, contexts,
+    ) == "disjoint" and _proven_query_chain_member(
+        probe.source_place, probe.destination_place, statement, chain_window, contexts,
+    ):
+        endpoint_contradiction = False
     if endpoint_contradiction:
         episode = EpisodeRelevance.UNKNOWN
         admitted = False
