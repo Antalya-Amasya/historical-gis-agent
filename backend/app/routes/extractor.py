@@ -92,13 +92,21 @@ def _legacy_od_has_positive_authority(
                 return True
         return False
 
-    if any(directed_edge_in_clause(clause) for clause in positive_clauses):
-        return True
-
     occurrence_boundary = re.compile(
-        r"\b(?:years?\s+later|much\s+later|long\s+after|decades?\s+later|centuries?\s+later)\b",
+        r"\b(?:"
+        r"years?\s+later|much\s+later|long\s+after|decades?\s+later|centuries?\s+later|"
+        r"in\s+(?:a\s+)?(?:different|later|separate)\s+(?:campaign|war|expedition|episode)|"
+        r"in\s+another\s+(?:campaign|war|expedition|episode)|"
+        r"(?:different|another|later|separate)\s+(?:campaign|war|expedition|episode)"
+        r")\b",
         re.IGNORECASE,
     )
+
+    for clause in positive_clauses:
+        if occurrence_boundary.search(clause):
+            continue
+        if directed_edge_in_clause(clause):
+            return True
 
     def clause_actor_tokens(clause: str) -> set[str]:
         spatial = _spatial_role_proper_nouns(clause)
