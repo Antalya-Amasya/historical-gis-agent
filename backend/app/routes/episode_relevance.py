@@ -427,9 +427,34 @@ def _proven_query_chain_member(
     current = (_place_token_set(source_place), _place_token_set(destination_place))
     if current[0] & query_origin and current[1] & query_destination:
         return True
+    # Chain edges are occurrence witnesses, not window-level place pairs.  A
+    # neighboring sentence may describe another subject, campaign, period, or
+    # a negated movement and therefore cannot qualify an otherwise identical
+    # raw edge.
     context_text = " ".join(part for part in (statement.strip(), (window or "").strip()) if part)
-    edges = _movement_pairs_from_text(context_text)
-    if current not in edges:
+    occurrences = re.split(r"(?<=[.!?])\s+", context_text)
+    query_intervals = [
+        interval
+        for context in contexts or ()
+        for interval in _explicit_temporal_intervals(context or "")
+    ]
+    edges: list[tuple[frozenset[str], frozenset[str]]] = []
+    for occurrence in occurrences:
+        local = occurrence.strip()
+        if not local or re.search(r"\b(?:did\s+not|never|not)\s+(?:march|travel|move|go|proceed)", local, re.I):
+            continue
+        if not _explicit_query_subject_satisfied(local, contexts):
+            continue
+        if _query_has_campaign_episode_phrase(contexts) and not _statement_supports_query_campaign(local, contexts):
+            continue
+        if query_intervals:
+            local_intervals = _explicit_temporal_intervals(local)
+            if not local_intervals or _explicit_temporal_contradiction(local, contexts, None):
+                continue
+        for edge in _movement_pairs_from_text(local):
+            if edge not in edges:
+                edges.append(edge)
+    if current not in edges and _explicit_query_subject_satisfied(statement.strip(), contexts):
         edges.append(current)
     return _edge_on_directed_path(current, query_origin, query_destination, edges)
 
@@ -910,7 +935,7 @@ def _explicit_query_constraints_satisfied(
 ) -> bool:
     if not contexts:
         return True
-    combined = " ".join(part for part in (statement.strip(), (window or "").strip()) if part)
+    combined = statement.strip()
     if not _explicit_query_subject_satisfied(combined, contexts):
         return False
     if _query_has_campaign_episode_phrase(contexts):
@@ -921,11 +946,9 @@ def _explicit_query_constraints_satisfied(
         query_intervals.extend(_explicit_temporal_intervals(context or ""))
     if query_intervals:
         statement_intervals = _explicit_temporal_intervals(statement.strip())
-        if not statement_intervals and window:
-            statement_intervals = _explicit_temporal_intervals(window.strip())
         if not statement_intervals:
             return False
-        if _explicit_temporal_contradiction(statement, contexts, window):
+        if _explicit_temporal_contradiction(statement, contexts, None):
             return False
     return True
 
@@ -1125,9 +1148,11 @@ def _classify_movement_episode(
         episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
     else:
         episode = EpisodeRelevance.UNKNOWN
+    if contexts and not _explicit_query_constraints_satisfied(statement, None, contexts):
+        episode = EpisodeRelevance.OTHER_CAMPAIGN
     admitted = episode_route_admission_allowed(episode)
     if episode is EpisodeRelevance.DIRECT_QUERY_EPISODE:
-        combined = " ".join(part for part in (statement.strip(), (window or "").strip()) if part)
+        combined = statement.strip()
         if not _explicit_query_constraints_satisfied(statement, window, contexts):
             if not _explicit_query_subject_satisfied(combined, contexts):
                 episode = EpisodeRelevance.OTHER_CAMPAIGN
