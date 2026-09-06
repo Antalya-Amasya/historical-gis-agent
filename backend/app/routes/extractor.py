@@ -95,9 +95,9 @@ def _legacy_od_has_positive_authority(
     occurrence_boundary = re.compile(
         r"\b(?:"
         r"years?\s+later|much\s+later|long\s+after|decades?\s+later|centuries?\s+later|"
-        r"in\s+(?:a\s+)?(?:different|later|separate)\s+(?:campaign|war|expedition|episode)|"
+        r"in\s+(?:a\s+)?(?:different|later|separate|subsequent)\s+(?:campaign|war|expedition|episode)|"
         r"in\s+another\s+(?:campaign|war|expedition|episode)|"
-        r"(?:different|another|later|separate)\s+(?:campaign|war|expedition|episode)"
+        r"(?:different|another|later|separate|subsequent)\s+(?:campaign|war|expedition|episode)"
         r")\b",
         re.IGNORECASE,
     )
