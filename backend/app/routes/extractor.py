@@ -8,7 +8,13 @@ from typing import Protocol
 
 from backend.app.models import Evidence, ExtractedHistoricalPlaceMention, GeoJsonLineString, HistoricalClaim, HistoricalPlace, HistoricalRoute, HistoricalRoutePoint
 from backend.app.routes.episode_relevance import filter_legacy_movement_claims
-from backend.app.routes.evidence_relevance import normalized_terms
+from backend.app.routes.evidence_relevance import (
+    _named_proper_nouns,
+    _spatial_role_proper_nouns,
+    narrative_subject_proper_nouns,
+    normalize_subject_name,
+    normalized_terms,
+)
 from backend.app.routes.movement_semantics import analyze_sentence
 from backend.app.routes.place_aliases import HISTORICAL_PLACE_ALIASES, HistoricalPlaceAlias
 
@@ -67,40 +73,85 @@ def _legacy_od_has_positive_authority(
     if not positive_clauses:
         return False
 
-    def pair_in_clause(clause: str, origin_tokens: set[str], destination_tokens: set[str]) -> bool:
-        clause_tokens = normalized_terms(clause)
-        return bool(origin_tokens & clause_tokens and destination_tokens & clause_tokens)
-
-    for clause in positive_clauses:
-        if pair_in_clause(clause, source_tokens, dest_tokens):
-            return True
-
-    aliases = HistoricalPlaceMentionExtractor().aliases_in(sentence)
+    mention_extractor = HistoricalPlaceMentionExtractor()
+    aliases = mention_extractor.aliases_in(sentence)
     all_clauses = EvidenceGroundedHistoricalEventExtractor._movement_clauses(sentence)
     positive_indexes = [
         index
         for index, clause in enumerate(all_clauses)
         if EvidenceGroundedHistoricalEventExtractor._clause_has_positive_movement(clause)
     ]
+
+    def directed_edge_in_clause(clause: str) -> bool:
+        for edge in analyze_sentence(clause, mention_extractor.aliases_in(clause)).edges:
+            origin = edge.origin or edge.traversal
+            destination = edge.destination
+            if origin is None or destination is None:
+                continue
+            if source_tokens & endpoint_tokens(origin) and dest_tokens & endpoint_tokens(destination):
+                return True
+        return False
+
+    if any(directed_edge_in_clause(clause) for clause in positive_clauses):
+        return True
+
+    occurrence_boundary = re.compile(
+        r"\b(?:years?\s+later|much\s+later|long\s+after|decades?\s+later|centuries?\s+later)\b",
+        re.IGNORECASE,
+    )
+
+    def clause_actor_tokens(clause: str) -> set[str]:
+        spatial = _spatial_role_proper_nouns(clause)
+        place_tokens = set(normalized_terms(" ".join(spatial)))
+        for _position, place, alias in mention_extractor.aliases_in(clause):
+            place_tokens |= normalized_terms(place.canonical_name)
+            place_tokens |= normalized_terms(alias)
+        actors = {
+            normalize_subject_name(name)
+            for name in _named_proper_nouns(clause)
+            if name not in spatial and normalize_subject_name(name) not in place_tokens
+        }
+        actors |= {
+            actor
+            for actor in narrative_subject_proper_nouns(clause)
+            if actor not in place_tokens
+        }
+        return {token for token in actors if token not in {"bce", "bc", "ce", "ad"}}
+
+    def subjects_allow_cross_clause_continuation(left: str, right: str) -> bool:
+        left_actors = clause_actor_tokens(left)
+        right_actors = clause_actor_tokens(right)
+        if left_actors and right_actors:
+            return bool(left_actors & right_actors)
+        if right_actors and not left_actors:
+            return False
+        return True
+
     for edge in analyze_sentence(sentence, aliases).edges:
-        origin_tokens = endpoint_tokens(edge.origin)
-        destination_tokens = endpoint_tokens(edge.destination)
-        if edge.traversal is not None and edge.destination is not None:
-            origin_tokens = endpoint_tokens(edge.traversal)
-            destination_tokens = endpoint_tokens(edge.destination)
-        if not (source_tokens & origin_tokens and dest_tokens & destination_tokens):
-            continue
-        if any(pair_in_clause(clause, origin_tokens, destination_tokens) for clause in positive_clauses):
-            return True
         if edge.movement_relation not in {"crossing_arrival", "crossing_into"}:
+            continue
+        origin = edge.traversal or edge.origin
+        destination = edge.destination
+        if origin is None or destination is None:
+            continue
+        origin_tokens = endpoint_tokens(origin)
+        destination_tokens = endpoint_tokens(destination)
+        if not (source_tokens & origin_tokens and dest_tokens & destination_tokens):
             continue
         for left, right in zip(positive_indexes, positive_indexes[1:]):
             if right != left + 1:
                 continue
-            left_tokens = normalized_terms(all_clauses[left])
-            right_tokens = normalized_terms(all_clauses[right])
-            if origin_tokens & left_tokens and destination_tokens & right_tokens:
-                return True
+            left_clause = all_clauses[left]
+            right_clause = all_clauses[right]
+            if occurrence_boundary.search(right_clause):
+                continue
+            left_tokens = normalized_terms(left_clause)
+            right_tokens = normalized_terms(right_clause)
+            if not (origin_tokens & left_tokens and destination_tokens & right_tokens):
+                continue
+            if not subjects_allow_cross_clause_continuation(left_clause, right_clause):
+                continue
+            return True
     return False
 
 
