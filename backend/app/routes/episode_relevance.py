@@ -360,13 +360,178 @@ def _explicit_endpoint_alignment(
     return "fragment"
 
 
-def _movement_contradicts_query_endpoints(
+_EVIDENCE_MOVEMENT_OD = re.compile(
+    r"\bfrom\s+(?:the\s+)?([A-Z][A-Za-z'’\u2019-]+(?:\s+[A-Z][A-Za-z'’\u2019-]+)?)\s+to\s+(?:the\s+)?"
+    r"([A-Z][A-Za-z'’\u2019-]+(?:\s+[A-Z][A-Za-z'’\u2019-]+)?)",
+    re.IGNORECASE,
+)
+
+
+def _place_token_set(place: str | None) -> frozenset[str]:
+    return frozenset(_endpoint_place_tokens(place or ""))
+
+
+def _movement_pairs_from_text(text: str) -> list[tuple[frozenset[str], frozenset[str]]]:
+    pairs: list[tuple[frozenset[str], frozenset[str]]] = []
+    for match in _EVIDENCE_MOVEMENT_OD.finditer(text or ""):
+        pairs.append((_place_token_set(match.group(1)), _place_token_set(match.group(2))))
+    return pairs
+
+
+def _edge_on_directed_path(
+    current: tuple[frozenset[str], frozenset[str]],
+    origin: frozenset[str],
+    destination: frozenset[str],
+    edges: list[tuple[frozenset[str], frozenset[str]]],
+) -> bool:
+    if not edges:
+        return False
+    max_steps = len(edges) + 1
+
+    def dfs(node: frozenset[str], depth: int, path: list[tuple[frozenset[str], frozenset[str]]]) -> bool:
+        if node & destination:
+            return current in path
+        if depth >= max_steps:
+            return False
+        for edge in edges:
+            if edge in path:
+                continue
+            edge_origin, edge_destination = edge
+            if not path:
+                if not (edge_origin & origin):
+                    continue
+            elif not (path[-1][1] & edge_origin):
+                continue
+            if dfs(edge_destination, depth + 1, path + [edge]):
+                return True
+        return False
+
+    for edge_origin, edge_destination in edges:
+        if edge_origin & origin and dfs(edge_destination, 1, [(edge_origin, edge_destination)]):
+            return True
+    return False
+
+
+def _proven_query_chain_member(
+    source_place: str | None,
+    destination_place: str | None,
+    statement: str,
+    window: str | None,
+    contexts: tuple[str, ...] | None,
+) -> bool:
+    pair = _query_explicit_origin_destination(contexts)
+    if not pair or not (source_place and destination_place):
+        return False
+    query_origin = _place_token_set(pair[0])
+    query_destination = _place_token_set(pair[1])
+    current = (_place_token_set(source_place), _place_token_set(destination_place))
+    if current[0] & query_origin and current[1] & query_destination:
+        return True
+    context_text = " ".join(part for part in (statement.strip(), (window or "").strip()) if part)
+    edges = _movement_pairs_from_text(context_text)
+    if current not in edges:
+        edges.append(current)
+    return _edge_on_directed_path(current, query_origin, query_destination, edges)
+
+
+def _destination_departure_fragment(
     source_place: str | None,
     destination_place: str | None,
     contexts: tuple[str, ...] | None,
 ) -> bool:
+    pair = _query_explicit_origin_destination(contexts)
+    if not pair:
+        return False
+    move_origin = _endpoint_place_tokens(source_place)
+    move_destination = _endpoint_place_tokens(destination_place)
+    query_destination = _endpoint_place_tokens(pair[1])
+    return bool(move_origin & query_destination and not (move_destination & query_destination))
+
+
+def _origin_arrival_fragment(
+    source_place: str | None,
+    destination_place: str | None,
+    contexts: tuple[str, ...] | None,
+) -> bool:
+    pair = _query_explicit_origin_destination(contexts)
+    if not pair:
+        return False
+    move_origin = _endpoint_place_tokens(source_place)
+    move_destination = _endpoint_place_tokens(destination_place)
+    query_origin = _endpoint_place_tokens(pair[0])
+    return bool(
+        move_destination & query_origin
+        and not (move_origin & query_origin or move_destination & _endpoint_place_tokens(pair[1]))
+    )
+
+
+def _statement_satisfies_query_temporal_constraints(
+    statement: str,
+    window: str | None,
+    contexts: tuple[str, ...] | None,
+) -> bool:
+    query_intervals: list[tuple[int, int]] = []
+    for context in contexts or ():
+        query_intervals.extend(_explicit_temporal_intervals(context or ""))
+    if not query_intervals:
+        return False
+    statement_intervals = _explicit_temporal_intervals(statement.strip())
+    if not statement_intervals and window:
+        statement_intervals = _explicit_temporal_intervals(window.strip())
+    if not statement_intervals:
+        return False
+    return not _explicit_temporal_contradiction(statement, contexts, window)
+
+
+def _endpoint_scoped_movement_contradicts(
+    source_place: str | None,
+    destination_place: str | None,
+    statement: str,
+    window: str | None,
+    contexts: tuple[str, ...] | None,
+) -> bool:
+    if not _query_endpoint_scope_terms(contexts):
+        return False
     alignment = _explicit_endpoint_alignment(source_place, destination_place, contexts)
-    return alignment in {"disjoint", "reverse", "partial"}
+    if alignment == "partial":
+        return not _proven_query_chain_member(
+            source_place, destination_place, statement, window, contexts,
+        )
+    if alignment != "fragment":
+        return False
+    if _destination_departure_fragment(source_place, destination_place, contexts):
+        if _statement_satisfies_query_temporal_constraints(statement, window, contexts):
+            return False
+        return True
+    if _origin_arrival_fragment(source_place, destination_place, contexts):
+        if _proven_query_chain_member(source_place, destination_place, statement, window, contexts):
+            return False
+        if _statement_satisfies_query_temporal_constraints(statement, window, contexts):
+            return False
+        return True
+    return False
+
+
+def _movement_contradicts_query_endpoints(
+    source_place: str | None,
+    destination_place: str | None,
+    contexts: tuple[str, ...] | None,
+    *,
+    statement: str = "",
+    window: str | None = None,
+) -> bool:
+    alignment = _explicit_endpoint_alignment(source_place, destination_place, contexts)
+    if alignment in {"disjoint", "reverse"}:
+        return True
+    if _endpoint_scoped_movement_contradicts(
+        source_place, destination_place, statement, window, contexts,
+    ):
+        return True
+    if _query_endpoint_scope_terms(contexts) and _explicit_endpoint_alignment(
+        source_place, destination_place, contexts,
+    ) in {"partial", "fragment"}:
+        return False
+    return alignment == "partial"
 
 
 def _explicit_query_subject_satisfied(combined: str, contexts: tuple[str, ...] | None) -> bool:
@@ -479,12 +644,33 @@ def _explicit_od_episode_compatible_places(
     destination_place: str | None,
     statement: str,
     contexts: tuple[str, ...] | None,
+    *,
+    window: str | None = None,
 ) -> bool:
     """True when explicit O→D aligns with the requested episode beyond a single weak overlap."""
     alignment = _explicit_endpoint_alignment(source_place, destination_place, contexts)
     if alignment == "forward":
         return True
-    if alignment in {"disjoint", "reverse", "partial"}:
+    if alignment in {"disjoint", "reverse"}:
+        return False
+    if _endpoint_scoped_movement_contradicts(
+        source_place, destination_place, statement, window, contexts,
+    ):
+        return False
+    if _query_endpoint_scope_terms(contexts) and alignment in {"partial", "fragment"}:
+        if alignment == "partial":
+            return _proven_query_chain_member(
+                source_place, destination_place, statement, window, contexts,
+            )
+        if _destination_departure_fragment(source_place, destination_place, contexts):
+            return False
+        if _origin_arrival_fragment(source_place, destination_place, contexts):
+            return (
+                _proven_query_chain_member(source_place, destination_place, statement, window, contexts)
+                or _statement_satisfies_query_temporal_constraints(statement, window, contexts)
+            )
+        return False
+    if alignment in {"partial", "fragment"}:
         return False
     anchors = _query_episode_anchor_terms(contexts)
     if not anchors:
@@ -623,6 +809,25 @@ def _episode_rescue_after_explicit_od_mismatch(
     context_text = (window or statement).strip()
     if not local or not context_text or not _episode_subject_overlap(context_text, contexts):
         return False
+    if _query_endpoint_scope_terms(contexts):
+        alignment = _explicit_endpoint_alignment(source_place, destination_place, contexts)
+        if alignment == "partial":
+            return _proven_query_chain_member(
+                source_place, destination_place, statement, window, contexts,
+            )
+        if alignment == "fragment":
+            if _destination_departure_fragment(source_place, destination_place, contexts):
+                return False
+            if _origin_arrival_fragment(source_place, destination_place, contexts):
+                if _proven_query_chain_member(source_place, destination_place, statement, window, contexts):
+                    return True
+                if _statement_satisfies_query_temporal_constraints(statement, window, contexts):
+                    return True
+                return False
+        source_tokens = normalized_terms(source_place or "")
+        anchors = _query_episode_anchor_terms(contexts)
+        if {token for token in source_tokens & anchors if token not in _GENERIC_PLACE_TOKENS}:
+            return False
     query_intervals: list[tuple[int, int]] = []
     for context in contexts or ():
         query_intervals.extend(_explicit_temporal_intervals(context or ""))
@@ -654,11 +859,21 @@ def _direct_subject_local_episode_signal(
     probe: _MovementEpisodeProbe,
     statement: str,
     contexts: tuple[str, ...] | None,
+    *,
+    window: str | None = None,
 ) -> bool:
     if not (probe.source_place and probe.destination_place):
         return False
     local = statement.strip()
     if not local:
+        return False
+    if _endpoint_scoped_movement_contradicts(
+        probe.source_place,
+        probe.destination_place,
+        statement,
+        window,
+        contexts,
+    ):
         return False
     source_tokens = normalized_terms(probe.source_place)
     dest_tokens = normalized_terms(probe.destination_place)
@@ -720,18 +935,37 @@ def _explicit_endpoint_constraint_satisfied(
     destination_place: str | None,
     statement: str,
     contexts: tuple[str, ...] | None,
+    *,
+    window: str | None = None,
 ) -> bool:
     alignment = _explicit_endpoint_alignment(source_place, destination_place, contexts)
     if alignment == "forward":
         return True
-    if alignment in {"disjoint", "reverse", "partial"}:
+    if alignment in {"disjoint", "reverse"}:
         return False
-    if not _query_endpoint_scope_terms(contexts):
-        return True
+    if _endpoint_scoped_movement_contradicts(
+        source_place, destination_place, statement, window, contexts,
+    ):
+        return False
+    if _query_endpoint_scope_terms(contexts):
+        if alignment == "partial":
+            return _proven_query_chain_member(
+                source_place, destination_place, statement, window, contexts,
+            )
+        if alignment == "fragment":
+            if _destination_departure_fragment(source_place, destination_place, contexts):
+                return False
+            if _origin_arrival_fragment(source_place, destination_place, contexts):
+                return (
+                    _proven_query_chain_member(source_place, destination_place, statement, window, contexts)
+                    or _statement_satisfies_query_temporal_constraints(statement, window, contexts)
+                )
+            return False
+        return False
     if not (source_place and destination_place):
         return True
     return _explicit_od_episode_compatible_places(
-        source_place, destination_place, statement, contexts,
+        source_place, destination_place, statement, contexts, window=window,
     )
 
 
@@ -751,17 +985,17 @@ def _strong_direct_episode_signal(
         and has_normalized_subject_overlap(statement, contexts)
         and _explicit_query_constraints_satisfied(statement, window, contexts)
         and _explicit_endpoint_constraint_satisfied(
-            probe.source_place, probe.destination_place, statement, contexts,
+            probe.source_place, probe.destination_place, statement, contexts, window=window,
         )
     ):
         return True
     explicit_od = bool(probe.source_place and probe.destination_place)
     if explicit_od and _explicit_od_episode_compatible_places(
-        probe.source_place, probe.destination_place, statement, contexts,
+        probe.source_place, probe.destination_place, statement, contexts, window=window,
     ):
         return True
     if subject_relevance is EvidenceRelevance.DIRECT_SUBJECT and _direct_subject_local_episode_signal(
-        probe, statement, contexts,
+        probe, statement, contexts, window=window,
     ):
         return True
     if explicit_od and _episode_rescue_after_explicit_od_mismatch(
@@ -901,7 +1135,11 @@ def _classify_movement_episode(
                 episode = EpisodeRelevance.UNKNOWN
             admitted = False
         elif _movement_contradicts_query_endpoints(
-            probe.source_place, probe.destination_place, contexts,
+            probe.source_place,
+            probe.destination_place,
+            contexts,
+            statement=statement,
+            window=window,
         ):
             episode = EpisodeRelevance.UNKNOWN
             admitted = False
