@@ -24,6 +24,7 @@ from backend.app.routes.evidence_relevance import (
     _named_proper_nouns,
     _spatial_role_proper_nouns,
 )
+from backend.app.routes.place_aliases import HISTORICAL_PLACE_ALIASES
 from backend.app.routes.temporal import EvidenceTemporalResolver
 
 if TYPE_CHECKING:
@@ -130,29 +131,40 @@ def _normalize_subject_name(value: str) -> str:
     return normalize_subject_name(value)
 
 
+def _episode_phrase_terms(text: str, patterns: tuple[re.Pattern[str], ...]) -> set[str]:
+    terms: set[str] = set()
+    for pattern in patterns:
+        for match in pattern.finditer(text):
+            fragment = match.group(1)
+            if fragment is None and match.lastindex and match.lastindex >= 2:
+                fragment = match.group(2)
+            if fragment:
+                terms |= normalized_terms(fragment)
+    return terms
+
+
 def _query_campaign_phrase_terms(contexts: tuple[str, ...] | None) -> set[str]:
     if not contexts:
         return set()
-    terms: set[str] = set()
-    for context in contexts:
-        for match in _CAMPAIGN_EPISODE_PHRASE.finditer(context or ""):
-            terms |= normalized_terms(match.group(1))
-    return terms
+    return {
+        term
+        for context in contexts
+        for term in _episode_phrase_terms(context or "", _QUERY_EPISODE_CONSTRAINT_PATTERNS)
+    }
 
 
 def _campaign_phrase_modifier_terms(text: str) -> set[str]:
-    terms: set[str] = set()
-    for match in _EVIDENCE_CAMPAIGN_PHRASE.finditer(text):
-        fragment = match.group(1) or match.group(2)
-        if fragment:
-            terms |= normalized_terms(fragment)
-    return terms
+    return _episode_phrase_terms(text, _EVIDENCE_EPISODE_PATTERNS)
 
 
 def _query_has_campaign_episode_phrase(contexts: tuple[str, ...] | None) -> bool:
     if not contexts:
         return False
-    return any(_CAMPAIGN_EPISODE_PHRASE.search(context or "") for context in contexts)
+    return any(
+        pattern.search(context or "")
+        for context in contexts
+        for pattern in _QUERY_EPISODE_CONSTRAINT_PATTERNS
+    )
 
 
 def _narrative_subjects(value: str) -> set[str]:
@@ -301,22 +313,51 @@ def _query_explicit_origin_destination(contexts: tuple[str, ...] | None) -> tupl
     return None
 
 
+def _endpoint_place_tokens(value: str | None) -> set[str]:
+    tokens = normalized_terms(value)
+    if not value:
+        return tokens
+    needle = value.casefold()
+    for place in HISTORICAL_PLACE_ALIASES:
+        cluster = {place.canonical_name.casefold(), *(alias.casefold() for alias in place.aliases)}
+        cluster_terms = normalized_terms(place.canonical_name)
+        for alias in place.aliases:
+            cluster_terms |= normalized_terms(alias)
+        if needle in cluster or tokens & cluster_terms:
+            return tokens | cluster_terms
+    return tokens
+
+
+def _explicit_endpoint_alignment(
+    source_place: str | None,
+    destination_place: str | None,
+    contexts: tuple[str, ...] | None,
+) -> str | None:
+    pair = _query_explicit_origin_destination(contexts)
+    if not pair or not (source_place and destination_place):
+        return None
+    move_o = _endpoint_place_tokens(source_place)
+    move_d = _endpoint_place_tokens(destination_place)
+    query_o = _endpoint_place_tokens(pair[0])
+    query_d = _endpoint_place_tokens(pair[1])
+    if not ((move_o | move_d) & (query_o | query_d)):
+        return "disjoint"
+    if move_o & query_o and move_d & query_d:
+        return "forward"
+    if move_o & query_d and move_d & query_o:
+        return "reverse"
+    if (move_o & query_o and not (move_d & query_d)) or (move_d & query_d and not (move_o & query_o)):
+        return "partial"
+    return "fragment"
+
+
 def _movement_contradicts_query_endpoints(
     source_place: str | None,
     destination_place: str | None,
     contexts: tuple[str, ...] | None,
 ) -> bool:
-    pair = _query_explicit_origin_destination(contexts)
-    if not pair or not (source_place and destination_place):
-        return False
-    query_origin, query_dest = pair
-    query_o = normalized_terms(query_origin)
-    query_d = normalized_terms(query_dest)
-    move_o = normalized_terms(source_place)
-    move_d = normalized_terms(destination_place)
-    if (move_o & query_o) or (move_d & query_d) or (move_o & query_d) or (move_d & query_o):
-        return False
-    return True
+    alignment = _explicit_endpoint_alignment(source_place, destination_place, contexts)
+    return alignment in {"disjoint", "reverse", "partial"}
 
 
 def _explicit_query_subject_satisfied(combined: str, contexts: tuple[str, ...] | None) -> bool:
@@ -343,17 +384,40 @@ _DURING_EPISODE = re.compile(
     r"\bduring\s+([A-Z][A-Za-z'’]+(?:\s+[A-Z][A-Za-z'’]+)?)",
     re.IGNORECASE,
 )
-_CAMPAIGN_EPISODE_PHRASE = re.compile(
-    r"\b(?:during|in|throughout|for)\s+(?:the\s+)?"
-    r"([A-Z][A-Za-z'’\u2019-]+(?:\s+(?:the\s+)?[A-Z][A-Za-z'’\u2019-]+){0,4})\s+campaign\b",
+_EPISODE_SCOPE = r"\b(?:during|in|throughout|for|through)\s+(?:the\s+)?"
+_EPISODE_MODIFIER = (
+    r"([A-Z][A-Za-z'’\u2019-]+(?:\s+(?:the\s+)?[A-Z][A-Za-z'’\u2019-]+){0,4})"
+)
+_CAMPAIGN_EPISODE_PHRASE = re.compile(_EPISODE_SCOPE + _EPISODE_MODIFIER + r"\s+campaign\b", re.IGNORECASE)
+_NAMED_CAMPAIGN_EPISODE_PHRASE = re.compile(
+    _EPISODE_SCOPE + r"Campaign\s+([A-Z][A-Za-z'’\u2019-]+(?:\s+[A-Z][A-Za-z'’\u2019-]+)?)\b",
     re.IGNORECASE,
 )
-_EVIDENCE_CAMPAIGN_PHRASE = re.compile(
+_WAR_EPISODE_PHRASE = re.compile(_EPISODE_SCOPE + _EPISODE_MODIFIER + r"\s+war\b", re.IGNORECASE)
+_EXPEDITION_EPISODE_PHRASE = re.compile(
+    _EPISODE_SCOPE + _EPISODE_MODIFIER + r"\s+expedition\b",
+    re.IGNORECASE,
+)
+_QUERY_EPISODE_CONSTRAINT_PATTERNS = (
+    _CAMPAIGN_EPISODE_PHRASE,
+    _NAMED_CAMPAIGN_EPISODE_PHRASE,
+    _WAR_EPISODE_PHRASE,
+    _EXPEDITION_EPISODE_PHRASE,
+)
+_EVIDENCE_EPISODE_HEAD = (
     r"(?:\b(?:during|in|throughout|for)\s+(?:the\s+)?"
-    r"([A-Z][A-Za-z'’\u2019-]+(?:\s+(?:the\s+)?[A-Z][A-Za-z'’\u2019-]+){0,4})\s+campaign\b"
-    r"|\b(?:the\s+)?([A-Z][A-Za-z'’\u2019-]+(?:\s+(?:the\s+)?[A-Z][A-Za-z'’\u2019-]+){0,4})\s+campaign\b(?!\s+[A-Z]))",
+    + _EPISODE_MODIFIER
+    + r"\s+(campaign|war|expedition)\b"
+    r"|\b(?:the\s+)?"
+    + _EPISODE_MODIFIER
+    + r"\s+(campaign|war|expedition)\b(?!\s+[A-Z]))"
+)
+_EVIDENCE_CAMPAIGN_PHRASE = re.compile(_EVIDENCE_EPISODE_HEAD, re.IGNORECASE)
+_EVIDENCE_NAMED_CAMPAIGN_PHRASE = re.compile(
+    r"\bCampaign\s+([A-Z][A-Za-z'’\u2019-]+(?:\s+[A-Z][A-Za-z'’\u2019-]+)?)\b",
     re.IGNORECASE,
 )
+_EVIDENCE_EPISODE_PATTERNS = (_EVIDENCE_CAMPAIGN_PHRASE, _EVIDENCE_NAMED_CAMPAIGN_PHRASE)
 _GEO_PREP = re.compile(
     r"\b(?:in|into|from|to|toward|towards|near|across|through|via|around)\s+"
     r"([A-Z][A-Za-z'’]+(?:\s+[A-Z][A-Za-z'’]+)?)",
@@ -402,6 +466,11 @@ def _explicit_od_episode_compatible_places(
     contexts: tuple[str, ...] | None,
 ) -> bool:
     """True when explicit O→D aligns with the requested episode beyond a single weak overlap."""
+    alignment = _explicit_endpoint_alignment(source_place, destination_place, contexts)
+    if alignment == "forward":
+        return True
+    if alignment in {"disjoint", "reverse", "partial"}:
+        return False
     anchors = _query_episode_anchor_terms(contexts)
     if not anchors:
         return True
@@ -637,6 +706,11 @@ def _explicit_endpoint_constraint_satisfied(
     statement: str,
     contexts: tuple[str, ...] | None,
 ) -> bool:
+    alignment = _explicit_endpoint_alignment(source_place, destination_place, contexts)
+    if alignment == "forward":
+        return True
+    if alignment in {"disjoint", "reverse", "partial"}:
+        return False
     if not _query_endpoint_scope_terms(contexts):
         return True
     if not (source_place and destination_place):

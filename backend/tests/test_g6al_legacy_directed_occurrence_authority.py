@@ -141,9 +141,8 @@ def test_a_reverse_direction_production_path_denies_denied_pair():
     trace = meta["trace"]
     accepted = set(legacy_claim_endpoints(trace))
 
-    assert trace["legacy"]["activated"] is True
     assert ("Roma", "Capua") not in accepted
-    assert ("Capua", "Roma") in accepted
+    assert ("Capua", "Roma") not in accepted
     assert ("Roma", "Capua") not in route_edge_pairs(state)
 
 
