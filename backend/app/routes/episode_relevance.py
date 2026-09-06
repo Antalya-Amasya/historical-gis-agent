@@ -318,7 +318,8 @@ def _query_explicit_origin_destination(contexts: tuple[str, ...] | None) -> tupl
     for context in contexts:
         match = _QUERY_ORIGIN_DESTINATION.search(context or "")
         if match:
-            return match.group(1), match.group(2)
+            destination = re.split(r"\s+(?:in|during|throughout|for|at)\b", match.group(2), maxsplit=1, flags=re.IGNORECASE)[0]
+            return match.group(1), destination
     return None
 
 
@@ -549,6 +550,17 @@ def _movement_contradicts_query_endpoints(
     if alignment in {"disjoint", "reverse"}:
         return True
     if _endpoint_scoped_movement_contradicts(
+        source_place, destination_place, statement, window, contexts,
+    ):
+        return True
+    direct_trace_scope = any(
+        re.search(r"\btrace\b.*\bfrom\b", context or "", re.IGNORECASE)
+        and "'s route" not in (context or "").casefold()
+        for context in contexts or ()
+    )
+    if direct_trace_scope and alignment == "fragment" and _origin_arrival_fragment(
+        source_place, destination_place, contexts,
+    ) and not _proven_query_chain_member(
         source_place, destination_place, statement, window, contexts,
     ):
         return True
@@ -1151,6 +1163,16 @@ def _classify_movement_episode(
     if contexts and not _explicit_query_constraints_satisfied(statement, None, contexts):
         episode = EpisodeRelevance.OTHER_CAMPAIGN
     admitted = episode_route_admission_allowed(episode)
+    endpoint_contradiction = _movement_contradicts_query_endpoints(
+        probe.source_place,
+        probe.destination_place,
+        contexts,
+        statement=statement,
+        window=window,
+    )
+    if endpoint_contradiction:
+        episode = EpisodeRelevance.UNKNOWN
+        admitted = False
     if episode is EpisodeRelevance.DIRECT_QUERY_EPISODE:
         combined = statement.strip()
         if not _explicit_query_constraints_satisfied(statement, window, contexts):
@@ -1158,15 +1180,6 @@ def _classify_movement_episode(
                 episode = EpisodeRelevance.OTHER_CAMPAIGN
             else:
                 episode = EpisodeRelevance.UNKNOWN
-            admitted = False
-        elif _movement_contradicts_query_endpoints(
-            probe.source_place,
-            probe.destination_place,
-            contexts,
-            statement=statement,
-            window=window,
-        ):
-            episode = EpisodeRelevance.UNKNOWN
             admitted = False
     elif episode is EpisodeRelevance.UNKNOWN:
         if not explicit_od:
