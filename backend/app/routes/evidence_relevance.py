@@ -119,6 +119,18 @@ def explicit_person_identities(value: str) -> list[tuple[str, ...]]:
     return list(dict.fromkeys(identities))
 
 
+def _query_person_tokens(raw_name: str) -> tuple[str, ...] | None:
+    tokens: list[str] = []
+    for part in raw_name.split():
+        token = normalize_subject_name(part)
+        if token in _QUERY_STOP or token in _TEMPORAL_ERA_SUBJECTS or token in _SENTENCE_INITIAL_NON_NAMES:
+            continue
+        if _NUMERIC_YEAR.match(token):
+            continue
+        tokens.append(token)
+    return tuple(tokens) if tokens else None
+
+
 def normalized_query_person_identities(contexts: tuple[str, ...] | None) -> list[tuple[str, ...]]:
     if not contexts:
         return []
@@ -127,7 +139,7 @@ def normalized_query_person_identities(contexts: tuple[str, ...] | None) -> list
         match = _QUERY_PERSON.search(context or "")
         if not match:
             continue
-        tokens = tuple(normalize_subject_name(part) for part in match.group(1).split())
+        tokens = _query_person_tokens(match.group(1))
         if tokens:
             identities.append(tokens)
     return list(dict.fromkeys(identities))
@@ -199,10 +211,11 @@ _VERB_HEAD = re.compile(
     re.IGNORECASE,
 )
 _QUERY_PERSON = re.compile(
-    r"\b(?:trace|reconstruct|follow)\s+"
+    r"\b(?:(?i:trace|reconstruct|follow))\s+"
+    r"(?:(?i:the)\s+(?i:route)\s+(?i:of)\s+)?"
     r"((?:[A-Z][A-Za-z'’\u2019-]+(?:\s+[A-Z][A-Za-z'’\u2019-]+){0,3}))"
-    r"(?:['\u2019]s)?\s+route\b",
-    re.IGNORECASE,
+    r"(?:['\u2019]s)?"
+    r"(?=\s+(?:(?i:route|from|in|during|through|across|into|toward(?:s)?)\b)|(?=[.!?;])|$)",
 )
 _PERSON_NAME_TAIL = re.compile(
     r"((?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿÆæŒœ'’\u2019-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿÆæŒœ'’\u2019-]+){0,3}))\s*$",
