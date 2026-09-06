@@ -211,8 +211,10 @@ _VERB_HEAD = re.compile(
     re.IGNORECASE,
 )
 _QUERY_PERSON = re.compile(
-    r"\b(?:(?i:trace|reconstruct|follow))\s+"
-    r"(?:(?i:the)\s+(?i:route)\s+(?i:of)\s+)?"
+    r"\b(?:"
+    r"(?:(?i:trace|reconstruct|follow))\s+(?:(?i:the)\s+(?i:route)\s+(?i:of)\s+)?"
+    r"|(?:(?i:the)\s+(?i:route)\s+(?i:of)\s+)"
+    r")"
     r"((?:[A-Z][A-Za-z'’\u2019-]+(?:\s+[A-Z][A-Za-z'’\u2019-]+){0,3}))"
     r"(?:['\u2019]s)?"
     r"(?=\s+(?:(?i:route|from|in|during|through|across|into|toward(?:s)?)\b)|(?=[.!?;])|$)",
