@@ -29,6 +29,13 @@ _GENERIC_TERMS = frozenset({
     "history", "historical", "military", "operation", "operations",
 })
 _LOCATION_PREP = frozenset({"in", "at", "near", "from", "into", "through"})
+_ROUTE_LOCATION_PREP = frozenset({
+    "from", "into", "through", "across", "toward", "towards", "near", "over", "along", "between", "back", "in", "at", "to",
+})
+_TEMPORAL_SCAFFOLD = frozenset({"bce", "bc", "ce", "ad"})
+_GEOGRAPHIC_COMPOUND_TAILS = frozenset({"minor", "kush", "sea", "islands", "mediterranean"})
+_GEOGRAPHIC_COMPOUND_HEADS = frozenset({"eastern", "western", "southern", "northern", "hindu"})
+_EPISODE_CONTEXT_TERMS = frozenset({"war", "campaign", "first", "major", "movements"})
 _LOCATION_OF_HEADS = frozenset({"battle", "siege", "war"})
 _LOCATION_ALIASES = {
     "spain": frozenset({"spain", "spanish", "hispania"}),
@@ -170,6 +177,93 @@ def body_conflicting_person(query_person: frozenset[str], body_tokens: frozenset
     return bool((body_tokens & _KNOWN_NARRATIVE_PERSONS) - query_person)
 
 
+def _route_token_allowed(token: str) -> bool:
+    return (
+        token not in _STOP_WORDS
+        and token not in _ACTION_UNION
+        and token not in _EPISODE_CONTEXT_TERMS
+        and token not in _TEMPORAL_SCAFFOLD
+        and not token.isdigit()
+    )
+
+
+def _add_compound_location(locations: set[str], norms: list[str], index: int) -> int:
+    token = norms[index]
+    locations.add(token)
+    if index + 1 < len(norms) and norms[index + 1] in _GEOGRAPHIC_COMPOUND_TAILS:
+        locations.add(norms[index + 1])
+        return index + 1
+    if token in _GEOGRAPHIC_COMPOUND_HEADS and index + 1 < len(norms):
+        locations.add(norms[index + 1])
+        return index + 1
+    return index
+
+
+def _extract_route_location_terms(norms: list[str]) -> frozenset[str]:
+    locations: set[str] = set()
+    index = 0
+    while index < len(norms):
+        norm = norms[index]
+        if norm == "leading" and index + 2 < len(norms) and norms[index + 1] == "to":
+            token = norms[index + 2]
+            if _route_token_allowed(token):
+                locations.add(token)
+            index += 3
+            continue
+        if norm == "ending" and index + 2 < len(norms) and norms[index + 1] == "near":
+            cursor = index + 2
+            if cursor < len(norms) and norms[cursor] in _DETERMINERS:
+                cursor += 1
+            if cursor < len(norms) and _route_token_allowed(norms[cursor]):
+                _add_compound_location(locations, norms, cursor)
+            index = cursor + 1
+            continue
+        if norm in _ROUTE_LOCATION_PREP or (
+            norm == "back" and index + 1 < len(norms) and norms[index + 1] in {"toward", "towards"}
+        ):
+            if norm == "back":
+                index += 1
+            cursor = index + 1
+            while cursor < len(norms) and norms[cursor] in _DETERMINERS:
+                cursor += 1
+            while cursor < len(norms) and norms[cursor] in _ROUTE_LOCATION_PREP:
+                cursor += 1
+            while cursor < len(norms) and norms[cursor] in _DETERMINERS:
+                cursor += 1
+            if (
+                cursor < len(norms)
+                and norms[cursor] in _LOCATION_OF_HEADS
+                and cursor + 2 < len(norms)
+                and norms[cursor + 1] == "of"
+            ):
+                tail = norms[cursor + 2]
+                if tail not in _STOP_WORDS:
+                    locations.add(tail)
+                index = cursor + 3
+                continue
+            if cursor < len(norms) and _route_token_allowed(norms[cursor]):
+                cursor = _add_compound_location(locations, norms, cursor)
+            index = cursor + 1
+            continue
+        if norm == "and" and index + 1 < len(norms):
+            nxt = norms[index + 1]
+            if nxt == "back":
+                index += 1
+                continue
+            if _route_token_allowed(nxt) and nxt not in _ROUTE_LOCATION_PREP:
+                locations.add(nxt)
+            index += 2
+            continue
+        if norm in _LOCATION_OF_HEADS and index + 2 < len(norms) and norms[index + 1] == "of":
+            tail = norms[index + 2]
+            if tail not in _STOP_WORDS:
+                locations.add(tail)
+            index += 3
+            continue
+        index += 1
+    return frozenset(locations)
+
+
 def analyze_query(query: str) -> QueryRoleAnalysis:
     """Assign PERSON / LOCATION / ACTION / GENERIC roles from the raw query."""
     normalized = unicodedata.normalize("NFKD", query or "").replace("æ", "ae").replace("Æ", "AE")
@@ -181,19 +275,25 @@ def analyze_query(query: str) -> QueryRoleAnalysis:
         frozenset().union(*(group for group in _ACTION_GROUPS if action_terms & group))
     ) - action_terms
     stop_in_query = frozenset(token for token in norms if token in _STOP_WORDS)
-    location: set[str] = set()
-    for index, norm in enumerate(norms):
-        nxt = norms[index + 1] if index + 1 < len(norms) else None
-        if nxt is None:
-            continue
-        if norm in _LOCATION_PREP and nxt not in _STOP_WORDS and nxt not in _ACTION_UNION:
-            location.add(nxt)
-        if norm in _LOCATION_OF_HEADS and nxt == "of" and index + 2 < len(norms):
-            tail = norms[index + 2]
-            if tail not in _STOP_WORDS:
-                location.add(tail)
+    location = set(_extract_route_location_terms(norms))
     generic = frozenset(token for token in norms if token in _GENERIC_TERMS)
-    reserved = _STOP_WORDS | _ACTION_UNION | _GENERIC_TERMS | location | _QUERY_SCAFFOLD
+    war_adjectives = (
+        frozenset(token for token in norms if token.endswith("atic"))
+        if "war" in norms
+        else frozenset()
+    )
+    reserved = (
+        _STOP_WORDS
+        | _ACTION_UNION
+        | _GENERIC_TERMS
+        | location
+        | _QUERY_SCAFFOLD
+        | _GENERIC_MOVEMENT_TRIGGERS
+        | _TEMPORAL_SCAFFOLD
+        | _EPISODE_CONTEXT_TERMS
+        | war_adjectives
+        | frozenset(token for token in norms if token.isdigit())
+    )
     after_determiner = {index + 1 for index, norm in enumerate(norms) if norm in _DETERMINERS}
     leftover = [(index, raw, norm) for index, (raw, norm) in enumerate(pairs) if norm not in reserved]
     titled = [(index, raw, norm) for index, raw, norm in leftover if raw[:1].isupper() and index not in after_determiner]
@@ -203,6 +303,7 @@ def analyze_query(query: str) -> QueryRoleAnalysis:
     else:
         person_sequence = [norm for _, _, norm in leftover]
         context = []
+    person_sequence = [term for term in person_sequence if term not in location]
     expanded |= _generic_movement_expansions(norms, tuple(person_sequence), action_terms)
     return QueryRoleAnalysis(
         person_terms=frozenset(person_sequence),
