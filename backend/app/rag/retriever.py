@@ -8,6 +8,7 @@ from .coverage_retrieval import (
     DEFAULT_RAW_OBSERVATION_K,
     merge_coverage_results,
     passages_overlap,
+    select_qualified_local_proposals,
 )
 from .store import ChromaEvidenceStore
 from .evidence_ranking import diversify_route_evidence, rerank_evidence
@@ -103,7 +104,7 @@ class ChromaHistoricalRetriever(HistoricalRetriever):
         lexical_k = min(100, max(30, observation_k))
         candidates = self._collect_candidates(query, semantic_k=semantic_k, lexical_k=lexical_k, filters=filters)
         ranked = rerank_evidence(query, candidates)
-        return ranked[:observation_k]
+        return select_qualified_local_proposals(ranked, observation_k)
 
     def _finalize_selection(self, query: str, candidates: list[Evidence], top_k: int) -> list[Evidence]:
         selected: list[Evidence] = []

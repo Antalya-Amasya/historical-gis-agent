@@ -12,6 +12,114 @@ DEFAULT_PER_INTENT_K = 6
 DEFAULT_RAW_OBSERVATION_K = 60
 
 
+def _proposal_source_key(item: Evidence) -> str:
+    return str(item.metadata.get("source_chunk_id") or item.id.split(":", 1)[0])
+
+
+def _qualifies_lexical_proposal(item: Evidence) -> bool:
+    if not item.metadata.get("lexical_candidate"):
+        return False
+    ranking = item.metadata.get("retrieval_ranking") or {}
+    if float(ranking.get("navigation_penalty", 0.0)) >= 0.32:
+        return False
+    return (
+        float(ranking.get("lexical_support", 0.0)) >= 0.15
+        or float(ranking.get("lexical_rank_relevance", 0.0)) >= 0.65
+        or float(ranking.get("lexical_score_relevance", 0.0)) >= 0.45
+    )
+
+
+def _qualifies_semantic_proposal(item: Evidence) -> bool:
+    if not item.metadata.get("semantic_candidate"):
+        return False
+    ranking = item.metadata.get("retrieval_ranking") or {}
+    if float(ranking.get("navigation_penalty", 0.0)) >= 0.32:
+        return False
+    parent_prior = float(ranking.get("parent_semantic_prior", 0.0))
+    local_support = float(ranking.get("passage_local_support", 0.0))
+    semantic_relevance = float(ranking.get("semantic_relevance", 0.0))
+    vector_rank = item.metadata.get("vector_rank")
+    if semantic_relevance >= 0.08 or local_support >= 0.05:
+        return parent_prior >= 0.15
+    if vector_rank is not None and int(vector_rank) <= 20 and parent_prior >= 0.75:
+        return True
+    return False
+
+
+def _semantic_proposal_key(item: Evidence) -> tuple[float, float, int, str]:
+    ranking = item.metadata.get("retrieval_ranking") or {}
+    return (
+        -float(ranking.get("semantic_relevance", 0.0)),
+        -float(ranking.get("parent_semantic_prior", 0.0)),
+        int(item.metadata.get("rank") or 999),
+        item.id,
+    )
+
+
+def _lexical_proposal_key(item: Evidence) -> tuple[float, float, float, str]:
+    ranking = item.metadata.get("retrieval_ranking") or {}
+    return (
+        -float(ranking.get("lexical_rank_relevance", 0.0)),
+        -float(ranking.get("lexical_score_relevance", 0.0)),
+        -float(item.metadata.get("lexical_score") or 0.0),
+        item.id,
+    )
+
+
+def select_qualified_local_proposals(ranked: list[Evidence], observation_k: int) -> list[Evidence]:
+    """Preserve bounded lexical-direct and semantic-derived diversity before proposal cutoff."""
+    if observation_k < 1 or not ranked:
+        return []
+    if len(ranked) <= observation_k:
+        return list(ranked)
+
+    lexical_budget = max(6, min(20, observation_k // 3))
+    semantic_family_budget = max(8, min(30, observation_k // 2))
+    selected: list[Evidence] = []
+    selected_ids: set[str] = set()
+
+    def add(item: Evidence) -> None:
+        if item.id in selected_ids:
+            return
+        selected_ids.add(item.id)
+        selected.append(item)
+
+    for item in sorted(
+        (candidate for candidate in ranked if _qualifies_lexical_proposal(candidate)),
+        key=_lexical_proposal_key,
+    )[:lexical_budget]:
+        add(item)
+
+    semantic_by_source: dict[str, list[Evidence]] = defaultdict(list)
+    for item in ranked:
+        if _qualifies_semantic_proposal(item):
+            semantic_by_source[_proposal_source_key(item)].append(item)
+
+    family_representatives = sorted(
+        (sorted(items, key=_semantic_proposal_key)[0] for items in semantic_by_source.values()),
+        key=_semantic_proposal_key,
+    )
+    for item in family_representatives[:semantic_family_budget]:
+        add(item)
+
+    for items in semantic_by_source.values():
+        qualified = sorted(items, key=_semantic_proposal_key)
+        if not qualified:
+            continue
+        min_vector_rank = min(int(item.metadata.get("vector_rank") or 9999) for item in qualified)
+        if min_vector_rank > 10 or len(qualified) > 8:
+            continue
+        for item in qualified:
+            add(item)
+
+    for item in ranked:
+        if len(selected) >= observation_k:
+            break
+        add(item)
+
+    return selected[:observation_k]
+
+
 def movement_bearing_text(text: str) -> bool:
     normalized = text or ""
     return bool(_MOVEMENT_PAIR_STATEMENT.search(normalized) or _MOVEMENT_STATEMENT.search(normalized))
