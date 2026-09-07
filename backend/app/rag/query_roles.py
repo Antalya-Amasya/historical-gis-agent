@@ -199,8 +199,24 @@ def _add_compound_location(locations: set[str], norms: list[str], index: int) ->
     return index
 
 
+def _and_starts_person_clause(norms: list[str], start: int) -> bool:
+    """True when 'and NAME ... from' begins a fresh subject route clause."""
+    cursor = start
+    limit = min(len(norms), start + 4)
+    while cursor < limit:
+        if norms[cursor] == "from":
+            return cursor > start
+        if norms[cursor] in _ROUTE_LOCATION_PREP:
+            return False
+        if not _route_token_allowed(norms[cursor]):
+            return False
+        cursor += 1
+    return False
+
+
 def _extract_route_location_terms(norms: list[str]) -> frozenset[str]:
     locations: set[str] = set()
+    route_clause_active = False
     index = 0
     while index < len(norms):
         norm = norms[index]
@@ -208,6 +224,7 @@ def _extract_route_location_terms(norms: list[str]) -> frozenset[str]:
             token = norms[index + 2]
             if _route_token_allowed(token):
                 locations.add(token)
+            route_clause_active = True
             index += 3
             continue
         if norm == "ending" and index + 2 < len(norms) and norms[index + 1] == "near":
@@ -216,6 +233,7 @@ def _extract_route_location_terms(norms: list[str]) -> frozenset[str]:
                 cursor += 1
             if cursor < len(norms) and _route_token_allowed(norms[cursor]):
                 _add_compound_location(locations, norms, cursor)
+            route_clause_active = True
             index = cursor + 1
             continue
         if norm in _ROUTE_LOCATION_PREP or (
@@ -239,10 +257,12 @@ def _extract_route_location_terms(norms: list[str]) -> frozenset[str]:
                 tail = norms[cursor + 2]
                 if tail not in _STOP_WORDS:
                     locations.add(tail)
+                route_clause_active = True
                 index = cursor + 3
                 continue
             if cursor < len(norms) and _route_token_allowed(norms[cursor]):
                 cursor = _add_compound_location(locations, norms, cursor)
+            route_clause_active = True
             index = cursor + 1
             continue
         if norm == "and" and index + 1 < len(norms):
@@ -250,9 +270,15 @@ def _extract_route_location_terms(norms: list[str]) -> frozenset[str]:
             if nxt == "back":
                 index += 1
                 continue
-            if _route_token_allowed(nxt) and nxt not in _ROUTE_LOCATION_PREP:
-                locations.add(nxt)
-            index += 2
+            if nxt in _ROUTE_LOCATION_PREP:
+                index += 1
+                continue
+            if route_clause_active and not _and_starts_person_clause(norms, index + 1):
+                if _route_token_allowed(nxt):
+                    _add_compound_location(locations, norms, index + 1)
+                index += 2
+                continue
+            index += 1
             continue
         if norm in _LOCATION_OF_HEADS and index + 2 < len(norms) and norms[index + 1] == "of":
             tail = norms[index + 2]

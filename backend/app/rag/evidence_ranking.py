@@ -11,6 +11,7 @@ import statistics
 
 from backend.app.models import Evidence
 from backend.app.rag.query_roles import (
+    _KNOWN_NARRATIVE_PERSONS,
     action_support as role_action_support,
     analyze_query,
     generic_support as role_generic_support,
@@ -189,8 +190,17 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
         generic = role_generic_support(roles, text_tokens)
         statement_bonus = 0.04 if action >= 0.12 and len(text_tokens) >= 20 else 0.0
         joint = 0.04 if person > 0 and location > 0 else 0.0
+        route_local_evidence = action > 0 or statement_bonus > 0
+        coordinated_person_query = len(roles.person_terms & _KNOWN_NARRATIVE_PERSONS) >= 2
         entity_support = person
-        local_support = min(1.0, (person / 0.08) * 0.40 + (action / 0.12) * 0.40 + (location / 0.06) * 0.10 + (statement_bonus / 0.04) * 0.10) if (person or action or location or statement_bonus) else 0.0
+        person_local = (person / 0.08) * 0.40
+        if person >= 0.08 and coordinated_person_query:
+            person_local = (0.04 / 0.08) * 0.40
+            entity_support = 0.04
+        elif person >= 0.08 and not route_local_evidence:
+            entity_support = 0.04
+            person_local = (0.04 / 0.08) * 0.40
+        local_support = min(1.0, person_local + (action / 0.12) * 0.40 + (location / 0.06) * 0.10 + (statement_bonus / 0.04) * 0.10) if (person or action or location or statement_bonus) else 0.0
         semantic_relevance = local_support if item.metadata.get("semantic_candidate") else 0.0
         lexical_score = float(item.metadata.get("lexical_score", 0.0))
         if pool_relative:
