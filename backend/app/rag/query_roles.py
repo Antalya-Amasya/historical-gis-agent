@@ -93,6 +93,8 @@ def normalized_tokens(text: str) -> frozenset[str]:
 class QueryRoleAnalysis:
     person_terms: frozenset[str]
     person_sequence: tuple[str, ...]
+    person_coordination_detected: bool
+    multiple_person_phrases_detected: bool
     location_terms: frozenset[str]
     action_terms: frozenset[str]
     generic_terms: frozenset[str]
@@ -197,6 +199,46 @@ def _add_compound_location(locations: set[str], norms: list[str], index: int) ->
         locations.add(norms[index + 1])
         return index + 1
     return index
+
+
+_PHRASE_CONNECTORS = _DETERMINERS | frozenset({"of", "the"})
+
+
+def _person_phrase_groups(norms: list[str], titled: list[tuple[int, str, str]]) -> tuple[tuple[str, ...], ...]:
+    """Split titled person tokens into contiguous query phrase groups."""
+    if not titled:
+        return ()
+    groups: list[tuple[str, ...]] = []
+    current: list[str] = [titled[0][2]]
+    previous_index = titled[0][0]
+    for index, _raw, norm in titled[1:]:
+        gap = norms[previous_index + 1 : index]
+        if not gap or all(token in _PHRASE_CONNECTORS for token in gap):
+            current.append(norm)
+        else:
+            groups.append(tuple(current))
+            current = [norm]
+        previous_index = index
+    groups.append(tuple(current))
+    return tuple(groups)
+
+
+def _person_coordination_detected(norms: list[str], titled_indices: set[int]) -> bool:
+    """True when explicit query structure coordinates multiple person spans."""
+    if len(titled_indices) < 2:
+        return False
+    for index, norm in enumerate(norms):
+        if norm != "and":
+            continue
+        if index + 1 < len(norms) and norms[index + 1] in _ROUTE_LOCATION_PREP:
+            continue
+        if _and_starts_person_clause(norms, index + 1):
+            return True
+        if any(token_index < index for token_index in titled_indices) and any(
+            token_index > index for token_index in titled_indices
+        ):
+            return True
+    return False
 
 
 def _and_starts_person_clause(norms: list[str], start: int) -> bool:
@@ -331,9 +373,14 @@ def analyze_query(query: str) -> QueryRoleAnalysis:
         context = []
     person_sequence = [term for term in person_sequence if term not in location]
     expanded |= _generic_movement_expansions(norms, tuple(person_sequence), action_terms)
+    titled_person = [(index, raw, norm) for index, raw, norm in titled if norm in person_sequence]
+    person_coordination = _person_coordination_detected(norms, {index for index, _, _ in titled_person})
+    multiple_person_phrases = len(_person_phrase_groups(norms, titled_person)) >= 2
     return QueryRoleAnalysis(
         person_terms=frozenset(person_sequence),
         person_sequence=tuple(person_sequence),
+        person_coordination_detected=person_coordination,
+        multiple_person_phrases_detected=multiple_person_phrases,
         location_terms=frozenset(location),
         action_terms=action_terms,
         generic_terms=generic,

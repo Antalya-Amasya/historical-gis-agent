@@ -11,7 +11,6 @@ import statistics
 
 from backend.app.models import Evidence
 from backend.app.rag.query_roles import (
-    _PRAENOMINA,
     action_support as role_action_support,
     analyze_query,
     generic_support as role_generic_support,
@@ -191,13 +190,9 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
         statement_bonus = 0.04 if action >= 0.12 and len(text_tokens) >= 20 else 0.0
         joint = 0.04 if person > 0 and location > 0 else 0.0
         route_local_evidence = action > 0 or statement_bonus > 0
-        sequence = roles.person_sequence
-        coordinated_person_query = len(roles.person_terms) >= 2 and not (
-            len(sequence) == 2 and sequence[0] in _PRAENOMINA
-        )
         entity_support = person
         person_local = (person / 0.08) * 0.40
-        if person >= 0.08 and coordinated_person_query:
+        if person >= 0.08 and roles.multiple_person_phrases_detected:
             person_local = (0.04 / 0.08) * 0.40
             entity_support = 0.04
         elif person >= 0.08 and not route_local_evidence:
