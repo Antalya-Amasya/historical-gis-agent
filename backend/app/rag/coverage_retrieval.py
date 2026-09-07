@@ -38,11 +38,8 @@ def _qualifies_semantic_proposal(item: Evidence) -> bool:
     parent_prior = float(ranking.get("parent_semantic_prior", 0.0))
     local_support = float(ranking.get("passage_local_support", 0.0))
     semantic_relevance = float(ranking.get("semantic_relevance", 0.0))
-    vector_rank = item.metadata.get("vector_rank")
     if semantic_relevance >= 0.08 or local_support >= 0.05:
         return parent_prior >= 0.15
-    if vector_rank is not None and int(vector_rank) <= 20 and parent_prior >= 0.75:
-        return True
     return False
 
 
@@ -101,16 +98,6 @@ def select_qualified_local_proposals(ranked: list[Evidence], observation_k: int)
     )
     for item in family_representatives[:semantic_family_budget]:
         add(item)
-
-    for items in semantic_by_source.values():
-        qualified = sorted(items, key=_semantic_proposal_key)
-        if not qualified:
-            continue
-        min_vector_rank = min(int(item.metadata.get("vector_rank") or 9999) for item in qualified)
-        if min_vector_rank > 10 or len(qualified) > 8:
-            continue
-        for item in qualified:
-            add(item)
 
     for item in ranked:
         if len(selected) >= observation_k:
