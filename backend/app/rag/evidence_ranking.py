@@ -13,10 +13,17 @@ from backend.app.models import Evidence
 from backend.app.rag.query_roles import (
     action_support as role_action_support,
     analyze_query,
+    body_conflicting_person,
+    episode_context_terms,
+    extract_subject_context_terms,
     generic_support as role_generic_support,
     location_support as role_location_support,
+    movement_scoring_terms,
     normalized_tokens,
     person_support as role_person_support,
+    route_movement_query,
+    _GEOGRAPHIC_COMPOUND_HEADS,
+    _GEOGRAPHIC_COMPOUND_TAILS,
 )
 
 _STRONG_NAV_SOURCES = frozenset({"toc", "contents", "navigation", "index"})
@@ -53,6 +60,14 @@ _MOVEMENT_PAIR_STATEMENT = re.compile(
     r"\b(?:to|into|toward(?:s)?)\b",
     re.IGNORECASE,
 )
+_ROUTE_FRAGMENT_MAX = 0.06
+_FRAGMENT_PRONOUNS = frozenset({"he", "she", "they", "it", "his", "her", "their"})
+_EXPLICIT_ACTOR_MOVEMENT = re.compile(
+    r"^\s*(?P<actor>[A-Za-z][A-Za-z']+(?:\s+[A-Za-z][A-Za-z']+)?)\s+"
+    r"(?:crossed|marched|travel(?:led|ed)|landed|sailed|advanced|proceeded|passed|entered|departed|left)\b",
+    re.IGNORECASE,
+)
+_FRAGMENT_MOVEMENT_PHRASE = re.compile(r"\b(?:put to sea|made over|quitted|quit)\b", re.IGNORECASE)
 
 
 def _is_structural_heading(value: str) -> bool:
@@ -85,6 +100,52 @@ def is_navigation_or_heading(evidence: Evidence) -> bool:
 def is_route_or_movement_query(query: str) -> bool:
     """Identify the narrow retrieval mode whose objective includes episode coverage."""
     return bool(_ROUTE_OR_MOVEMENT_QUERY.search(query or ""))
+
+
+def route_fragment_relevance(
+    query: str,
+    roles,
+    item: Evidence,
+    text: str,
+    text_tokens: frozenset[str],
+    *,
+    person: float,
+    location: float,
+    action: float,
+) -> float:
+    if not roles.person_terms or not route_movement_query(normalized_tokens(query), roles):
+        return 0.0
+    if person >= 0.08 or (person >= 0.04 and location > 0 and action >= 0.12):
+        return 0.0
+    if body_conflicting_person(roles.person_terms, text_tokens):
+        return 0.0
+    actor_match = _EXPLICIT_ACTOR_MOVEMENT.match(text or "")
+    if actor_match:
+        actor_tokens = normalized_tokens(actor_match.group("actor"))
+        if actor_tokens and not (actor_tokens <= _FRAGMENT_PRONOUNS) and not (actor_tokens & roles.person_terms):
+            return 0.0
+    if not (
+        action > 0
+        or _MOVEMENT_STATEMENT.search(text or "")
+        or _FRAGMENT_MOVEMENT_PHRASE.search(text or "")
+        or movement_scoring_terms(roles) & text_tokens
+    ):
+        return 0.0
+    if not (extract_subject_context_terms(item.metadata) & roles.person_terms):
+        return 0.0
+    if not (
+        location > 0
+        or _MOVEMENT_PAIR_STATEMENT.search(text or "")
+        or episode_context_terms(roles) & text_tokens
+        or text_tokens & (_GEOGRAPHIC_COMPOUND_TAILS | _GEOGRAPHIC_COMPOUND_HEADS)
+    ):
+        return 0.0
+    transition = _FRAGMENT_MOVEMENT_PHRASE.search(text or "") or _MOVEMENT_PAIR_STATEMENT.search(text or "")
+    if location == 0 and action == 0:
+        return _ROUTE_FRAGMENT_MAX if transition else 0.0
+    if person == 0 and location > 0 and action > 0 and re.search(r"\b(?:he|she|they)\b", text or "", re.I) and episode_context_terms(roles) & text_tokens:
+        return _ROUTE_FRAGMENT_MAX / 2
+    return 0.0
 
 
 def diversify_route_evidence(query: str, ranked: list[Evidence]) -> list[Evidence]:
@@ -198,7 +259,9 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
         elif person >= 0.08 and not route_local_evidence:
             entity_support = 0.04
             person_local = (0.04 / 0.08) * 0.40
-        local_support = min(1.0, person_local + (action / 0.12) * 0.40 + (location / 0.06) * 0.10 + (statement_bonus / 0.04) * 0.10) if (person or action or location or statement_bonus) else 0.0
+        fragment = route_fragment_relevance(query, roles, item, item.text or "", text_tokens, person=person, location=location, action=action)
+        fragment_local = (fragment / _ROUTE_FRAGMENT_MAX) * 0.20 if fragment else 0.0
+        local_support = min(1.0, person_local + (action / 0.12) * 0.40 + (location / 0.06) * 0.10 + (statement_bonus / 0.04) * 0.10 + fragment_local) if (person or action or location or statement_bonus or fragment) else 0.0
         semantic_relevance = local_support if item.metadata.get("semantic_candidate") else 0.0
         lexical_score = float(item.metadata.get("lexical_score", 0.0))
         if pool_relative:
@@ -214,7 +277,7 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
             role_parts.append(location / 0.06)
         coverage = sum(role_parts) / len(role_parts) if role_parts else 1.0
         lexical_support = (0.60 * lexical_score_relevance + 0.40 * lexical_rank_relevance) * (0.35 + 0.65 * coverage) if item.metadata.get("lexical_candidate") else 0.0
-        passage_relevance = max(semantic_relevance, lexical_support)
+        passage_relevance = min(1.0, max(semantic_relevance, lexical_support) + (fragment if fragment and (semantic_relevance == 0 and lexical_support > 0 or fragment < _ROUTE_FRAGMENT_MAX) else 0.0))
         channel_confidence = 0.02 if item.metadata.get("semantic_candidate") and item.metadata.get("lexical_candidate") else 0.0
         navigation_penalty = 0.32 if is_navigation_or_heading(item) else 0.0
         final_score = passage_relevance + channel_confidence + entity_support + location + action + generic + joint + statement_bonus - navigation_penalty
@@ -236,6 +299,7 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
             "joint_support": round(joint, 6),
             "action_support": round(action, 6),
             "statement_bonus": round(statement_bonus, 6),
+            "route_fragment_relevance": round(fragment, 6),
             "navigation_penalty": round(navigation_penalty, 6),
             "final_score": round(final_score, 6),
         }
