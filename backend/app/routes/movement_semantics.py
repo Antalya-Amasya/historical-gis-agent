@@ -566,6 +566,20 @@ def _parse_clause(
         if destination is not None:
             destinations.append(destination)
 
+    crossed_over_to = re.search(r"\b(?:crossed|crossing)\s+over\s+to\s+", lower)
+    if crossed_over_to:
+        destination = _endpoint_after(
+            sentence,
+            clause_start + crossed_over_to.end(),
+            aliases,
+            before=clause_end,
+            role="destination",
+        )
+        if destination:
+            candidate = _edge(None, destination, movement_relation="crossed_over_to")
+            if candidate:
+                return [candidate], [destination], False
+
     for match in _TRAVERSAL_MARKER.finditer(lower):
         if not _predicate_before(clause, match.start()):
             continue
