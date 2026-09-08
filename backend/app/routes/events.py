@@ -991,6 +991,25 @@ class HistoricalEventConsolidator:
     def _unique(values):
         return list(dict.fromkeys(values))
 
+    @staticmethod
+    def _explicit_actor_token_key(event: HistoricalEvent) -> tuple[str, ...] | None:
+        if event.actor.actor_status is not EventActorStatus.EXPLICIT:
+            return None
+        return tuple(token.casefold() for token in event.actor.actor_tokens)
+
+    @classmethod
+    def _actor_compatible_groups(cls, members: list[HistoricalEvent]) -> list[list[HistoricalEvent]]:
+        explicit_keys = {
+            key for key in (cls._explicit_actor_token_key(member) for member in members) if key is not None
+        }
+        if len(explicit_keys) <= 1:
+            return [members]
+        unknowns = [member for member in members if cls._explicit_actor_token_key(member) is None]
+        return [
+            [member for member in members if cls._explicit_actor_token_key(member) == token_key] + unknowns
+            for token_key in sorted(explicit_keys)
+        ]
+
     def consolidate(self, candidates: list[HistoricalEvent]) -> tuple[list[HistoricalEvent], dict[str, object]]:
         buckets: dict[str, list[HistoricalEvent]] = {}
         separate: list[HistoricalEvent] = []
@@ -1005,37 +1024,38 @@ class HistoricalEventConsolidator:
         consolidated: list[HistoricalEvent] = []
         merged_count = 0
         for key, members in buckets.items():
-            if len(members) == 1:
-                consolidated.append(members[0].model_copy(update={"identity_key": key}))
-                continue
-            primary = members[0]
-            refs = self._unique(ref for item in members for ref in item.evidence_refs)
-            statements = self._unique(statement for item in members for statement in (item.source_statements or [item.summary]))
-            places = []
-            seen_places = set()
-            for item in members:
-                for mention in item.place_mentions:
-                    marker = (mention.raw_text, mention.canonical_hint, mention.role.value)
-                    if marker not in seen_places:
-                        places.append(mention)
-                        seen_places.add(marker)
-            temporal = []
-            seen_temporal = set()
-            for item in members:
-                for grounding in item.temporal_groundings or [item.temporal_grounding]:
-                    marker = grounding.model_dump_json()
-                    if marker not in seen_temporal:
-                        temporal.append(grounding)
-                        seen_temporal.add(marker)
-            consolidated.append(primary.model_copy(update={
-                "id": f"consolidated-{hashlib.sha256(key.encode('utf-8')).hexdigest()[:12]}",
-                "event_type": self._merged_type(members), "identity_key": key,
-                "candidate_ids": self._unique(identifier for item in members for identifier in (item.candidate_ids or [item.id])),
-                "evidence_refs": refs, "source_statements": statements, "place_mentions": places,
-                "temporal_groundings": temporal,
-                "limitations": self._unique([*primary.limitations, "Consolidated only from candidates with an identical deterministic identity key."]),
-            }))
-            merged_count += len(members) - 1
+            for group in self._actor_compatible_groups(members):
+                if len(group) == 1:
+                    consolidated.append(group[0].model_copy(update={"identity_key": key}))
+                    continue
+                primary = group[0]
+                refs = self._unique(ref for item in group for ref in item.evidence_refs)
+                statements = self._unique(statement for item in group for statement in (item.source_statements or [item.summary]))
+                places = []
+                seen_places = set()
+                for item in group:
+                    for mention in item.place_mentions:
+                        marker = (mention.raw_text, mention.canonical_hint, mention.role.value)
+                        if marker not in seen_places:
+                            places.append(mention)
+                            seen_places.add(marker)
+                temporal = []
+                seen_temporal = set()
+                for item in group:
+                    for grounding in item.temporal_groundings or [item.temporal_grounding]:
+                        marker = grounding.model_dump_json()
+                        if marker not in seen_temporal:
+                            temporal.append(grounding)
+                            seen_temporal.add(marker)
+                consolidated.append(primary.model_copy(update={
+                    "id": f"consolidated-{hashlib.sha256(key.encode('utf-8')).hexdigest()[:12]}",
+                    "event_type": self._merged_type(group), "identity_key": key,
+                    "candidate_ids": self._unique(identifier for item in group for identifier in (item.candidate_ids or [item.id])),
+                    "evidence_refs": refs, "source_statements": statements, "place_mentions": places,
+                    "temporal_groundings": temporal,
+                    "limitations": self._unique([*primary.limitations, "Consolidated only from candidates with an identical deterministic identity key."]),
+                }))
+                merged_count += len(group) - 1
         conflicts = 0
         type_sets: dict[tuple[tuple[str, ...], str], set[str]] = {}
         for candidate in candidates:
