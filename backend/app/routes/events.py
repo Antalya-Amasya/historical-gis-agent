@@ -220,6 +220,24 @@ class EvidenceGroundedHistoricalEventExtractor:
     def _has_positive_movement_assertion(cls, sentence: str) -> bool:
         return any(cls._clause_has_positive_movement(clause) for clause in cls._movement_clauses(sentence))
 
+    @classmethod
+    def _non_completed_governs_clause(cls, clause: str) -> bool:
+        if not cls._NON_COMPLETED.search(clause):
+            return False
+        if not (_has_movement_cue(clause) or cls._MOVEMENT_VERBS.search(clause)):
+            return False
+        for match in cls._MOVEMENT_VERBS.finditer(clause):
+            if cls._NON_COMPLETED.search(clause[: match.start()]):
+                return True
+        return bool(_has_movement_cue(clause))
+
+    @classmethod
+    def _has_completed_movement_assertion(cls, sentence: str) -> bool:
+        return any(
+            cls._clause_has_positive_movement(clause) and not cls._non_completed_governs_clause(clause)
+            for clause in cls._movement_clauses(sentence)
+        )
+
     def _event_type(self, sentence: str) -> HistoricalEventType:
         # A retrospective reference can name a battle or death while the main
         # assertion describes another event.  Classify the asserted clause.
@@ -669,7 +687,12 @@ class EvidenceGroundedHistoricalEventExtractor:
     ) -> bool:
         if event_type is HistoricalEventType.UNKNOWN:
             return False
-        if self._NON_COMPLETED.search(sentence) or self._REPORTED_SPEECH.search(sentence) or self._NAVIGATION_HEADING.search(sentence):
+        if event_type is HistoricalEventType.MOVEMENT:
+            if not self._has_completed_movement_assertion(sentence):
+                return False
+        elif self._NON_COMPLETED.search(sentence):
+            return False
+        if self._REPORTED_SPEECH.search(sentence) or self._NAVIGATION_HEADING.search(sentence):
             return False
         # Proper names or a concrete collective/office keep this conservative
         # without requiring a place or a normalized date.
