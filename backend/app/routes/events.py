@@ -7,10 +7,12 @@ import unicodedata
 
 from backend.app.models import (
     Evidence,
+    EventActorStatus,
     EventGroundingStatus,
     EventPlaceResolutionStatus,
     EventPlaceRole,
     HistoricalEvent,
+    HistoricalEventActorGrounding,
     HistoricalEventPlaceMention,
     HistoricalEventTemporalGrounding,
     HistoricalEventType,
@@ -152,6 +154,13 @@ class EvidenceGroundedHistoricalEventExtractor:
         r"\b(?:under|with|by)\s+(?:the\s+)?$",
         re.IGNORECASE,
     )
+    _ACTOR_PRONOUN = re.compile(r"^(?:he|she|they|it|him|her|them)\b", re.IGNORECASE)
+    _ACTOR_POSSESSIVE = re.compile(r"^(?:his|her|their)\s+\w", re.IGNORECASE)
+    _ACTOR_COORDINATION = re.compile(r"\band\b", re.IGNORECASE)
+    _ACTOR_COLLECTIVE = re.compile(
+        r"^the\s+(?:soldiers|army|armies|fleet|fleets|people|troops|forces|commissioners|legions?)\b",
+        re.IGNORECASE,
+    )
 
     def __init__(self, mention_extractor: HistoricalPlaceMentionExtractor | None = None,
                  temporal_resolver: EvidenceTemporalResolver | None = None) -> None:
@@ -259,6 +268,71 @@ class EvidenceGroundedHistoricalEventExtractor:
             and not cls._non_completed_governs_clause(clause)
             and not cls._non_assertive_governs_clause(clause)
             for clause in cls._movement_clauses(sentence)
+        )
+
+    @classmethod
+    def _asserted_movement_predicate_span(cls, statement: str) -> tuple[int, int] | None:
+        best: tuple[int, int] | None = None
+        for start, end in cls._movement_clause_boundaries(statement, split=cls._MOVEMENT_CLAUSE_SPLIT):
+            clause = statement[start:end]
+            if not cls._clause_has_positive_movement(clause):
+                continue
+            if cls._non_completed_governs_clause(clause) or cls._non_assertive_governs_clause(clause):
+                continue
+            for match in cls._MOVEMENT_VERBS.finditer(clause):
+                if cls._negation_governs_movement_predicate(clause, match):
+                    continue
+                span = (start + match.start(), start + match.end())
+                if best is None or span[0] >= best[0]:
+                    best = span
+            idiom = re.search(rf"\b{_SET_SAIL}\b", clause, re.IGNORECASE)
+            if idiom and not cls._negation_governs_movement_predicate(clause, idiom):
+                span = (start + idiom.start(), start + idiom.end())
+                if best is None or span[0] >= best[0]:
+                    best = span
+        return best
+
+    @classmethod
+    def _unknown_actor(cls) -> HistoricalEventActorGrounding:
+        return HistoricalEventActorGrounding(actor_status=EventActorStatus.UNKNOWN)
+
+    @classmethod
+    def _ground_movement_actor(cls, statement: str) -> HistoricalEventActorGrounding:
+        predicate = cls._asserted_movement_predicate_span(statement)
+        if predicate is None:
+            return cls._unknown_actor()
+        predicate_start, _predicate_end = predicate
+        clause, clause_start = cls._local_clause(statement, predicate_start)
+        prefix = clause[: predicate_start - clause_start]
+        subject_segment = prefix.split(",")[-1].strip()
+        if not subject_segment:
+            return cls._unknown_actor()
+        if cls._ACTOR_PRONOUN.match(subject_segment) or cls._ACTOR_POSSESSIVE.match(subject_segment):
+            return cls._unknown_actor()
+        if cls._ACTOR_COORDINATION.search(subject_segment) or "," in subject_segment:
+            return cls._unknown_actor()
+        if cls._ACTOR_COLLECTIVE.match(subject_segment) or cls._ACTOR.search(subject_segment):
+            return cls._unknown_actor()
+        name_match = re.search(
+            r"((?:[A-Z][A-Za-z'À-ÖØ-öø-ÿÆæŒœ']{2,})(?:\s+(?:[A-Z][A-Za-z'À-ÖØ-öø-ÿÆæŒœ']{2,}))*)[\s,]*$",
+            subject_segment,
+        )
+        if name_match is None:
+            return cls._unknown_actor()
+        actor_text = name_match.group(1)
+        subject_start_in_prefix = prefix.rfind(subject_segment)
+        if subject_start_in_prefix < 0:
+            return cls._unknown_actor()
+        abs_start = clause_start + subject_start_in_prefix + name_match.start(1)
+        abs_end = abs_start + len(actor_text)
+        if statement[abs_start:abs_end] != actor_text:
+            return cls._unknown_actor()
+        return HistoricalEventActorGrounding(
+            actor_text=actor_text,
+            actor_tokens=actor_text.split(),
+            actor_span=(abs_start, abs_end),
+            actor_status=EventActorStatus.EXPLICIT,
+            actor_clause_span=(clause_start, clause_start + len(clause)),
         )
 
     def _event_type(self, sentence: str) -> HistoricalEventType:
@@ -819,12 +893,18 @@ class EvidenceGroundedHistoricalEventExtractor:
                 )
                 temporal_codes.update(codes)
                 temporal = self.temporal_resolver.primary(temporal_readings, item.id)
+                actor = (
+                    self._ground_movement_actor(statement)
+                    if event_type is HistoricalEventType.MOVEMENT
+                    else self._unknown_actor()
+                )
                 events.append(HistoricalEvent(
                     id=f"event-{digest}", name=f"{event_type.value.title()} event", summary=statement,
                     period=item.period, event_type=event_type, temporal_grounding=temporal,
                     place_mentions=places, evidence_refs=[item.id], grounding_status=EventGroundingStatus.EVIDENCE_GROUNDED,
                     limitations=["Extracted from one explicit evidence statement; no coordinates, chronology merge, or route inference was performed."],
                     candidate_ids=[f"event-{digest}"], source_statements=[statement], temporal_groundings=temporal_readings or [temporal],
+                    actor=actor,
                 ))
         reason_codes: list[str] = ["EVENT_EXTRACTED"] if events else ["NO_EVENT_EVIDENCE", "INSUFFICIENT_GROUNDING"]
         if events and any(event.temporal_grounding.status is TemporalGroundingStatus.UNRESOLVED for event in events):

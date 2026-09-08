@@ -128,6 +128,19 @@ class EventGroundingStatus(str, Enum):
     INSUFFICIENT_GROUNDING = "INSUFFICIENT_GROUNDING"
 
 
+class EventActorStatus(str, Enum):
+    EXPLICIT = "EXPLICIT"
+    UNKNOWN = "UNKNOWN"
+
+
+class HistoricalEventActorGrounding(BaseModel):
+    actor_text: str | None = None
+    actor_tokens: list[str] = Field(default_factory=list)
+    actor_span: tuple[int, int] | None = None
+    actor_status: EventActorStatus = EventActorStatus.UNKNOWN
+    actor_clause_span: tuple[int, int] | None = None
+
+
 class HistoricalEventTemporalGrounding(BaseModel):
     """Evidence-only historical time using signed historical years (no year zero).
 
@@ -185,6 +198,7 @@ class HistoricalEvent(BaseModel):
     candidate_ids: list[str] = Field(default_factory=list)
     source_statements: list[str] = Field(default_factory=list)
     temporal_groundings: list[HistoricalEventTemporalGrounding] = Field(default_factory=list)
+    actor: HistoricalEventActorGrounding = Field(default_factory=HistoricalEventActorGrounding)
 
 
 class GeoJsonLineString(BaseModel):
