@@ -115,6 +115,14 @@ class EvidenceGroundedHistoricalEventExtractor:
         r"\b(?:would|could|might|should|may|planned\s+to|intended\s+to|wanted\s+to|hoped\s+to|feared\s+(?:that|lest)|if)\b",
         re.IGNORECASE,
     )
+    _NON_ASSERTIVE_GOVERNOR = re.compile(
+        r"\b(?:discussed|debated|considered|contemplated)\b",
+        re.IGNORECASE,
+    )
+    _PREVENTED_FROM = re.compile(
+        r"\b(?:prevented|stopped|blocked|forbidden|barred|hindered)\b(?:\s+\w+){0,8}\sfrom\b",
+        re.IGNORECASE,
+    )
     _REPORTED_SPEECH = re.compile(r"[\"“”]|\b(?:said|declared|claimed|reported|urged)\s+(?:that|:)", re.IGNORECASE)
     _NAVIGATION_HEADING = re.compile(
         r"^\s*(?:how\b.*\bchapters?\b|(?:chapter|book)\s+[ivxlcdm0-9]+\b)", re.IGNORECASE
@@ -232,9 +240,24 @@ class EvidenceGroundedHistoricalEventExtractor:
         return bool(_has_movement_cue(clause))
 
     @classmethod
+    def _non_assertive_governs_clause(cls, clause: str) -> bool:
+        if not (_has_movement_cue(clause) or cls._MOVEMENT_VERBS.search(clause)):
+            return False
+        for match in cls._MOVEMENT_VERBS.finditer(clause):
+            prefix = clause[: match.start()]
+            if cls._NON_ASSERTIVE_GOVERNOR.search(prefix) or cls._PREVENTED_FROM.search(prefix):
+                return True
+        return bool(
+            _has_movement_cue(clause)
+            and (cls._NON_ASSERTIVE_GOVERNOR.search(clause) or cls._PREVENTED_FROM.search(clause))
+        )
+
+    @classmethod
     def _has_completed_movement_assertion(cls, sentence: str) -> bool:
         return any(
-            cls._clause_has_positive_movement(clause) and not cls._non_completed_governs_clause(clause)
+            cls._clause_has_positive_movement(clause)
+            and not cls._non_completed_governs_clause(clause)
+            and not cls._non_assertive_governs_clause(clause)
             for clause in cls._movement_clauses(sentence)
         )
 
