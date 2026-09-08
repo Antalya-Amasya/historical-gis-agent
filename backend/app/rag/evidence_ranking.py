@@ -13,7 +13,6 @@ from backend.app.models import Evidence
 from backend.app.rag.query_roles import (
     action_support as role_action_support,
     analyze_query,
-    body_conflicting_person,
     episode_context_terms,
     extract_subject_context_terms,
     generic_support as role_generic_support,
@@ -63,9 +62,10 @@ _MOVEMENT_PAIR_STATEMENT = re.compile(
 _ROUTE_FRAGMENT_MAX = 0.06
 _FRAGMENT_PRONOUNS = frozenset({"he", "she", "they", "it", "his", "her", "their"})
 _EXPLICIT_ACTOR_MOVEMENT = re.compile(
-    r"^\s*(?P<actor>[A-Za-z][A-Za-z']+(?:\s+[A-Za-z][A-Za-z']+)?)\s+"
-    r"(?:crossed|marched|travel(?:led|ed)|landed|sailed|advanced|proceeded|passed|entered|departed|left)\b",
-    re.IGNORECASE,
+    r"(?<![A-Za-z])(?P<actor>[A-Z][a-z'']+(?:\s+[A-Z][a-z'']+)?)\s+"
+    r"(?:crossed|marched|marches|marching|travel(?:led|ed|ing)|landed|sailed|sailing|"
+    r"advanced|advancing|proceeded|proceeding|passed|passing|enter(?:ed|ing)|depart(?:ed|ing)|"
+    r"left|moved|moving|put)\b",
 )
 _FRAGMENT_MOVEMENT_PHRASE = re.compile(r"\b(?:put to sea|made over|quitted|quit)\b", re.IGNORECASE)
 
@@ -102,6 +102,16 @@ def is_route_or_movement_query(query: str) -> bool:
     return bool(_ROUTE_OR_MOVEMENT_QUERY.search(query or ""))
 
 
+def _explicit_fragment_actor_conflict(roles, text: str) -> bool:
+    for match in _EXPLICIT_ACTOR_MOVEMENT.finditer(text or ""):
+        actor_tokens = normalized_tokens(match.group("actor"))
+        if not actor_tokens or actor_tokens <= _FRAGMENT_PRONOUNS:
+            continue
+        if not (actor_tokens & roles.person_terms):
+            return True
+    return False
+
+
 def route_fragment_relevance(
     query: str,
     roles,
@@ -117,13 +127,8 @@ def route_fragment_relevance(
         return 0.0
     if person >= 0.08 or (person >= 0.04 and location > 0 and action >= 0.12):
         return 0.0
-    if body_conflicting_person(roles.person_terms, text_tokens):
+    if _explicit_fragment_actor_conflict(roles, text):
         return 0.0
-    actor_match = _EXPLICIT_ACTOR_MOVEMENT.match(text or "")
-    if actor_match:
-        actor_tokens = normalized_tokens(actor_match.group("actor"))
-        if actor_tokens and not (actor_tokens <= _FRAGMENT_PRONOUNS) and not (actor_tokens & roles.person_terms):
-            return 0.0
     if not (
         action > 0
         or _MOVEMENT_STATEMENT.search(text or "")
