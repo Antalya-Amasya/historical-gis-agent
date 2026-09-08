@@ -394,17 +394,45 @@ class EvidenceGroundedHistoricalEventExtractor:
                         return marker.start(), place_end, marker.group(0).lower()
         return None
 
+    @classmethod
+    def _endpoint_has_positive_contradiction(
+        cls, sentence: str, marker_start: int, place_end: int, role_token: str,
+    ) -> bool:
+        clause, clause_start = cls._local_clause(sentence, marker_start)
+        rel_marker = marker_start - clause_start
+        if cls._negated_destination_marker(clause, rel_marker, role_token) or cls._non_completed_governs_clause(clause):
+            return True
+        governing = cls._governing_movement_match(clause, rel_marker)
+        return governing is not None and cls._negation_governs_movement_predicate(clause, governing)
+
     def _enforce_movement_endpoint_polarity(
         self, sentence: str, places: list[HistoricalEventPlaceMention],
     ) -> list[HistoricalEventPlaceMention]:
+        semantics = analyze_sentence(sentence, self.mention_extractor.aliases_in(sentence))
+        role_map = {"origin": EventPlaceRole.ORIGIN, "destination": EventPlaceRole.DESTINATION}
+        semantic_directional = {
+            (endpoint.surface.casefold(), role_map[endpoint.role])
+            for endpoint in semantics.endpoints
+            if endpoint.role in role_map
+        }
+        for edge in semantics.edges:
+            for endpoint in (edge.origin, edge.destination):
+                if endpoint is not None and endpoint.role in role_map:
+                    semantic_directional.add((endpoint.surface.casefold(), role_map[endpoint.role]))
         for mention in places:
             if mention.role not in {EventPlaceRole.ORIGIN, EventPlaceRole.DESTINATION}:
                 continue
             marker = self._movement_role_marker(sentence, mention)
             if marker is None:
                 continue
-            if not self._positive_movement_governs_endpoint(sentence, *marker):
-                mention.role = EventPlaceRole.RELATED_PLACE
+            if self._positive_movement_governs_endpoint(sentence, *marker):
+                continue
+            if (
+                (mention.raw_text.casefold(), mention.role) in semantic_directional
+                and not self._endpoint_has_positive_contradiction(sentence, *marker)
+            ):
+                continue
+            mention.role = EventPlaceRole.RELATED_PLACE
         return places
 
     @classmethod
