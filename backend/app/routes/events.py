@@ -20,7 +20,7 @@ from backend.app.models import (
 )
 from backend.app.routes.extractor import HistoricalPlaceMentionExtractor
 from backend.app.routes.evidence_relevance import movement_eligibility_with_context, narrative_subject_proper_nouns
-from backend.app.routes.movement_semantics import MovementEndpoint, analyze_sentence, _has_movement_cue
+from backend.app.routes.movement_semantics import MovementEndpoint, _SET_SAIL, analyze_sentence, _has_movement_cue
 from backend.app.routes.place_mention_validation import validate_broad_place_mention
 from backend.app.routes.temporal import EvidenceTemporalResolver, TemporalResolutionContext
 
@@ -36,13 +36,13 @@ class EvidenceGroundedHistoricalEventExtractor:
         (HistoricalEventType.TREATY, r"\b(?:treaty|peace agreement|concluded peace)\b"),
         (HistoricalEventType.ELECTION, r"\b(?:elected|election|chosen as)\b"),
         (HistoricalEventType.REBELLION, r"\b(?:rebellion|revolt(?:ed)?|uprising|insurrection)\b"),
-        (HistoricalEventType.MOVEMENT, r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|arrived|entered|crossed|withdrew|retreated|fled|left|sailed|embarked|landed|went|returned|passed|repassed|travel|escaped|descended|made\s+(?:his|her|their)\s+way)\b"),
+        (HistoricalEventType.MOVEMENT, rf"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|arrived|entered|crossed|withdrew|retreated|fled|left|sailed|embarked|landed|went|returned|passed|repassed|travel|escaped|descended|made\s+(?:his|her|their)\s+way|{_SET_SAIL})\b"),
         (HistoricalEventType.MILITARY, r"\b(?:campaign|army|war|invaded|conquered|captured)\b"),
         (HistoricalEventType.POLITICAL, r"\b(?:senate .*\bdecree|tribune .*\b(?:proposed|elected|opposed)|consul .*\b(?:appointed|elected|sent)|assembly .*\b(?:elected|passed)|issued a decree)\b"),
     )
     _PLACE_PATTERN = re.compile(r"\b(?P<role>(?i:at|in|near|from|to|into|through))\s+(?:(?i:the)\s+)?(?P<place>[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*){0,3})")
     _MOVEMENT_VERBS = re.compile(
-        r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|arrived|entered|crossed|withdrew|retreated|fled|left|leaving|reached|came|passed|sailed|embarked|landed|went|returned|repassed|travel|escaped|descended|made\s+(?:his|her|their)\s+way)\b",
+        rf"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|arrived|entered|crossed|withdrew|retreated|fled|left|leaving|reached|came|passed|sailed|embarked|landed|went|returned|repassed|travel|escaped|descended|made\s+(?:his|her|their)\s+way|{_SET_SAIL})\b",
         re.IGNORECASE,
     )
     _NON_MOVEMENT_TO_CONTEXT = re.compile(
@@ -80,11 +80,11 @@ class EvidenceGroundedHistoricalEventExtractor:
         re.IGNORECASE,
     )
     _MOVEMENT_FROM_PREFIX = re.compile(
-        r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|left|leaving|withdrew|retreated|fled|came|went|crossed|crossing|returned|hastened|set\s+out|descended|sailed|embarked|escaped|travel(?:led|ed|ing)?|made\s+(?:his|her|their)\s+way|repassed)\s+(?:\w+\s+){0,12}from\b",
+        rf"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|left|leaving|withdrew|retreated|fled|came|went|crossed|crossing|returned|hastened|set\s+out|descended|sailed|embarked|escaped|travel(?:led|ed|ing)?|made\s+(?:his|her|their)\s+way|repassed|{_SET_SAIL})\s+(?:\w+\s+){{0,12}}from\b",
         re.IGNORECASE,
     )
     _MOVEMENT_GOVERNED_FROM = re.compile(
-        r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|left|leaving|withdrew|retreated|fled|came|went|crossed|crossing|returned|hastened|set\s+out|descended|sailed|embarked|escaped|travel(?:led|ed|ing)?|made\s+(?:his|her|their)\s+way)\b(?:\s+\w+){0,12}?\bfrom\b",
+        rf"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|left|leaving|withdrew|retreated|fled|came|went|crossed|crossing|returned|hastened|set\s+out|descended|sailed|embarked|escaped|travel(?:led|ed|ing)?|made\s+(?:his|her|their)\s+way|{_SET_SAIL})\b(?:\s+\w+){{0,12}}?\bfrom\b",
         re.IGNORECASE,
     )
     _MEDIATED_FROM_PREFIX = re.compile(

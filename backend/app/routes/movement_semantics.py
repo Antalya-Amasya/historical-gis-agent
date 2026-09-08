@@ -16,10 +16,13 @@ from backend.app.routes.place_mention_validation import validate_broad_place_men
 
 EndpointRole = Literal["origin", "destination", "traversal"]
 
+_SET_SAIL = r"(?:(?:had|has|have|was|were|is|are)\s+)?(?:set|sets|setting)\s+sail"
+
 _MOVEMENT_PREDICATE = re.compile(
-    r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|"
+    rf"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|"
     r"departed|arrived|entered|crossed|crossing|withdrew|retreated|fled|left|leaving|reached|came|"
     r"returned|passed|passing|set\s+out|hastened|sailed|sailing|embarked|embark|landed|landing|"
+    rf"{_SET_SAIL}|"
     r"traversed|traversing|conducted|led|went|descended|repassed|travel|travelling|traveling|"
     r"escaped|withdrawing|retreating|fell\s+back|made\s+(?:his|her|their)\s+way|put\s+(?:in|out)|"
     r"journey(?:ed)?|route(?:d)?)\b",
@@ -71,8 +74,8 @@ _ARRIVAL_PREDICATE = re.compile(
     r"\b(?:reached|arriv(?:ed|ing)|landed|landing|entered|came)\b", re.IGNORECASE,
 )
 _DEPARTURE_PREDICATE = re.compile(
-    r"\b(?:departed|left|leaving|withdrew|withdrawing|retreated|retreating|fled|embarked|"
-    r"embark|sailed|sailing|set\s+out|put\s+out)\b",
+    rf"\b(?:departed|left|leaving|withdrew|withdrawing|retreated|retreating|fled|embarked|"
+    rf"embark|sailed|sailing|set\s+out|put\s+out|{_SET_SAIL})\b",
     re.IGNORECASE,
 )
 _PLACE_SPAN = re.compile(
@@ -112,10 +115,10 @@ _MOVEMENT_AFTER_DISCOURSE = re.compile(
     re.IGNORECASE,
 )
 _MOVEMENT_GOVERNED_FROM = re.compile(
-    r"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|"
-    r"departed|left|leaving|withdrew|retreated|fled|came|went|crossed|crossing|returned|"
-    r"hastened|set\s+out|descended|sailed|embarked|escaped|travel(?:led|ed|ing)?|made\s+(?:his|her|their)\s+way)\b"
-    r"(?:\s+\w+){0,16}?\bfrom\b",
+    rf"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|"
+    rf"departed|left|leaving|withdrew|retreated|fled|came|went|crossed|crossing|returned|"
+    rf"hastened|set\s+out|descended|sailed|embarked|escaped|travel(?:led|ed|ing)?|made\s+(?:his|her|their)\s+way|"
+    rf"{_SET_SAIL})\b(?:\s+\w+){{0,16}}?\bfrom\b",
     re.IGNORECASE,
 )
 _MEDIATED_ORIGIN_PREFIX = re.compile(
