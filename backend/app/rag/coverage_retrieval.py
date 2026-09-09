@@ -208,6 +208,32 @@ def _movement_continuation_suffix(user_query: str, selected: Evidence, candidate
     return candidate.model_copy(update={"id": f"{source}:{suffix_start}:{suffix_end}", "text": suffix_text, "excerpt": suffix_text[:500], "metadata": {**candidate.metadata, "source_chunk_id": source, "passage_start": suffix_start, "passage_end": suffix_end, "continuation_of": selected.id, "continuation_suffix": True}})
 
 
+def _discover_proactive_continuation(
+    user_query: str,
+    anchor: Evidence,
+    candidates: list[Evidence],
+    global_rank: dict[str, int],
+) -> Evidence | None:
+    if anchor.metadata.get("continuation_suffix"):
+        return None
+    source = anchor.metadata.get("source_chunk_id")
+    if source is None:
+        return None
+    best: Evidence | None = None
+    best_key: tuple[int, str, str] | None = None
+    for candidate in candidates:
+        if candidate.id == anchor.id or candidate.metadata.get("source_chunk_id") != source:
+            continue
+        suffix = _movement_continuation_suffix(user_query, anchor, candidate)
+        if suffix is None:
+            continue
+        key = (global_rank.get(candidate.id, 999), candidate.id, suffix.id)
+        if best_key is None or key < best_key:
+            best_key = key
+            best = suffix
+    return best
+
+
 def _merge_channel_candidate(current: Evidence, incoming: Evidence) -> Evidence:
     metadata = dict(current.metadata)
     incoming_meta = incoming.metadata
@@ -299,6 +325,15 @@ def merge_coverage_results(
                 matched_channels=matched,
             )
         )
+        if not resolved.metadata.get("continuation_suffix"):
+            continuation = _discover_proactive_continuation(user_query, resolved, ranked, global_rank)
+            if (
+                continuation is not None
+                and continuation.id not in selected_ids
+                and len(selected) < budget
+                and not overlaps_selected(continuation)
+            ):
+                add(continuation, intent, rank=rank, reason="same_parent_movement_continuation")
         return True
 
     channel_ranked: list[tuple[RetrievalIntent, list[Evidence]]] = []
