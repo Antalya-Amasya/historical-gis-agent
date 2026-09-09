@@ -1004,11 +1004,12 @@ class HistoricalEventConsolidator:
         }
         if len(explicit_keys) <= 1:
             return [members]
-        unknowns = [member for member in members if cls._explicit_actor_token_key(member) is None]
-        return [
-            [member for member in members if cls._explicit_actor_token_key(member) == token_key] + unknowns
+        groups = [
+            [member for member in members if cls._explicit_actor_token_key(member) == token_key]
             for token_key in sorted(explicit_keys)
         ]
+        unknowns = [member for member in members if cls._explicit_actor_token_key(member) is None]
+        return groups + [[unknown] for unknown in unknowns]
 
     def consolidate(self, candidates: list[HistoricalEvent]) -> tuple[list[HistoricalEvent], dict[str, object]]:
         buckets: dict[str, list[HistoricalEvent]] = {}
@@ -1022,7 +1023,6 @@ class HistoricalEventConsolidator:
             else:
                 buckets.setdefault(key, []).append(candidate)
         consolidated: list[HistoricalEvent] = []
-        merged_count = 0
         for key, members in buckets.items():
             for group in self._actor_compatible_groups(members):
                 if len(group) == 1:
@@ -1055,7 +1055,6 @@ class HistoricalEventConsolidator:
                     "temporal_groundings": temporal,
                     "limitations": self._unique([*primary.limitations, "Consolidated only from candidates with an identical deterministic identity key."]),
                 }))
-                merged_count += len(group) - 1
         conflicts = 0
         type_sets: dict[tuple[tuple[str, ...], str], set[str]] = {}
         for candidate in candidates:
@@ -1064,6 +1063,7 @@ class HistoricalEventConsolidator:
                 type_sets.setdefault((place_key, self._temporal_key(candidate)), set()).add(self._family(candidate.event_type))
         conflicts = sum(len(types) > 1 for types in type_sets.values())
         result = [*consolidated, *separate]
+        merged_count = len(candidates) - len(result)
         reason_codes = ["EVENTS_CONSOLIDATED"] if merged_count else ["NO_SAFE_EVENT_MERGE"]
         if ambiguous:
             reason_codes.append("EVENT_IDENTITY_AMBIGUOUS")
