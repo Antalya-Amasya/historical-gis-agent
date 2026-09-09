@@ -12,6 +12,23 @@ from backend.app.rag.retrieval_intents import RetrievalIntent
 _SENTENCE_SPAN = re.compile(r"[^.!?\n]+(?:[.!?]+|$)", re.MULTILINE)
 _NON_ASSERTED_MOVEMENT = re.compile(r"\b(?:would|could|might|should|may|planned\s+to|intended\s+to)\b", re.I)
 _CONTINUATION_MOVEMENT = re.compile(r"\b(?:marched|advanced|proceeded|moved|travel(?:led|ed|ing)|departed|left|went|crossed|returned|sailed|embarked|passed|landed|entered)\b", re.I)
+_STEER_PHYSICAL = re.compile(
+    r"\b(?:(?:was|had)\s+)?steer(?:ed|ing|s)?\b(?:\s+(?:his|her|their|the)\s+(?:course|voyage|ships?|fleet))?(?:\s+\w+){0,6}?\s+(?:that\s+way|toward(?:s)?|to|into)\b",
+    re.I,
+)
+_NON_PHYSICAL_STEER = re.compile(
+    r"\b(?:discussion|conversation|debate|policy|politics|talk)\s+steer(?:ed|ing|s)?\b|"
+    r"\bsteer(?:ed|ing|s)?\s+(?:the\s+)?(?:conversation|discussion|debate|policy|talk)\b|"
+    r"\b(?:policy|policies)\s+steer(?:ed|ing|s)?\b|"
+    r"\bsteer(?:ed|ing|s)?\s+the\s+army\s+toward\s+reform\b",
+    re.I,
+)
+_STEER_REJECT = re.compile(
+    r"\b(?:did\s+not|never|not)\s+steer\b|"
+    r"\b(?:discussed|debated)\s+steer(?:ing|ed|s)?\b|"
+    r"\b(?:prevented|stopped|blocked|forbidden|barred|hindered)\b(?:\s+\w+){0,8}\s+from\s+steer",
+    re.I,
+)
 
 DEFAULT_COVERAGE_BUDGET = 20
 DEFAULT_PER_INTENT_K = 6
@@ -156,6 +173,14 @@ def passages_overlap(left: Evidence, right: Evidence) -> bool:
     return max(start, other_start) < min(end, other_end)
 
 
+def _continuation_asserted_movement(text: str) -> bool:
+    if _NON_ASSERTED_MOVEMENT.search(text):
+        return False
+    if _STEER_PHYSICAL.search(text):
+        return not (_NON_PHYSICAL_STEER.search(text) or _STEER_REJECT.search(text))
+    return bool(_MOVEMENT_PAIR_STATEMENT.search(text) or _MOVEMENT_STATEMENT.search(text) or _CONTINUATION_MOVEMENT.search(text))
+
+
 def _movement_continuation_suffix(user_query: str, selected: Evidence, candidate: Evidence) -> Evidence | None:
     ls, le = selected.metadata.get("passage_start"), selected.metadata.get("passage_end")
     rs, rend = candidate.metadata.get("passage_start"), candidate.metadata.get("passage_end")
@@ -175,7 +200,7 @@ def _movement_continuation_suffix(user_query: str, selected: Evidence, candidate
         return None
     if len([m for m in _SENTENCE_SPAN.finditer(suffix_text) if m.group().strip()]) != 1:
         return None
-    if _NON_ASSERTED_MOVEMENT.search(suffix_text) or not (_MOVEMENT_PAIR_STATEMENT.search(suffix_text) or _MOVEMENT_STATEMENT.search(suffix_text) or _CONTINUATION_MOVEMENT.search(suffix_text)):
+    if not _continuation_asserted_movement(suffix_text):
         return None
     if _explicit_fragment_actor_conflict(analyze_query(user_query), suffix_text):
         return None
