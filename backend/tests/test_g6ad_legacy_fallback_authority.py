@@ -47,6 +47,14 @@ class Geography:
         "Brundisium": (40.6, 17.9),
         "Corcyra": (39.6, 19.9),
     }
+    place_roles = {
+        "Roma": ("settlement", "exact_site"),
+        "Capua": ("settlement", "exact_site"),
+        "Brundisium": ("port", "exact_site"),
+        "Corcyra": ("settlement", "exact_site"),
+        "Rhodanus": ("river", "representative_point"),
+        "Alpes": ("mountain_region", "regional_centroid"),
+    }
 
     def call(self, tool, arguments):
         assert tool == "resolve_ancient_place"
@@ -54,6 +62,7 @@ class Geography:
         if name not in self.places:
             return {"found": False}
         lat, lon = self.places[name]
+        semantics, role = self.place_roles.get(name, ("settlement", "exact_site"))
         return {
             "found": True,
             "id": f"fixture-{name}",
@@ -63,7 +72,8 @@ class Geography:
             "source": "fixture",
             "source_id": name,
             "confidence": 0.8,
-            "coordinate_role": "representative_point",
+            "spatial_semantics": semantics,
+            "coordinate_role": role,
         }
 
 
@@ -137,7 +147,7 @@ def test_c_no_longer_marched_is_not_positive_fallback_movement():
     assert ("Roma", "Capua") not in legacy_claim_endpoints(trace)
 
 
-def test_d_positive_legacy_fallback_remains_functional():
+def test_d_positive_legacy_fallback_blocks_non_exact_route_points():
     state, result, meta = execute_route(
         POSITIVE_LEGACY,
         query="army movement",
@@ -147,10 +157,11 @@ def test_d_positive_legacy_fallback_remains_functional():
     diagnostics = meta["diagnostics"]
 
     assert trace["event_first"]["route_created"] is False
-    assert trace["legacy"]["activated"] is True
-    assert diagnostics.get("route_source") == "legacy_movement_claims"
-    assert route_names(state) == ["Rhodanus", "Alpes"]
-    assert result["result"]["route"] is not None
+    assert trace["legacy"]["activated"] is False
+    assert diagnostics.get("route_source") == "none"
+    assert route_names(state) == []
+    assert result["result"]["route"] is None
+    assert diagnostics.get("reason_codes") == ["NON_EXACT_ROUTE_POINT"]
 
 
 def test_e_unrelated_negation_preserves_positive_route():

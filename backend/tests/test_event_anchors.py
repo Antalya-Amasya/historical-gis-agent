@@ -1,11 +1,11 @@
-from backend.app.models import Evidence, EventGroundingStatus, EventPlaceResolutionStatus, EventPlaceRole, HistoricalEvent, HistoricalEventPlaceBinding, HistoricalEventPlaceMention, HistoricalEventType, HistoricalPlace, TemporalGroundingStatus
+from backend.app.models import Evidence, EventGroundingStatus, EventPlaceResolutionStatus, EventPlaceRole, HistoricalEvent, HistoricalEventPlaceBinding, HistoricalEventPlaceMention, HistoricalEventType, HistoricalPlace, PlaceSpatialSemantics, TemporalGroundingStatus
 from backend.app.routes.event_anchors import project_event_anchors
 
 def ev(): return Evidence(id="e",author="a",work="w",locator="l",excerpt="x")
 def binding(role):
- p=HistoricalPlace(id="p",canonical_name="Place",latitude=1,longitude=2,source="Pleiades",confidence=.8,coordinate_role="representative_point")
+ p=HistoricalPlace(id="p",canonical_name="Place",latitude=1,longitude=2,source="Pleiades",confidence=.8,coordinate_role="exact_site",spatial_semantics=PlaceSpatialSemantics.SETTLEMENT)
  m=HistoricalEventPlaceMention(raw_text="Place",role=role,evidence_refs=["e"])
- return HistoricalEventPlaceBinding(mention=m,place=p,role=role,resolution_status=EventPlaceResolutionStatus.RESOLVED,evidence_refs=["e"],resolver_provenance="resolver",limitations=["representative"])
+ return HistoricalEventPlaceBinding(mention=m,place=p,role=role,resolution_status=EventPlaceResolutionStatus.RESOLVED,evidence_refs=["e"],resolver_provenance="resolver",limitations=[])
 def event(bindings,refs=["e"], **kwargs): return HistoricalEvent(id="x",name="x",summary="x",event_type=HistoricalEventType.MOVEMENT,evidence_refs=refs,place_bindings=bindings, source_statements=["The army campaigned at Place."], **kwargs)
 def test_movement_projects_origin_destination_with_event_provenance():
  a,d=project_event_anchors([event([binding(EventPlaceRole.ORIGIN),binding(EventPlaceRole.DESTINATION)])],[ev()])

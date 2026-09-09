@@ -11,11 +11,15 @@ _NON_EXACT_COORDINATE_ROLES = frozenset({
     "unlocated_entity",
 })
 
-_TRAVERSAL_ONLY_SEMANTICS = frozenset({
+_EXACT_COORDINATE_ROLES = frozenset({"exact_site"})
+
+_STRONG_ROUTE_POINT_BLOCKED_SEMANTICS = frozenset({
     PlaceSpatialSemantics.SEA,
     PlaceSpatialSemantics.STRAIT,
     PlaceSpatialSemantics.RIVER,
     PlaceSpatialSemantics.MOUNTAIN_REGION,
+    PlaceSpatialSemantics.REGION,
+    PlaceSpatialSemantics.ISLAND,
 })
 
 
@@ -66,16 +70,18 @@ def place_limitations(place: HistoricalPlace) -> list[str]:
 def exact_anchor_eligible(place: HistoricalPlace, *, strong_role: bool) -> bool:
     if not strong_role:
         return True
-    return place.spatial_semantics not in {
+    if place.spatial_semantics in _STRONG_ROUTE_POINT_BLOCKED_SEMANTICS:
+        return False
+    if place.coordinate_role in _NON_EXACT_COORDINATE_ROLES:
+        return False
+    return place.coordinate_role in _EXACT_COORDINATE_ROLES
+
+
+def traversal_eligible(place: HistoricalPlace) -> bool:
+    return place.spatial_semantics in {
         PlaceSpatialSemantics.SEA,
         PlaceSpatialSemantics.STRAIT,
         PlaceSpatialSemantics.RIVER,
         PlaceSpatialSemantics.MOUNTAIN_REGION,
-    }
-
-
-def traversal_eligible(place: HistoricalPlace) -> bool:
-    return place.spatial_semantics in _TRAVERSAL_ONLY_SEMANTICS | {
-        PlaceSpatialSemantics.STRAIT,
         PlaceSpatialSemantics.PASS,
     }

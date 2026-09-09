@@ -58,6 +58,13 @@ class Geography:
         "Alpes": (43.7, 7.4),
         "Gaul": (46.0, 2.0),
     }
+    place_roles = {
+        "Roma": ("settlement", "exact_site"),
+        "Capua": ("settlement", "exact_site"),
+        "Gaul": ("region", "regional_centroid"),
+        "Rhodanus": ("river", "representative_point"),
+        "Alpes": ("mountain_region", "regional_centroid"),
+    }
 
     def call(self, tool, arguments):
         assert tool == "resolve_ancient_place"
@@ -65,6 +72,7 @@ class Geography:
         if name not in self.places:
             return {"found": False}
         lat, lon = self.places[name]
+        semantics, role = self.place_roles.get(name, ("settlement", "exact_site"))
         return {
             "found": True,
             "id": f"fixture-{name}",
@@ -74,7 +82,8 @@ class Geography:
             "source": "fixture",
             "source_id": name,
             "confidence": 0.8,
-            "coordinate_role": "representative_point",
+            "spatial_semantics": semantics,
+            "coordinate_role": role,
         }
 
 
@@ -171,9 +180,17 @@ def test_c_valid_same_occurrence_crossing_preserved():
         destination_surface="Alps",
     )
     state, result, meta = execute_route(SAME_OCCURRENCE)
-    assert ("Rhodanus", "Alpes") in set(legacy_claim_endpoints(meta["trace"]))
-    assert route_edge_pairs(state) == [("Rhodanus", "Alpes")]
-    assert result["result"]["route"] is not None
+    assert authority(
+        SAME_OCCURRENCE,
+        "Rhodanus",
+        "Alpes",
+        origin_surface="Rhone",
+        destination_surface="Alps",
+    )
+    assert ("Rhodanus", "Alpes") not in set(legacy_claim_endpoints(meta["trace"]))
+    assert route_edge_pairs(state) == []
+    assert result["result"]["route"] is None
+    assert meta["diagnostics"].get("reason_codes") == ["NON_EXACT_ROUTE_POINT"]
 
 
 def test_d_same_subject_separate_occurrences_not_fused():

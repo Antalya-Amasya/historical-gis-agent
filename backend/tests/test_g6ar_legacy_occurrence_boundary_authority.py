@@ -80,6 +80,10 @@ class Geography:
         "Rhodanus": (43.3, 4.8),
         "Alpes": (43.7, 7.4),
     }
+    place_roles = {
+        "Rhodanus": ("river", "representative_point"),
+        "Alpes": ("mountain_region", "regional_centroid"),
+    }
 
     def call(self, tool, arguments):
         assert tool == "resolve_ancient_place"
@@ -87,6 +91,7 @@ class Geography:
         if name not in self.places:
             return {"found": False}
         lat, lon = self.places[name]
+        semantics, role = self.place_roles[name]
         return {
             "found": True,
             "id": f"fixture-{name}",
@@ -96,7 +101,8 @@ class Geography:
             "source": "fixture",
             "source_id": name,
             "confidence": 0.8,
-            "coordinate_role": "representative_point",
+            "spatial_semantics": semantics,
+            "coordinate_role": role,
         }
 
 
@@ -154,9 +160,10 @@ def assert_no_rhone_alps_fusion(text: str):
 def assert_rhone_alps_preserved(text: str):
     assert authority(text) is True
     state, result, meta = execute_route(text)
-    assert ("Rhodanus", "Alpes") in legacy_claim_endpoints(meta["trace"])
-    assert route_edge_pairs(state) == [("Rhodanus", "Alpes")]
-    assert result["result"]["route"] is not None
+    assert ("Rhodanus", "Alpes") not in legacy_claim_endpoints(meta["trace"])
+    assert route_edge_pairs(state) == []
+    assert result["result"]["route"] is None
+    assert meta["diagnostics"].get("reason_codes") == ["NON_EXACT_ROUTE_POINT"]
 
 
 def test_a_exact_gpt6_s6_03_different_campaign():

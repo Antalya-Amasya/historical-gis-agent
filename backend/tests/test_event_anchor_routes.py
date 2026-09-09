@@ -202,7 +202,7 @@ class Geography:
         if name in self.missing or name not in {"Melodunum", "Lutetia"}:
             return {"found": False}
         latitude, longitude = {"Melodunum": (48.5, 2.7), "Lutetia": (48.9, 2.35)}[name]
-        return {"found": True, "id": name.lower(), "canonical_name": name, "latitude": latitude, "longitude": longitude, "source": "test registry", "confidence": 0.8, "coordinate_role": "exact_site"}
+        return {"found": True, "id": name.lower(), "canonical_name": name, "latitude": latitude, "longitude": longitude, "source": "test registry", "confidence": 0.8, "coordinate_role": "exact_site", "spatial_semantics": "settlement"}
 
 
 class Retriever:
@@ -223,7 +223,7 @@ def test_event_first_path_is_preferred_when_it_can_build_a_route():
 
 
 def test_legacy_strict_movement_fallback_remains_usable_without_event_anchors():
-    item = Evidence(id="caesar-lutetia", author="Julius Caesar", work="Gallic War", locator="Book I", excerpt="He reached Melodunum and then led his army to Lutetia.", text="He reached Melodunum and then led his army to Lutetia.", metadata={"document_id": "caesar_gallic_war", "spine_index": 2, "start_offset": 100})
+    item = Evidence(id="caesar-lutetia", author="Julius Caesar", work="Gallic War", locator="Book I", excerpt="The army marched from Melodunum to Lutetia.", text="The army marched from Melodunum to Lutetia.", metadata={"document_id": "caesar_gallic_war", "spine_index": 2, "start_offset": 100})
     state = AgentState(session_id="legacy")
     tools = AgentToolRegistry(Retriever([item]), Geography())
     tools.execute("search_historical_evidence", {"query": "Caesar", "top_k": 5}, state)
@@ -233,7 +233,7 @@ def test_legacy_strict_movement_fallback_remains_usable_without_event_anchors():
 
 
 def test_event_anchors_and_legacy_claims_are_never_merged_to_close_a_gap():
-    item = Evidence(id="legacy", author="Julius Caesar", work="Gallic War", locator="Book I", excerpt="He reached Melodunum and then led his army to Lutetia.", text="He reached Melodunum and then led his army to Lutetia.", metadata={"document_id": "caesar_gallic_war"})
+    item = Evidence(id="legacy", author="Julius Caesar", work="Gallic War", locator="Book I", excerpt="The army marched from Melodunum to Lutetia.", text="The army marched from Melodunum to Lutetia.", metadata={"document_id": "caesar_gallic_war"})
     state = AgentState(session_id="mixed")
     state.historical_evidence = [item, evidence("a")]
     state.historical_events = [site("isolated", "Alesia", ["a"])]

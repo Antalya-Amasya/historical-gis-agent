@@ -10,27 +10,30 @@ class EvidenceRetriever(HistoricalRetriever):
     def retrieve(self, query, top_k=5, filters=None):
         return [
             Evidence(id="nova", author="Polybius", work="Histories", locator="Book III", book="III", chapter="33", excerpt="Hannibal departed from New Carthage.", text="Hannibal departed from New Carthage."),
-            Evidence(id="rhone", author="Polybius", work="Histories", locator="Book III", book="III", chapter="42", excerpt="Hannibal crossed the Rhone and entered the Alps.", text="Hannibal crossed the Rhone and entered the Alps."),
+            Evidence(id="movement", author="Polybius", work="Histories", locator="Book III", book="III", chapter="42", excerpt="Hannibal marched from Genava to Lutetia.", text="Hannibal marched from Genava to Lutetia."),
             Evidence(id="padus", author="Polybius", work="Histories", locator="Book III", book="III", chapter="50", excerpt="The Alps would bring him into the plains of the Padus.", text="The Alps would bring him into the plains of the Padus."),
         ]
 
 
 class Geography:
     coordinates = {
-        "Carthago Nova": (37.599896, -0.98452, "265849", "exact_site"),
-        "Rhodanus": (43.33167, 4.84861, "148168", "representative_point"),
-        "Alpes": (43.74465275, 7.40183905, "783", "regional_centroid"),
-        "Padus": (44.952389, 12.432028, "393469", "representative_point"),
+        "Carthago Nova": (37.599896, -0.98452, "265849", "exact_site", "port"),
+        "Genava": (46.2044, 6.1432, "167901", "exact_site", "settlement"),
+        "Lutetia": (48.8566, 2.3522, "108348", "exact_site", "settlement"),
+        "Rhodanus": (43.33167, 4.84861, "148168", "representative_point", "river"),
+        "Alpes": (43.74465275, 7.40183905, "783", "regional_centroid", "mountain_region"),
+        "Padus": (44.952389, 12.432028, "393469", "representative_point", "river"),
     }
 
     def call(self, tool, arguments):
         assert tool == "resolve_ancient_place"
-        latitude, longitude, source_id, role = self.coordinates[arguments["name"]]
+        latitude, longitude, source_id, role, semantics = self.coordinates[arguments["name"]]
         return {
             "found": True, "id": f"pleiades-{source_id}", "canonical_name": arguments["name"],
             "latitude": latitude, "longitude": longitude, "source": "Pleiades: A Gazetteer of Past Places",
             "source_id": source_id, "source_url": f"https://pleiades.stoa.org/places/{source_id}",
             "confidence": 0.9, "uncertain": role != "exact_site", "coordinate_role": role,
+            "spatial_semantics": semantics,
         }
 
 

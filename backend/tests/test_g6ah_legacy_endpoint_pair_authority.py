@@ -62,6 +62,14 @@ class Geography:
         "Rhodanus": (43.3, 4.8),
         "Alpes": (43.7, 7.4),
     }
+    place_roles = {
+        "Roma": ("settlement", "exact_site"),
+        "Capua": ("settlement", "exact_site"),
+        "Brundisium": ("port", "exact_site"),
+        "Corcyra": ("settlement", "exact_site"),
+        "Rhodanus": ("river", "representative_point"),
+        "Alpes": ("mountain_region", "regional_centroid"),
+    }
 
     def call(self, tool, arguments):
         assert tool == "resolve_ancient_place"
@@ -69,6 +77,7 @@ class Geography:
         if name not in self.places:
             return {"found": False}
         lat, lon = self.places[name]
+        semantics, role = self.place_roles.get(name, ("settlement", "exact_site"))
         return {
             "found": True,
             "id": f"fixture-{name}",
@@ -78,7 +87,8 @@ class Geography:
             "source": "fixture",
             "source_id": name,
             "confidence": 0.8,
-            "coordinate_role": "representative_point",
+            "spatial_semantics": semantics,
+            "coordinate_role": role,
         }
 
 
@@ -216,13 +226,14 @@ def test_g_explicit_and_no_longer_negation_regression():
     assert ("Roma", "Capua") not in legacy_claim_endpoints(meta["trace"])
 
 
-def test_positive_legacy_fallback_still_works():
+def test_positive_legacy_fallback_blocks_non_exact_route_points():
     state, result, meta = execute_route(
         POSITIVE_LEGACY,
         query="army movement",
         user_query="",
     )
     trace = meta["trace"]
-    assert trace["legacy"]["activated"] is True
-    assert route_names(state) == ["Rhodanus", "Alpes"]
-    assert result["result"]["route"] is not None
+    assert trace["legacy"]["activated"] is False
+    assert route_names(state) == []
+    assert result["result"]["route"] is None
+    assert meta["diagnostics"].get("reason_codes") == ["NON_EXACT_ROUTE_POINT"]

@@ -6,7 +6,8 @@ import re
 from dataclasses import dataclass
 from typing import Protocol
 
-from backend.app.models import Evidence, ExtractedHistoricalPlaceMention, GeoJsonLineString, HistoricalClaim, HistoricalPlace, HistoricalRoute, HistoricalRoutePoint
+from backend.app.geography.feature_semantics import exact_anchor_eligible
+from backend.app.models import ExtractedHistoricalPlaceMention, GeoJsonLineString, HistoricalClaim, HistoricalPlace, HistoricalRoute, HistoricalRoutePoint
 from backend.app.routes.episode_relevance import filter_legacy_movement_claims
 from backend.app.routes.evidence_relevance import (
     _named_proper_nouns,
@@ -380,6 +381,9 @@ class HistoricalRouteExtractor:
                 diagnostics["reason_codes"] = ["UNRESOLVED_ANCHOR"]
                 return RouteBuildOutcome(None, diagnostics)  # required evidence-grounded anchor cannot receive an invented coordinate
             place = HistoricalPlace.model_validate({key: value for key, value in resolved.items() if key != "found"})
+            if not exact_anchor_eligible(place, strong_role=True):
+                diagnostics["reason_codes"] = ["NON_EXACT_ROUTE_POINT"]
+                return RouteBuildOutcome(None, diagnostics)
             refs = list(dict.fromkeys(ref for claim in supporting_claims for ref in claim.supporting_evidence_ids))
             sources = [item.author for item in evidence if item.id in refs]
             points.append(HistoricalRoutePoint(sequence=len(points) + 1, historical_place=place, event_summary=supporting_claims[0].textual_basis or supporting_claims[0].text, date_or_period=period, evidence_refs=refs, confidence=min(min(claim.confidence for claim in supporting_claims), place.confidence), coordinate_role=place.coordinate_role, source_support=list(dict.fromkeys(sources)), claim_ids=[claim.id for claim in supporting_claims]))
