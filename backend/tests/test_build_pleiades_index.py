@@ -19,7 +19,7 @@ def test_streaming_builder_schema_normalization_and_metadata(tmp_path):
         "locations": [{"id": "l1", "title": "Site point", "description": "fixture point",
                        "geometry": {"type": "Point", "coordinates": [12.5, 41.9]},
                        "accuracy": "rough", "accuracy_value": 1000, "provenance": "location fixture",
-                       "attestations": [], "featureTypes": ["settlement"], "locationTypes": ["central_point"],
+                       "attestations": [], "featureType": ["settlement"], "locationType": ["central_point"],
                        "references": [{"shortTitle": "Fixture"}]}],
     }
     with zipfile.ZipFile(source, "w") as archive:
@@ -43,6 +43,11 @@ def test_streaming_builder_schema_normalization_and_metadata(tmp_path):
         assert json.loads(row[1]) == {"type": "Point", "coordinates": [12.5, 41.9]}
         assert row[2] == "Site point"
         assert json.loads(row[3]) == [{"shortTitle": "Fixture"}]
+        types = sqlite3.connect(output).execute(
+            "SELECT location_types_json, feature_types_json FROM locations"
+        ).fetchone()
+        assert json.loads(types[0]) == ["central_point"]
+        assert json.loads(types[1]) == ["settlement"]
 
 
 def test_builder_rejects_wrong_identity(tmp_path):

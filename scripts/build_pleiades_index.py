@@ -244,8 +244,8 @@ def _insert_location(connection: sqlite3.Connection, *, pleiades_id: str, locati
             location.get("start"),
             location.get("end"),
             _json_text(location.get("attestations"), default=[]),
-            _json_text(location.get("featureTypes"), default=[]),
-            _json_text(location.get("locationTypes"), default=[]),
+            _json_text(location.get("featureType"), default=[]),
+            _json_text(location.get("locationType"), default=[]),
             _json_text(location.get("references"), default=[]),
         ),
     )

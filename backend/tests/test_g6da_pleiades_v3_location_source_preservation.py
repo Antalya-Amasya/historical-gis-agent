@@ -107,10 +107,10 @@ def test_point_geometry_is_preserved_exactly(tmp_path):
             "accuracy": "https://example.invalid/accuracy",
             "accuracy_value": 5.0,
             "provenance": "Pleiades",
-            "locationTypes": ["central_point"],
+            "locationType": ["representative"],
             "references": [{"shortTitle": "FixtureRef", "type": "citesAsDataSource"}],
             "attestations": [],
-            "featureTypes": ["settlement"],
+            "featureType": ["unknown"],
         }],
     }
     path = _build_fixture_index(tmp_path, [place])
@@ -187,8 +187,8 @@ def test_title_description_start_end_attestations_types_and_references_preserved
             "geometry": {"type": "Point", "coordinates": [32.5473404, 31.0427587]},
             "accuracy": "https://pleiades.stoa.org/features/metadata/generic-osm-accuracy-assessment",
             "provenance": "OpenStreetMap (Node 6069103273)",
-            "locationTypes": ["central_point"],
-            "featureTypes": ["settlement", "port"],
+            "locationType": ["central_point"],
+            "featureType": ["settlement", "port"],
             "attestations": [{
                 "confidence": "confident",
                 "confidenceURI": "https://pleiades.stoa.org/vocabularies/attestation-confidence/confident",
@@ -406,6 +406,8 @@ def test_real_controls_from_source_archive(tmp_path):
     assert alesia["accuracy"] == "https://pleiades.stoa.org/features/metadata/google-geoeye-2011"
     assert alesia["provenance"] == "Pleiades"
     assert alesia["description"]
+    assert json.loads(alesia["location_types_json"]) == ["representative"]
+    assert json.loads(alesia["feature_types_json"]) == ["unknown"]
 
     pelusium = _location_rows(output, "727192")[0]
     assert json.loads(pelusium["geometry_json"])["coordinates"] == [32.5473404, 31.0427587]
@@ -413,10 +415,13 @@ def test_real_controls_from_source_archive(tmp_path):
     assert pelusium["end"] == 640
     assert json.loads(pelusium["attestations_json"])
     assert json.loads(pelusium["references_json"])
+    assert json.loads(pelusium["location_types_json"]) == ["central_point"]
+    assert json.loads(pelusium["feature_types_json"]) == ["settlement", "archaeological-site"]
 
     gergovia = _location_rows(output, "138373")
     assert len(gergovia) == 2
     assert {row["location_id"] for row in gergovia} == {"darmc-location-12528", "dare-location"}
+    assert all(json.loads(row["location_types_json"]) == ["representative"] for row in gergovia)
 
     lutetia = _location_rows(output, "109126")
     genava = _location_rows(output, "177528")
