@@ -9,6 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from backend.app.geography.coordinate_authority import classify_coordinate_authority
 from backend.app.geography.feature_semantics import coordinate_role_for_semantics
 from backend.app.geography.normalization import normalize_name
 from backend.app.geography.place_disambiguation import PlaceResolutionContext, filter_resolution_candidates
@@ -275,6 +276,11 @@ def _lookup_index(path: Path, name: str) -> GazetteerResolution:
                     "max_lat": first["bbox_max_lat"],
                 },
                 "locations": [_location_metadata(location) for location in locations],
+                "coordinate_authority_diagnostic": classify_coordinate_authority(
+                    representative_longitude=first["representative_lon"],
+                    representative_latitude=first["representative_lat"],
+                    locations=[_location_metadata(location) for location in locations],
+                ).to_dict(),
             }
             places_found.append(
                 HistoricalPlace(
