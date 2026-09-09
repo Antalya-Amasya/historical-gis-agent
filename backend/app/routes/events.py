@@ -72,6 +72,14 @@ class EvidenceGroundedHistoricalEventExtractor:
         r"(?P<place>[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*){0,3})\s*;\s*$",
         re.IGNORECASE,
     )
+    _BOUNDED_DIRECTIONAL_ANTECEDENT = re.compile(
+        r"(?i)\bas far as\s+(?:(?:the|a)\s+)?"
+        r"(?P<place>(?-i:[A-Z][A-Za-z]*(?:\s+(?:the\s+)?[A-Z][A-Za-z]*){0,3}))\b",
+    )
+    _SAME_SENTENCE_FROM_THERE = re.compile(
+        r"\bfrom\s+(?:there|it|that\s+place)\s+(?:to|into|toward(?:s)?)\s+",
+        re.IGNORECASE,
+    )
     _MOVEMENT_TO_PREFIX = re.compile(
         r"(?:\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|departed|arrived|entered|crossed|withdrew|retreated|fled|left|leaving|reached|came|passed)\s+(?:\w+\s+){0,6}(?:to|into)\b"
         r"|\b(?:march|marches|marching)\s+to\b"
@@ -764,12 +772,38 @@ class EvidenceGroundedHistoricalEventExtractor:
     def _anaphoric_origin(
         self, previous: str | None, sentence: str, evidence_id: str,
     ) -> HistoricalEventPlaceMention | None:
-        """Resolve only an explicit same-sentence regional antecedent.
+        """Resolve only an explicit evidence-local anaphoric origin.
 
-        The semicolon and directional ``from it/there/that place`` syntax make
-        the antecedent evidence-local.  No retrieval order, geography, or
-        world knowledge participates in this textual role assignment.
+        Same-sentence ``as far as X ... from there to Y`` and semicolon-bounded
+        ``country of X; ... from it/there`` antecedents are allowed.  No
+        retrieval order, geography, or world knowledge participates.
         """
+        movement_from = self._SAME_SENTENCE_FROM_THERE.search(sentence)
+        if movement_from is not None:
+            local = sentence[max(0, movement_from.start() - 120):movement_from.start()]
+            if self._MOVEMENT_VERBS.search(local):
+                antecedents = {
+                    place for place in self._BOUNDED_DIRECTIONAL_ANTECEDENT.findall(sentence[:movement_from.start()])
+                }
+                if len(antecedents) == 1:
+                    raw = next(iter(antecedents))
+                    alias = next(
+                        (
+                            place for _position, place, value in self.mention_extractor.aliases_in(raw)
+                            if value.casefold() == raw.casefold()
+                        ),
+                        None,
+                    )
+                    return HistoricalEventPlaceMention(
+                        raw_text=raw,
+                        canonical_hint=alias.canonical_name if alias else None,
+                        role=EventPlaceRole.ORIGIN,
+                        evidence_refs=[evidence_id],
+                        resolution_status=(
+                            EventPlaceResolutionStatus.NORMALIZED_TEXT_ONLY if alias else EventPlaceResolutionStatus.TEXT_ONLY
+                        ),
+                        alias_provenance=alias.provenance if alias else None,
+                    )
         if not previous or not self._ANAPHORIC_MOVEMENT_FROM.search(sentence):
             return None
         match = self._PRECEDING_REGION.search(previous)
@@ -878,7 +912,14 @@ class EvidenceGroundedHistoricalEventExtractor:
                     if event_type is HistoricalEventType.MOVEMENT else None
                 )
                 if origin is not None:
-                    places.insert(0, origin)
+                    existing = next(
+                        (item for item in places if item.raw_text.casefold() == origin.raw_text.casefold()),
+                        None,
+                    )
+                    if existing is not None:
+                        existing.role = EventPlaceRole.ORIGIN
+                    else:
+                        places.insert(0, origin)
                 places = self._enforce_movement_endpoint_polarity(sentence, places)
                 if event_type is HistoricalEventType.MOVEMENT:
                     prior_endpoints = analyze_sentence(
