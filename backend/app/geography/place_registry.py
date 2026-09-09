@@ -252,6 +252,7 @@ def _lookup_index(path: Path, name: str) -> GazetteerResolution:
             coordinate_role = coordinate_role_for_semantics(
                 semantics, place_types=place_types, title=first["title"] or ""
             )
+            location_metadata = [_location_metadata(location) for location in locations]
             authority_metadata = {
                 "dataset_version": metadata.get("dataset_version"),
                 "dataset_release_date": metadata.get("dataset_release_date"),
@@ -275,11 +276,11 @@ def _lookup_index(path: Path, name: str) -> GazetteerResolution:
                     "max_lon": first["bbox_max_lon"],
                     "max_lat": first["bbox_max_lat"],
                 },
-                "locations": [_location_metadata(location) for location in locations],
+                "locations": location_metadata,
                 "coordinate_authority_diagnostic": classify_coordinate_authority(
                     representative_longitude=first["representative_lon"],
                     representative_latitude=first["representative_lat"],
-                    locations=[_location_metadata(location) for location in locations],
+                    locations=location_metadata,
                 ).to_dict(),
             }
             places_found.append(
