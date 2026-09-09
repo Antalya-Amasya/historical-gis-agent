@@ -1,11 +1,17 @@
 """Bounded coverage-oriented merge for multi-intent historical retrieval (G5M)."""
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 
 from backend.app.models import Evidence
-from backend.app.rag.evidence_ranking import _MOVEMENT_PAIR_STATEMENT, _MOVEMENT_STATEMENT, rerank_evidence
+from backend.app.rag.evidence_ranking import _MOVEMENT_PAIR_STATEMENT, _MOVEMENT_STATEMENT, _explicit_fragment_actor_conflict, rerank_evidence
+from backend.app.rag.query_roles import analyze_query
 from backend.app.rag.retrieval_intents import RetrievalIntent
+
+_SENTENCE_SPAN = re.compile(r"[^.!?\n]+(?:[.!?]+|$)", re.MULTILINE)
+_NON_ASSERTED_MOVEMENT = re.compile(r"\b(?:would|could|might|should|may|planned\s+to|intended\s+to)\b", re.I)
+_CONTINUATION_MOVEMENT = re.compile(r"\b(?:marched|advanced|proceeded|moved|travel(?:led|ed|ing)|departed|left|went|crossed|returned|sailed|embarked|passed|landed|entered)\b", re.I)
 
 DEFAULT_COVERAGE_BUDGET = 20
 DEFAULT_PER_INTENT_K = 6
@@ -150,6 +156,33 @@ def passages_overlap(left: Evidence, right: Evidence) -> bool:
     return max(start, other_start) < min(end, other_end)
 
 
+def _movement_continuation_suffix(user_query: str, selected: Evidence, candidate: Evidence) -> Evidence | None:
+    ls, le = selected.metadata.get("passage_start"), selected.metadata.get("passage_end")
+    rs, rend = candidate.metadata.get("passage_start"), candidate.metadata.get("passage_end")
+    source = selected.metadata.get("source_chunk_id")
+    if None in (ls, le, rs, rend, source) or source != candidate.metadata.get("source_chunk_id"):
+        return None
+    if rs < ls or rs >= le or rend <= le:
+        return None
+    sel_i, cand_i = selected.metadata.get("passage_index"), candidate.metadata.get("passage_index")
+    if sel_i is not None and cand_i is not None and int(cand_i) != int(sel_i) + 1:
+        return None
+    suffix_start, suffix_end = int(le), int(rend)
+    if suffix_end - suffix_start > 1200:
+        return None
+    suffix_text = (candidate.text or "")[suffix_start - int(rs):]
+    if not suffix_text.strip() or suffix_text.strip().casefold() in (selected.text or "").casefold():
+        return None
+    if len([m for m in _SENTENCE_SPAN.finditer(suffix_text) if m.group().strip()]) != 1:
+        return None
+    if _NON_ASSERTED_MOVEMENT.search(suffix_text) or not (_MOVEMENT_PAIR_STATEMENT.search(suffix_text) or _MOVEMENT_STATEMENT.search(suffix_text) or _CONTINUATION_MOVEMENT.search(suffix_text)):
+        return None
+    if _explicit_fragment_actor_conflict(analyze_query(user_query), suffix_text):
+        return None
+    source = str(source)
+    return candidate.model_copy(update={"id": f"{source}:{suffix_start}:{suffix_end}", "text": suffix_text, "excerpt": suffix_text[:500], "metadata": {**candidate.metadata, "source_chunk_id": source, "passage_start": suffix_start, "passage_end": suffix_end, "continuation_of": selected.id, "continuation_suffix": True}})
+
+
 def _merge_channel_candidate(current: Evidence, incoming: Evidence) -> Evidence:
     metadata = dict(current.metadata)
     incoming_meta = incoming.metadata
@@ -215,10 +248,19 @@ def merge_coverage_results(
         return any(passages_overlap(item, prior) for prior in selected)
 
     def add(item: Evidence, intent: RetrievalIntent, *, rank: int, reason: str) -> bool:
-        resolved = by_id[item.id]
+        resolved = by_id.get(item.id, item)
         if resolved.id in selected_ids or len(selected) >= budget:
             return False
         if overlaps_selected(resolved):
+            for prior in selected:
+                if not passages_overlap(resolved, prior):
+                    continue
+                continuation = _movement_continuation_suffix(user_query, prior, resolved)
+                if continuation is None or continuation.id in selected_ids:
+                    return False
+                if overlaps_selected(continuation):
+                    return False
+                return add(continuation, intent, rank=rank, reason="same_parent_movement_continuation")
             return False
         selected_ids.add(resolved.id)
         matched = channels_by_id[resolved.id]
