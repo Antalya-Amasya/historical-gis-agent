@@ -20,7 +20,7 @@ _PHYSICAL_DATA = Path(__file__).with_name("data") / "physical_features.json"
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_INDEX = _REPOSITORY_ROOT / "data" / "pleiades_v4_1" / "pleiades_v4_1.sqlite3"
 _INDEX_ENV = "PLEIADES_GAZETTEER_PATH"
-_SUPPORTED_INDEX_SCHEMA = "2"
+_SUPPORTED_INDEX_SCHEMA = "3"
 
 
 @dataclass(frozen=True)
@@ -150,6 +150,35 @@ def _name_attestations(connection: sqlite3.Connection, name_row_ids: list[int]) 
     return grouped
 
 
+def _location_metadata(row: sqlite3.Row) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "location_id": row["location_id"],
+        "geometry_type": row["geometry_type"],
+        "accuracy": row["accuracy"],
+        "accuracy_value": row["accuracy_value"],
+        "provenance": row["provenance"],
+    }
+    if row["geometry_json"]:
+        payload["geometry"] = json.loads(row["geometry_json"])
+    if row["title"] is not None:
+        payload["title"] = row["title"]
+    if row["description"] is not None:
+        payload["description"] = row["description"]
+    if row["start"] is not None:
+        payload["start"] = row["start"]
+    if row["end"] is not None:
+        payload["end"] = row["end"]
+    if row["attestations_json"]:
+        payload["attestations"] = json.loads(row["attestations_json"])
+    if row["feature_types_json"]:
+        payload["feature_types"] = json.loads(row["feature_types_json"])
+    if row["location_types_json"]:
+        payload["location_types"] = json.loads(row["location_types_json"])
+    if row["references_json"]:
+        payload["references"] = json.loads(row["references_json"])
+    return payload
+
+
 def _lookup_index(path: Path, name: str) -> GazetteerResolution:
     connection = _connect_read_only(path)
     try:
@@ -183,7 +212,9 @@ def _lookup_index(path: Path, name: str) -> GazetteerResolution:
             first = name_rows[0]
             place_types = tuple(json.loads(first["place_types_json"] or "[]"))
             locations = connection.execute(
-                """SELECT location_id, geometry_type, accuracy, accuracy_value, provenance
+                """SELECT location_id, geometry_type, accuracy, accuracy_value, provenance,
+                          geometry_json, title, description, start, end,
+                          attestations_json, feature_types_json, location_types_json, references_json
                      FROM locations WHERE pleiades_id = ? ORDER BY location_id""",
                 (pleiades_id,),
             ).fetchall()
@@ -243,7 +274,7 @@ def _lookup_index(path: Path, name: str) -> GazetteerResolution:
                     "max_lon": first["bbox_max_lon"],
                     "max_lat": first["bbox_max_lat"],
                 },
-                "locations": [dict(location) for location in locations],
+                "locations": [_location_metadata(location) for location in locations],
             }
             places_found.append(
                 HistoricalPlace(

@@ -23,8 +23,8 @@ OFFICIAL_SOURCE = "https://zenodo.org/records/15540082"
 LICENSE = "CC BY 3.0"
 EXPECTED_SHA256 = "94c5c337d27a07f1a5fa231b6513e40e6d3cf7d5ad7b8c010f8e8bfd9159cd85"
 EXPECTED_PLACE_COUNT = 41_480
-INDEX_SCHEMA_VERSION = "2"
-IMPORTER_VERSION = "2"
+INDEX_SCHEMA_VERSION = "3"
+IMPORTER_VERSION = "3"
 _DERIVED_TITLE_DISAMBIGUATOR = re.compile(r"^(.+?)\s+\([^)]+\)\s*$")
 
 
@@ -34,6 +34,14 @@ def sha256(path: Path) -> str:
         for block in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _json_text(value, *, default=None) -> str | None:
+    if value is None:
+        if default is None:
+            return None
+        value = default
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 
 def _schema(connection: sqlite3.Connection) -> None:
@@ -81,7 +89,16 @@ def _schema(connection: sqlite3.Connection) -> None:
             geometry_type TEXT,
             accuracy TEXT,
             accuracy_value REAL,
-            provenance TEXT
+            provenance TEXT,
+            geometry_json TEXT,
+            title TEXT,
+            description TEXT,
+            start INTEGER,
+            end INTEGER,
+            attestations_json TEXT,
+            feature_types_json TEXT,
+            location_types_json TEXT,
+            references_json TEXT
         );
         CREATE INDEX names_normalized_name_idx ON names(normalized_name);
         CREATE INDEX locations_pleiades_id_idx ON locations(pleiades_id);
@@ -205,6 +222,35 @@ def _insert_derived_title_names(
     return inserted
 
 
+def _insert_location(connection: sqlite3.Connection, *, pleiades_id: str, location: dict) -> None:
+    geometry = location.get("geometry") or {}
+    geometry_type = geometry.get("type")
+    connection.execute(
+        """INSERT INTO locations
+           (pleiades_id, location_id, geometry_type, accuracy, accuracy_value, provenance,
+            geometry_json, title, description, start, end,
+            attestations_json, feature_types_json, location_types_json, references_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            pleiades_id,
+            str(location.get("id") or ""),
+            geometry_type,
+            location.get("accuracy"),
+            location.get("accuracy_value"),
+            location.get("provenance"),
+            _json_text(geometry) if geometry_type else None,
+            location.get("title"),
+            location.get("description"),
+            location.get("start"),
+            location.get("end"),
+            _json_text(location.get("attestations"), default=[]),
+            _json_text(location.get("featureTypes"), default=[]),
+            _json_text(location.get("locationTypes"), default=[]),
+            _json_text(location.get("references"), default=[]),
+        ),
+    )
+
+
 def build_index(
     source: Path,
     output: Path,
@@ -290,21 +336,7 @@ def build_index(
                             seen_names=seen_names,
                         )
                     for location in place.get("locations") or []:
-                        geometry = location.get("geometry") or {}
-                        connection.execute(
-                            """INSERT INTO locations
-                               (pleiades_id, location_id, geometry_type, accuracy,
-                                accuracy_value, provenance)
-                               VALUES (?, ?, ?, ?, ?, ?)""",
-                            (
-                                pleiades_id,
-                                str(location.get("id") or ""),
-                                geometry.get("type"),
-                                location.get("accuracy"),
-                                location.get("accuracy_value"),
-                                location.get("provenance"),
-                            ),
-                        )
+                        _insert_location(connection, pleiades_id=pleiades_id, location=location)
                         location_count += 1
                     place_count += 1
             if place_count != expected_place_count:

@@ -46,12 +46,12 @@ def _build_fixture_db(tmp_path: Path, *, schema_version: str = INDEX_SCHEMA_VERS
     path = tmp_path / "pleiades.sqlite3"
     connection = sqlite3.connect(path)
     try:
-        if schema_version == "2":
+        if schema_version == "3":
             _schema(connection)
             connection.executemany(
                 "INSERT INTO metadata VALUES (?, ?)",
                 {
-                    "index_schema_version": "2",
+                    "index_schema_version": "3",
                     "dataset_version": "4.1",
                     "dataset_release_date": "2025-05-28",
                     "official_source": "fixture",
@@ -268,6 +268,23 @@ def test_schema_v1_index_is_unavailable_with_explicit_reason(tmp_path, monkeypat
     assert payload["status"] == "UNAVAILABLE"
 
 
+def test_schema_v2_index_is_unavailable(tmp_path, monkeypatch):
+    baseline = Path(__file__).resolve().parents[1] / "fixtures" / "pleiades_index_v2_baseline.sqlite3"
+    if not baseline.is_file():
+        pytest.skip("v2 baseline index missing")
+    import shutil
+
+    path = tmp_path / "v2.sqlite3"
+    shutil.copy2(baseline, path)
+    place_registry.records.cache_clear()
+    place_registry.places.cache_clear()
+    place_registry.aliases.cache_clear()
+    monkeypatch.setenv("PLEIADES_GAZETTEER_PATH", str(path))
+    result = place_registry.resolve_with_status("Roma")
+    assert result.status == "UNAVAILABLE"
+    assert "Unsupported Pleiades index schema: '2'" in (result.reason or "")
+
+
 def test_unlocated_and_ambiguous_semantics(g3_fixture_db):
     unlocated = place_registry.resolve_with_status("Unlocated Place")
     assert unlocated.status == "UNLOCATED"
@@ -334,16 +351,19 @@ def test_greece_and_italy_curated_overrides_remain_unique():
 
 
 @pytest.mark.skipif(
-    not Path(r"C:\D\python\historical-gis-codex\data\pleiades_v4_1\pleiades.datasets-v4.1.zip").is_file(),
+    not (_REPO_ROOT / "data" / "pleiades_v4_1" / "pleiades.datasets-v4.1.zip").is_file()
+    and not Path(r"C:\D\python\historical-gis-codex\data\pleiades_v4_1\pleiades.datasets-v4.1.zip").is_file(),
     reason="Pleiades source archive not available",
 )
 def test_builder_round_trip_on_real_archive(tmp_path):
-    source = Path(r"C:\D\python\historical-gis-codex\data\pleiades_v4_1\pleiades.datasets-v4.1.zip")
+    source = _REPO_ROOT / "data" / "pleiades_v4_1" / "pleiades.datasets-v4.1.zip"
+    if not source.is_file():
+        source = Path(r"C:\D\python\historical-gis-codex\data\pleiades_v4_1\pleiades.datasets-v4.1.zip")
     output = tmp_path / "pleiades.sqlite3"
     summary = build_index(source, output)
     connection = sqlite3.connect(output)
     metadata = dict(connection.execute("SELECT key, value FROM metadata").fetchall())
-    assert metadata["index_schema_version"] == "2"
+    assert metadata["index_schema_version"] == "3"
     assert int(summary["name_count"]) > 0
     split_rows = connection.execute(
         "SELECT COUNT(*) FROM names WHERE original_name = 'Hellas'"

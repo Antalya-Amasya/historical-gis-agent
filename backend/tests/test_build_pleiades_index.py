@@ -5,7 +5,7 @@ import zipfile
 
 import pytest
 
-from scripts.build_pleiades_index import build_index, normalize_name
+from scripts.build_pleiades_index import INDEX_SCHEMA_VERSION, build_index, normalize_name
 
 
 def test_streaming_builder_schema_normalization_and_metadata(tmp_path):
@@ -16,8 +16,11 @@ def test_streaming_builder_schema_normalization_and_metadata(tmp_path):
         "review_state": "published",
         "names": [{"id": "n1", "attested": "Rōma\u00a0 Nova", "romanized": ["Roma Nova"],
                    "language": "la", "nameType": "geographic", "provenance": "name fixture"}],
-        "locations": [{"id": "l1", "geometry": {"type": "Point"}, "accuracy": "rough",
-                       "accuracy_value": 1000, "provenance": "location fixture"}],
+        "locations": [{"id": "l1", "title": "Site point", "description": "fixture point",
+                       "geometry": {"type": "Point", "coordinates": [12.5, 41.9]},
+                       "accuracy": "rough", "accuracy_value": 1000, "provenance": "location fixture",
+                       "attestations": [], "featureTypes": ["settlement"], "locationTypes": ["central_point"],
+                       "references": [{"shortTitle": "Fixture"}]}],
     }
     with zipfile.ZipFile(source, "w") as archive:
         archive.writestr("root/data/json/1.json", json.dumps(place))
@@ -32,7 +35,14 @@ def test_streaming_builder_schema_normalization_and_metadata(tmp_path):
         assert "roma nova" in names
         assert metadata["dataset_version"] == "4.1"
         assert metadata["sha256"] == digest
-        assert connection.execute("SELECT location_id FROM locations").fetchone()[0] == "l1"
+        assert metadata["index_schema_version"] == INDEX_SCHEMA_VERSION
+        row = connection.execute(
+            "SELECT location_id, geometry_json, title, references_json FROM locations"
+        ).fetchone()
+        assert row[0] == "l1"
+        assert json.loads(row[1]) == {"type": "Point", "coordinates": [12.5, 41.9]}
+        assert row[2] == "Site point"
+        assert json.loads(row[3]) == [{"shortTitle": "Fixture"}]
 
 
 def test_builder_rejects_wrong_identity(tmp_path):

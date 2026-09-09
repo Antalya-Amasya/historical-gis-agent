@@ -25,13 +25,15 @@ def gazetteer(tmp_path, monkeypatch):
           time_period TEXT, time_period_uri TEXT, confidence TEXT, confidence_uri TEXT);
         CREATE TABLE locations (row_id INTEGER PRIMARY KEY, pleiades_id TEXT NOT NULL,
           location_id TEXT, geometry_type TEXT, accuracy TEXT, accuracy_value REAL,
-          provenance TEXT);
+          provenance TEXT, geometry_json TEXT, title TEXT, description TEXT,
+          start INTEGER, end INTEGER, attestations_json TEXT, feature_types_json TEXT,
+          location_types_json TEXT, references_json TEXT);
         CREATE INDEX names_normalized_name_idx ON names(normalized_name);
         CREATE INDEX locations_pleiades_id_idx ON locations(pleiades_id);
         CREATE INDEX name_attestations_name_row_id_idx ON name_attestations(name_row_id);
         """)
         connection.executemany("INSERT INTO metadata VALUES (?, ?)", {
-            "index_schema_version": "2", "dataset_version": "4.1",
+            "index_schema_version": "3", "dataset_version": "4.1",
             "dataset_release_date": "2025-05-28", "official_source": "official",
             "sha256": "abc",
         }.items())
@@ -55,8 +57,18 @@ def gazetteer(tmp_path, monkeypatch):
                 (place_registry.normalize_name(title), title, identifier, f"name-{identifier}", "la",
                  "geographic", None, None, "fixture"))
             if lon is not None:
-                connection.execute("INSERT INTO locations (pleiades_id, location_id, geometry_type, accuracy, accuracy_value, provenance) VALUES (?, ?, ?, ?, ?, ?)",
-                    (identifier, f"loc-{identifier}", "Point", "rough", 1000, "fixture"))
+                connection.execute(
+                    """INSERT INTO locations
+                       (pleiades_id, location_id, geometry_type, accuracy, accuracy_value, provenance,
+                        geometry_json, title, description, start, end,
+                        attestations_json, feature_types_json, location_types_json, references_json)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        identifier, f"loc-{identifier}", "Point", "rough", 1000, "fixture",
+                        json.dumps({"type": "Point", "coordinates": [lon, lat]}),
+                        None, None, None, None, "[]", "[]", "[]", "[]",
+                    ),
+                )
     monkeypatch.setenv("PLEIADES_GAZETTEER_PATH", str(path))
     place_registry.records.cache_clear()
     place_registry.places.cache_clear()
