@@ -41,6 +41,14 @@ def retained_pairs(outcome) -> set[tuple[str, str]]:
     return pairs
 
 
+def structural_pairs(outcome) -> list[tuple[str, str]]:
+    return [
+        (relation.earlier, relation.later)
+        for relation in outcome.relations
+        if relation.rule is OrderingRule.SOURCE_STRUCTURAL_ORDER
+    ]
+
+
 def test_disconnected_proven_components_are_preserved():
     events = [
         movement("ab", "Alpha", "Beta", ["a"]),
@@ -76,7 +84,7 @@ def test_equal_length_components_are_preserved_without_tie_break():
     assert EventAnchorRouteBuilder._chain(relations)[0] == []
 
 
-def test_simple_linear_route_remains_single_component():
+def test_offset_only_adjacency_does_not_extend_linear_component():
     events = [
         movement("one", "Alpha", "Beta", ["a"]),
         site("bridge", "Beta", ["b"]),
@@ -87,9 +95,12 @@ def test_simple_linear_route_remains_single_component():
         evidence("b", document="doc", spine=1, offset=200),
     ]
     outcome = build(events, items)
-    assert names(outcome) == ["Alpha", "Beta", "Gamma"]
+    assert structural_pairs(outcome) == []
+    assert names(outcome) == ["Alpha", "Beta"]
+    assert "Gamma" not in names(outcome)
     assert len(outcome.route.route_components) == 1
     assert outcome.route.branch_relations == []
+    assert outcome.diagnostics["reason_codes"] == ["PARTIAL_ROUTE"]
 
 
 def test_hub_incoming_relations_are_retained_as_branches():
@@ -148,15 +159,15 @@ def test_cross_document_without_chronology_does_not_synthesize_global_chain():
     assert outcome.diagnostics["reason_codes"] == ["PARTIAL_ROUTE"]
 
 
-def test_same_document_structural_chaining_still_succeeds():
+def test_same_document_offsets_do_not_infer_structural_chaining():
     events = [site("later", "Lutetia", ["b"]), site("earlier", "Genava", ["a"])]
     outcome = build(events, [evidence("b", spine=1, offset=200), evidence("a", spine=1, offset=100)])
-    assert names(outcome) == ["Genava", "Lutetia"]
-    assert len(outcome.route.route_components) == 1
-    assert outcome.diagnostics["reason_codes"] == []
+    assert outcome.route is None
+    assert structural_pairs(outcome) == []
+    assert outcome.diagnostics["reason_codes"] == ["INSUFFICIENT_ORDERING"]
 
 
-def test_junction_provenance_merges_destination_and_origin_evidence():
+def test_offset_only_junction_does_not_merge_provenance():
     outcome = build(
         [
             movement("march", "Alpha", "Beta", ["a"]),
@@ -165,8 +176,19 @@ def test_junction_provenance_merges_destination_and_origin_evidence():
         ],
         [evidence("a", document="doc", spine=1, offset=100), evidence("b", document="doc", spine=1, offset=200)],
     )
+    assert structural_pairs(outcome) == []
     beta_point = next(point for point in outcome.route.ordered_points if point.historical_place.canonical_name == "Beta")
-    assert set(beta_point.evidence_refs) == {"a", "b"}
+    assert set(beta_point.evidence_refs) == {"a"}
+
+
+def test_junction_provenance_merges_when_structural_relation_is_explicitly_authorized():
+    relations = [
+        relation("Alpha", "Beta", refs=("a",), event_ids=("e1",)),
+        relation("Beta", "Gamma", OrderingRule.SOURCE_STRUCTURAL_ORDER, refs=("b",), event_ids=("e1", "e2")),
+    ]
+    assembly = assemble(relations)
+    assert {tuple(path) for path, _edges in assembly.components} == {("Alpha", "Beta", "Gamma")}
+    assert EventAnchorRouteBuilder._chain(relations)[0] == ["Alpha", "Beta", "Gamma"]
 
 
 def test_component_assembly_is_deterministic_under_relation_shuffle():
@@ -181,7 +203,7 @@ def test_component_assembly_is_deterministic_under_relation_shuffle():
     assert first.branch_pairs == second.branch_pairs
 
 
-def test_caesar_linear_regression_three_relations_four_points():
+def test_offset_only_bridge_does_not_synthesize_middle_edge():
     events = [
         movement("helvetii", "Helvetii", "Bibracte", ["a"]),
         site("bridge", "Bibracte", ["b"]),
@@ -194,12 +216,18 @@ def test_caesar_linear_regression_three_relations_four_points():
         evidence("c", document="caesar", spine=1, offset=300),
     ]
     outcome = build(events, items)
-    assert len(outcome.relations) == 3
-    assert len(outcome.route.ordered_points) == 4
-    assert [point.historical_place.canonical_name for point in outcome.route.ordered_points] == [
-        "Helvetii", "Bibracte", "Bituriges Cubi", "Gergovia",
+    assert structural_pairs(outcome) == []
+    assert len(outcome.relations) == 2
+    assert names(outcome) == []
+    assert len(outcome.route.route_components) == 2
+    component_chains = [
+        [point.historical_place.canonical_name for point in component.ordered_points]
+        for component in outcome.route.route_components
     ]
-    assert len(outcome.route.route_components) == 1
+    assert ["Helvetii", "Bibracte"] in component_chains
+    assert ["Bituriges Cubi", "Gergovia"] in component_chains
+    assert retained_pairs(outcome) == {("Helvetii", "Bibracte"), ("Bituriges Cubi", "Gergovia")}
+    assert outcome.diagnostics["reason_codes"] == ["PARTIAL_ROUTE"]
 
 
 class Geography:
