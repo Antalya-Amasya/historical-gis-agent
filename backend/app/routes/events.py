@@ -875,6 +875,13 @@ class EvidenceGroundedHistoricalEventExtractor:
     def _proper_tokens(value: str) -> set[str]:
         return set(re.findall(r"\b[A-Z][A-Za-zÀ-ÖØ-öø-ÿÆæŒœ']{2,}", value))
 
+    @classmethod
+    def _semicolon_joined_context(cls, sentences: list[str], index: int) -> str:
+        start = index
+        while start > 0 and sentences[start - 1].rstrip().endswith(";"):
+            start -= 1
+        return " ".join(part.rstrip() for part in sentences[start : index + 1])
+
     def extract(
         self,
         evidence: list[Evidence],
@@ -904,9 +911,14 @@ class EvidenceGroundedHistoricalEventExtractor:
                 ):
                     continue
                 places = self._places(sentence, item.id)
+                movement_context = (
+                    self._semicolon_joined_context(sentences, index)
+                    if event_type is HistoricalEventType.MOVEMENT
+                    else sentence
+                )
                 if event_type is HistoricalEventType.MOVEMENT:
                     places = self._apply_movement_semantics(
-                        sentence, places, item.id, prior_endpoints=prior_endpoints,
+                        movement_context, places, item.id, prior_endpoints=prior_endpoints,
                     )
                 origin = (
                     self._anaphoric_origin(sentences[index - 1] if index else None, sentence, item.id)
@@ -921,11 +933,11 @@ class EvidenceGroundedHistoricalEventExtractor:
                         existing.role = EventPlaceRole.ORIGIN
                     else:
                         places.insert(0, origin)
-                places = self._enforce_movement_endpoint_polarity(sentence, places)
+                places = self._enforce_movement_endpoint_polarity(movement_context, places)
                 if event_type is HistoricalEventType.MOVEMENT:
                     prior_endpoints = analyze_sentence(
-                        sentence,
-                        self.mention_extractor.aliases_in(sentence),
+                        movement_context,
+                        self.mention_extractor.aliases_in(movement_context),
                         prior_endpoints=prior_endpoints,
                     ).endpoints
                 statement = f"{sentences[index - 1]} {sentence}" if origin is not None else sentence

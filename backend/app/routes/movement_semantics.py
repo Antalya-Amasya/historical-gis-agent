@@ -139,6 +139,11 @@ _VALLEY_OF_PREFIX = re.compile(
     re.IGNORECASE,
 )
 _GOVERNED_WINDOW = 100
+_BACKWARD_STEER_CITY_OF = re.compile(
+    r"\b(?:at|in)\s+(?:the\s+)?(?:city|town|port|harbor|harbour|camp)\s+of\s+(?:the\s+)?"
+    r"([A-Z][A-Za-z'À-ÖØ-öø-ÿÆæŒœ]*(?:\s+(?:the\s+)?[A-Z][A-Za-z'À-ÖØ-öø-ÿÆæŒœ]*){0,3})",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -175,7 +180,7 @@ def _alias_map(aliases: list[tuple[int, HistoricalPlaceAlias, str]]) -> dict[int
     return {position: (place, alias) for position, place, alias in aliases}
 
 
-def _validated_span(sentence: str, start: int, *, before: int | None = None) -> MovementEndpoint | None:
+def _validated_span(sentence: str, start: int, *, before: int | None = None) -> tuple[str, int] | None:
     window = sentence[start:before]
     match = _PLACE_SPAN.search(window)
     if not match:
@@ -194,6 +199,30 @@ def _validated_span(sentence: str, start: int, *, before: int | None = None) -> 
     if validation.validation_class is PlaceMentionValidationClass.NON_PLACE_HIGH_CONFIDENCE:
         return None
     return surface, absolute_start
+
+
+def _backward_steer_destination(
+    sentence: str, clause_start: int, clause_end: int, aliases: list[tuple[int, HistoricalPlaceAlias, str]],
+) -> MovementEndpoint | None:
+    clause = sentence[clause_start:clause_end]
+    steer = re.search(_STEER_VERB, clause, re.IGNORECASE)
+    that_way = re.search(r"\bthat\s+way\b", clause, re.IGNORECASE)
+    if not (
+        steer and that_way and re.search(_STEER_MOVEMENT, clause, re.IGNORECASE)
+        and that_way.start() >= steer.start()
+    ):
+        return None
+    if re.search(r"\b(?:toward|towards|to|into)\s+", clause[that_way.end():], re.IGNORECASE):
+        return None
+    abs_steer = clause_start + steer.start()
+    antecedents: dict[str, MovementEndpoint] = {}
+    for match in _BACKWARD_STEER_CITY_OF.finditer(sentence[:abs_steer]):
+        endpoint = _endpoint_after(
+            sentence, match.start(1), aliases, before=abs_steer, role="destination",
+        )
+        if endpoint is not None:
+            antecedents[endpoint.surface.casefold()] = endpoint
+    return next(iter(antecedents.values())) if len(antecedents) == 1 else None
 
 
 def _endpoint_after(
@@ -816,6 +845,11 @@ def _parse_clause(
                     if traversal:
                         endpoints.append(traversal)
                     return [candidate], endpoints, False
+
+    if not destinations and (
+        backward := _backward_steer_destination(sentence, clause_start, clause_end, aliases)
+    ):
+        destinations.append(backward)
 
     unique_origins = {item.place_name.casefold(): item for item in origins}
     unique_dests = {item.place_name.casefold(): item for item in destinations}
