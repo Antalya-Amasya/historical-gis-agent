@@ -7,16 +7,19 @@ reconstruction; their schematic connections are not documentary path proof.
 """
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 
 from backend.app.models import (
     Evidence,
+    EventActorStatus,
     EventPlaceRole,
     GeoJsonLineString,
     HistoricalClaim,
     HistoricalEvent,
+    HistoricalEventType,
     HistoricalRoute,
     HistoricalRouteBranchRelation,
     HistoricalRouteComponent,
@@ -48,6 +51,15 @@ _RULE_CONFIDENCE = {
 }
 _RESOLUTION_FAILURES = {"UNRESOLVED_PLACE", "AMBIGUOUS_PLACE", "MISSING_COORDINATE"}
 _COMPARABLE_PRECISION = {TemporalPrecision.DAY, TemporalPrecision.MONTH, TemporalPrecision.YEAR, TemporalPrecision.YEAR_RANGE}
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
+_EXPLICIT_CONNECTOR_PREFIX = re.compile(
+    r"^\s*(?:then|afterward|afterwards|thereafter)\b",
+    re.IGNORECASE,
+)
+_RETROSPECTIVE_REVERSAL = re.compile(
+    r"\b(?:earlier|previously|before\s+(?:this|that))\b",
+    re.IGNORECASE,
+)
 
 
 def _filter_relations_for_query(
@@ -195,6 +207,130 @@ def _structural_span(anchors: list[EventAnchor], evidence_by_id: dict[str, Evide
     if not keys or len({key[0] for key in keys}) != 1:
         return None
     return min(keys), max(keys)
+
+
+def _movement_statement(event: HistoricalEvent) -> str:
+    if event.source_statements:
+        return event.source_statements[0]
+    return event.summary
+
+
+def _passage_text_for_events(
+    earlier: HistoricalEvent,
+    later: HistoricalEvent,
+    evidence_by_id: dict[str, Evidence],
+) -> str | None:
+    keyed_texts: list[tuple[tuple[str, int, int], str]] = []
+    for ref in sorted(set(earlier.evidence_refs) | set(later.evidence_refs)):
+        item = evidence_by_id.get(ref)
+        if item is None:
+            return None
+        key = evidence_structural_key(item)
+        if key is None:
+            return None
+        keyed_texts.append((key, item.text))
+    if len({key[0] for key, _ in keyed_texts}) != 1:
+        return None
+    keyed_texts.sort(key=lambda pair: pair[0])
+    unique_texts = {text for _, text in keyed_texts}
+    if len(unique_texts) == 1:
+        return next(iter(unique_texts))
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for _, text in keyed_texts:
+        if text in seen:
+            continue
+        ordered.append(text)
+        seen.add(text)
+    return " ".join(ordered) if ordered else None
+
+
+def _statement_sentence_index(statement: str, sentences: list[str]) -> int | None:
+    cleaned = statement.strip().casefold()
+    for index, sentence in enumerate(sentences):
+        normalized = sentence.strip().casefold()
+        if cleaned == normalized or cleaned in normalized or normalized in cleaned:
+            return index
+    return None
+
+
+def _adjacent_movement_statements(
+    earlier: HistoricalEvent,
+    later: HistoricalEvent,
+    evidence_by_id: dict[str, Evidence],
+) -> bool:
+    passage = _passage_text_for_events(earlier, later, evidence_by_id)
+    if not passage:
+        return False
+    sentences = [part.strip() for part in _SENTENCE_BOUNDARY.split(passage.strip()) if part.strip()]
+    earlier_idx = _statement_sentence_index(_movement_statement(earlier), sentences)
+    later_idx = _statement_sentence_index(_movement_statement(later), sentences)
+    if earlier_idx is None or later_idx is None:
+        return False
+    return later_idx == earlier_idx + 1
+
+
+def _explicit_structural_same_actor(earlier: HistoricalEvent, later: HistoricalEvent) -> bool:
+    for event in (earlier, later):
+        if event.actor.actor_status is not EventActorStatus.EXPLICIT or not event.actor.actor_tokens:
+            return False
+    return earlier.actor.actor_tokens == later.actor.actor_tokens
+
+
+def _positive_asserted_movement_pair(earlier: HistoricalEvent, later: HistoricalEvent) -> bool:
+    from backend.app.routes.events import EvidenceGroundedHistoricalEventExtractor
+
+    for event in (earlier, later):
+        if event.event_type is not HistoricalEventType.MOVEMENT:
+            return False
+        if not EvidenceGroundedHistoricalEventExtractor._has_positive_movement_assertion(
+            _movement_statement(event),
+        ):
+            return False
+    return True
+
+
+def _connector_governs_later_statement(later: HistoricalEvent) -> bool:
+    return bool(_EXPLICIT_CONNECTOR_PREFIX.match(_movement_statement(later)))
+
+
+def _bounded_text_contradicts_source_order(
+    earlier: HistoricalEvent,
+    later: HistoricalEvent,
+    evidence_by_id: dict[str, Evidence],
+) -> bool:
+    if _RETROSPECTIVE_REVERSAL.search(_movement_statement(later)):
+        return True
+    passage = _passage_text_for_events(earlier, later, evidence_by_id)
+    if passage is None:
+        return False
+    sentences = [part.strip() for part in _SENTENCE_BOUNDARY.split(passage.strip()) if part.strip()]
+    earlier_idx = _statement_sentence_index(_movement_statement(earlier), sentences)
+    later_idx = _statement_sentence_index(_movement_statement(later), sentences)
+    if earlier_idx is None or later_idx is None or later_idx <= earlier_idx:
+        return False
+    window = " ".join(sentences[earlier_idx : later_idx + 1])
+    return bool(_RETROSPECTIVE_REVERSAL.search(window))
+
+
+def _authorized_source_structural_order(
+    earlier: HistoricalEvent | None,
+    later: HistoricalEvent | None,
+    evidence_by_id: dict[str, Evidence],
+) -> bool:
+    if earlier is None or later is None:
+        return False
+    if not _positive_asserted_movement_pair(earlier, later):
+        return False
+    if not _explicit_structural_same_actor(earlier, later):
+        return False
+    if not _connector_governs_later_statement(later):
+        return False
+    if not _adjacent_movement_statements(earlier, later, evidence_by_id):
+        return False
+    if _bounded_text_contradicts_source_order(earlier, later, evidence_by_id):
+        return False
+    return True
 
 
 def _relation_provenance_record(relation: AnchorOrderingRelation) -> dict[str, object]:
@@ -562,9 +698,15 @@ class EventAnchorRouteBuilder:
         if first_span is None or second_span is None or first_span[0][0] != second_span[0][0]:
             return None
         if first_span[1] < second_span[0]:
-            return first, second, OrderingRule.SOURCE_STRUCTURAL_ORDER
-        if second_span[1] < first_span[0]:
-            return second, first, OrderingRule.SOURCE_STRUCTURAL_ORDER
+            if _authorized_source_structural_order(
+                events_by_id.get(first), events_by_id.get(second), evidence_by_id,
+            ):
+                return first, second, OrderingRule.SOURCE_STRUCTURAL_ORDER
+        elif second_span[1] < first_span[0]:
+            if _authorized_source_structural_order(
+                events_by_id.get(second), events_by_id.get(first), evidence_by_id,
+            ):
+                return second, first, OrderingRule.SOURCE_STRUCTURAL_ORDER
         return None
 
     @staticmethod

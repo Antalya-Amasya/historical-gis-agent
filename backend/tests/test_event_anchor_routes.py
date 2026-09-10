@@ -122,11 +122,10 @@ def test_overlapping_temporal_values_do_not_force_an_order():
     assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["INSUFFICIENT_ORDERING"]
 
 
-def test_same_source_structural_positions_order_events_without_retrieval_rank():
+def test_same_source_structural_positions_without_connector_fail_closed():
     events = [site("later", "Lutetia", ["b"]), site("earlier", "Genava", ["a"])]
     outcome = build(events, [evidence("b", spine=1, offset=200), evidence("a", spine=1, offset=100)])
-    assert names(outcome) == ["Genava", "Lutetia"]
-    assert [relation.rule for relation in outcome.relations] == [OrderingRule.SOURCE_STRUCTURAL_ORDER]
+    assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["INSUFFICIENT_ORDERING"]
 
 
 def test_structural_positions_from_different_documents_are_not_compared():
