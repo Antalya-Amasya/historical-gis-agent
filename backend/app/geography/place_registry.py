@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.app.geography.coordinate_authority import classify_coordinate_authority
+from backend.app.geography.positive_authority_candidate import evaluate_positive_authority_candidate
 from backend.app.geography.feature_semantics import coordinate_role_for_semantics
 from backend.app.geography.normalization import normalize_name
 from backend.app.geography.place_disambiguation import PlaceResolutionContext, filter_resolution_candidates
@@ -253,6 +254,11 @@ def _lookup_index(path: Path, name: str) -> GazetteerResolution:
                 semantics, place_types=place_types, title=first["title"] or ""
             )
             location_metadata = [_location_metadata(location) for location in locations]
+            coordinate_authority_diagnostic = classify_coordinate_authority(
+                representative_longitude=first["representative_lon"],
+                representative_latitude=first["representative_lat"],
+                locations=location_metadata,
+            )
             authority_metadata = {
                 "dataset_version": metadata.get("dataset_version"),
                 "dataset_release_date": metadata.get("dataset_release_date"),
@@ -277,10 +283,12 @@ def _lookup_index(path: Path, name: str) -> GazetteerResolution:
                     "max_lat": first["bbox_max_lat"],
                 },
                 "locations": location_metadata,
-                "coordinate_authority_diagnostic": classify_coordinate_authority(
+                "coordinate_authority_diagnostic": coordinate_authority_diagnostic.to_dict(),
+                "coordinate_authority_positive_candidate": evaluate_positive_authority_candidate(
                     representative_longitude=first["representative_lon"],
                     representative_latitude=first["representative_lat"],
                     locations=location_metadata,
+                    authority_diagnostic=coordinate_authority_diagnostic,
                 ).to_dict(),
             }
             places_found.append(
