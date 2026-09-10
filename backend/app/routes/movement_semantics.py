@@ -17,12 +17,17 @@ from backend.app.routes.place_mention_validation import validate_broad_place_men
 EndpointRole = Literal["origin", "destination", "traversal"]
 
 _SET_SAIL = r"(?:(?:had|has|have|was|were|is|are)\s+)?(?:set|sets|setting)\s+sail"
+_STEER_VERB = r"steer(?:ed|ing|s)?(?:\s+(?:his|her|their|the)\s+(?:course|voyage|ships?|fleet))?"
+_STEER_MOVEMENT = (
+    rf"{_STEER_VERB}(?!(?:\s+(?:the\s+)?(?:conversation|discussion|debate|policy|talk|state|general|army)\b))"
+    rf"(?:\s+\w+){{0,6}}?\s+(?:that\s+way|toward(?:s)?|to|into)"
+)
 
 _MOVEMENT_PREDICATE = re.compile(
     rf"\b(?:marched|marches|marching|march|advanced|proceeded|moved|travelled|traveled|"
     r"departed|arrived|entered|crossed|crossing|withdrew|retreated|fled|left|leaving|reached|came|"
     r"returned|passed|passing|set\s+out|hastened|sailed|sailing|embarked|embark|landed|landing|"
-    rf"{_SET_SAIL}|"
+    rf"{_SET_SAIL}|{_STEER_VERB}|"
     r"traversed|traversing|conducted|led|went|descended|repassed|travel|travelling|traveling|"
     r"escaped|withdrawing|retreating|fell\s+back|made\s+(?:his|her|their)\s+way|put\s+(?:in|out)|"
     r"journey(?:ed)?|route(?:d)?)\b",
@@ -32,7 +37,11 @@ _MOVEMENT_CUE = _MOVEMENT_PREDICATE
 _NON_MOVEMENT = re.compile(
     r"\b(?:fought|battle|born|controlled|province|political\s+movement|moved\s+the\s+senate|"
     r"speech\s+about|according\s+to|made\s+equal\s+in\s+command|brought|buried|joined|"
-    r"march\s+on\b|advanced\s+to\s+the\s+(?:city|town|camp)|crossed\s+the\s+(?:theater|theatre|stage|room))\b",
+    r"march\s+on|advanced\s+to\s+the\s+(?:city|town|camp)|crossed\s+the\s+(?:theater|theatre|stage|room)|"
+    r"steer(?:ed|ing|s)?\s+(?:the\s+)?(?:conversation|discussion|debate|policy|talk)|"
+    r"(?:debate|conversation|discussion|policy|politics|talk)\s+steer(?:ed|ing|s)?|"
+    r"(?:policy|policies)\s+steer(?:ed|ing|s)?|"
+    r"steer(?:ed|ing|s)?\s+the\s+(?:general|state|army)\s+toward\s+(?:reform|peace|collapse))\b",
     re.IGNORECASE,
 )
 _NON_SPATIAL_PROCEEDED = re.compile(
@@ -395,6 +404,8 @@ def _has_movement_cue(sentence: str) -> bool:
                 re.I,
             ):
                 continue
+        if re.search(_STEER_VERB, clause, re.I) and not re.search(_STEER_MOVEMENT, clause, re.I):
+            continue
         if _MOVEMENT_CUE.search(clause):
             return True
     return False
@@ -449,8 +460,8 @@ def _valid_target_marker(clause: str, marker_start: int, *, role_token: str) -> 
     if not _predicate_before(clause, marker_start):
         if role_token in {"to", "into"} and re.search(
             r"\b(?:marched|advanced|proceeded|travelled|traveled|went|hastened|returned|fled|withdrew|retreated|"
-            r"departed|left|sailed|crossed|passed|came|reached|travel(?:led|ed|ing)?|made\s+(?:his|her|their)\s+way)\s+"
-            r"(?:\w+\s+){0,6}(?:to|into)\b",
+            r"departed|left|sailed|crossed|passed|came|reached|travel(?:led|ed|ing)?|made\s+(?:his|her|their)\s+way|"
+            rf"steer(?:ed|ing|s)?)\s+(?:\w+\s+){{0,6}}(?:to|into)\b",
             clause[:marker_start + 6],
             re.I,
         ):
