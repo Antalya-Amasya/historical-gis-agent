@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from backend.app.models import Evidence
 from backend.app.rag.evidence_ranking import _MOVEMENT_PAIR_STATEMENT, _MOVEMENT_STATEMENT, _explicit_fragment_actor_conflict, rerank_evidence
-from backend.app.rag.query_roles import analyze_query
+from backend.app.rag.query_roles import analyze_query, movement_scoring_terms, normalized_tokens
 from backend.app.rag.retrieval_intents import RetrievalIntent
 
 _SENTENCE_SPAN = re.compile(r"[^.!?\n]+(?:[.!?]+|$)", re.MULTILINE)
@@ -302,6 +302,31 @@ def _merge_channel_candidate(current: Evidence, incoming: Evidence) -> Evidence:
     return current.model_copy(update={"metadata": metadata})
 
 
+def _movement_assertion_score(user_query: str, item: Evidence) -> tuple[int, int, int]:
+    text = item.text or item.excerpt or ""
+    tokens = normalized_tokens(text)
+    roles = analyze_query(user_query)
+    ranking = item.metadata.get("retrieval_ranking") or {}
+    fragment = int(float(ranking.get("route_fragment_relevance") or 0.0) * 1000)
+    movement_hits = len(movement_scoring_terms(roles) & tokens)
+    asserted = 100 if _continuation_asserted_movement(text) else 0
+    steering = 40 if _STEER_PHYSICAL.search(text) else 0
+    turned = 40 if re.search(r"\bturned\b(?:\s+\w+){0,6}\s+course\b", text, re.I) else 0
+    endpoints = min(
+        len(re.findall(r"\b(?:to|toward(?:s)?|into|as far as)\s+\w", text, re.I)),
+        3,
+    ) * 10
+    rank = int(item.metadata.get("rank") or 999)
+    total = asserted + steering + turned + endpoints + fragment + movement_hits
+    return (total, asserted + steering + turned, -rank)
+
+
+def _should_supersede_overlap_prior(user_query: str, prior: Evidence, incoming: Evidence) -> bool:
+    if not passages_overlap(prior, incoming):
+        return False
+    return _movement_assertion_score(user_query, incoming) > _movement_assertion_score(user_query, prior)
+
+
 def merge_coverage_results(
     user_query: str,
     intent_results: list[tuple[RetrievalIntent, list[Evidence]]],
@@ -353,16 +378,23 @@ def merge_coverage_results(
         if resolved.id in selected_ids or len(selected) >= budget:
             return False
         if overlaps_selected(resolved):
-            for prior in selected:
+            for prior in list(selected):
                 if not passages_overlap(resolved, prior):
                     continue
                 continuation = _movement_continuation_suffix(user_query, prior, resolved)
-                if continuation is None or continuation.id in selected_ids:
-                    return False
-                if overlaps_selected(continuation):
-                    return False
-                return add(continuation, intent, rank=rank, reason="same_parent_movement_continuation")
-            return False
+                if continuation is not None:
+                    if continuation.id in selected_ids:
+                        return False
+                    if overlaps_selected(continuation):
+                        return False
+                    return add(continuation, intent, rank=rank, reason="same_parent_movement_continuation")
+                if _should_supersede_overlap_prior(user_query, prior, resolved):
+                    selected_ids.discard(prior.id)
+                    selected.remove(prior)
+                    continue
+                return False
+            if overlaps_selected(resolved):
+                return False
         selected_ids.add(resolved.id)
         matched = channels_by_id[resolved.id]
         selected.append(
