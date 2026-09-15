@@ -21,6 +21,7 @@ from backend.app.rag.coverage_retrieval import (
     DEFAULT_COVERAGE_BUDGET,
     DEFAULT_RAW_OBSERVATION_K,
     merge_coverage_results,
+    passages_overlap,
     select_qualified_local_proposals,
 )
 from backend.app.rag.evidence_ranking import rerank_evidence
@@ -437,20 +438,204 @@ def build_synthetic_evidence(case: dict) -> Evidence:
         text=text,
         metadata={
             "document_id": source["document_id"],
+            "parent_id": source["parent_id"],
+            "source_chunk_id": source["parent_id"],
             "spine_index": source["spine_index"],
+            "passage_start": source["passage_start"],
+            "passage_end": source["passage_end"],
             "start_offset": source["passage_start"],
         },
     )
 
 
+def parse_evidence_span(evidence_id: str) -> tuple[str, int | None, int | None]:
+    parts = evidence_id.split(":")
+    if len(parts) >= 3 and parts[1].isdigit() and parts[2].isdigit():
+        return parts[0], int(parts[1]), int(parts[2])
+    return evidence_id.split(":", 1)[0], None, None
+
+
+def passage_spans_overlap(left_id: str, right_id: str) -> bool:
+    left_parent, left_start, left_end = parse_evidence_span(left_id)
+    right_parent, right_start, right_end = parse_evidence_span(right_id)
+    if left_parent != right_parent:
+        return False
+    if None in (left_start, left_end, right_start, right_end):
+        return False
+    return max(left_start, right_start) < min(left_end, right_end)
+
+
+def _passages_overlap(left: Evidence, right: Evidence) -> bool:
+    if passages_overlap(left, right):
+        return True
+    return passage_spans_overlap(left.id, right.id)
+
+
+def _mention_in_text(mention: str | None, text: str) -> bool:
+    if not mention:
+        return True
+    lowered = text.casefold()
+    candidates = [part.strip() for part in mention.replace("/", " ").replace(",", " ").split() if part.strip()]
+    if not candidates:
+        return mention.casefold() in lowered
+    return any(token.casefold() in lowered for token in candidates if len(token) >= 3)
+
+
+def _actor_in_text(actor: str | None, text: str) -> bool:
+    if not actor:
+        return True
+    lowered = text.casefold()
+    for fragment in actor.replace(" and ", "|").split("|"):
+        token = fragment.strip()
+        if token and token.casefold() in lowered:
+            return True
+    return False
+
+
+def _predicate_in_text(predicate: str | None, text: str) -> bool:
+    if not predicate:
+        return True
+    lowered = text.casefold()
+    for fragment in predicate.replace(" and ", "|").split("|"):
+        token = fragment.strip().casefold()
+        if token and token in lowered:
+            return True
+    return False
+
+
+def gold_assertion_preserved(case: dict, passage_text: str) -> bool | None:
+    """Harness-only deterministic assertion check. None means NOT_CHECKABLE."""
+    gold_events = case.get("gold_events") or []
+    if not gold_events:
+        return None
+
+    lowered = passage_text.casefold()
+    for event in gold_events:
+        if not _actor_in_text(event.get("actor"), passage_text):
+            return False
+        if not _predicate_in_text(event.get("movement_predicate"), passage_text):
+            return False
+        polarity = event.get("polarity")
+        if polarity == "PREVENTED":
+            predicate_text = (event.get("movement_predicate") or "").casefold()
+            if "enter" in predicate_text and "enter" in lowered and "prevent" not in lowered:
+                return False
+            if not any(
+                marker in lowered for marker in ("prevent", "stopped", "not enter", "failed to enter", "unable to enter")
+            ):
+                return False
+        if polarity == "ASSERTED" and case.get("movement_polarity") == "ABSENT":
+            return False
+        if event.get("origin") and not _mention_in_text(event.get("origin"), passage_text):
+            return False
+        if event.get("destination") and not _mention_in_text(event.get("destination"), passage_text):
+            return False
+
+    notes = (case.get("adjudication_notes") or "").casefold()
+    if "do not merge the children's movement" in notes or "children were sent to euboea" in notes:
+        if "euboea" in lowered and "children" in lowered and "scyros" not in lowered:
+            return False
+    return True
+
+
+def classify_gold_evidence_match(
+    case: dict,
+    gold_id: str,
+    candidate_id: str,
+    evidence_by_id: dict[str, Evidence],
+) -> str:
+    if gold_id == candidate_id:
+        return "EXACT_MATCH"
+    gold_parent = case["source"]["parent_id"]
+    candidate_parent, _, _ = parse_evidence_span(candidate_id)
+    if candidate_parent != gold_parent:
+        return "MISSING"
+    gold_item = evidence_by_id.get(gold_id)
+    candidate = evidence_by_id.get(candidate_id)
+    if gold_item is None or candidate is None:
+        if not passage_spans_overlap(gold_id, candidate_id):
+            return "MISSING"
+        return "NOT_CHECKABLE"
+    if not _passages_overlap(gold_item, candidate):
+        return "MISSING"
+    preserved = gold_assertion_preserved(case, candidate.text or candidate.excerpt or "")
+    if preserved is None:
+        return "NOT_CHECKABLE"
+    return "ASSERTION_EQUIVALENT_OVERLAP" if preserved else "MISSING"
+
+
+def best_gold_match_in_ids(
+    case: dict,
+    gold_id: str,
+    candidate_ids: set[str],
+    evidence_by_id: dict[str, Evidence],
+) -> dict:
+    if gold_id in candidate_ids:
+        return {"status": "EXACT_MATCH", "representative_id": gold_id}
+    ranked_candidates = sorted(candidate_ids, key=lambda ident: (parse_evidence_span(ident)[1] or 999, ident))
+    best: dict | None = None
+    for candidate_id in ranked_candidates:
+        status = classify_gold_evidence_match(case, gold_id, candidate_id, evidence_by_id)
+        if status == "MISSING":
+            continue
+        record = {"status": status, "representative_id": candidate_id}
+        if status == "EXACT_MATCH":
+            return record
+        if best is None or status == "ASSERTION_EQUIVALENT_OVERLAP":
+            best = record
+    return best or {"status": "MISSING", "representative_id": None}
+
+
+def evaluate_gold_matches(
+    case: dict,
+    stage_ids: dict[str, set[str]],
+    evidence_by_id: dict[str, Evidence],
+) -> dict:
+    per_gold: dict[str, dict] = {}
+    for gold_id in case["gold_evidence_ids"]:
+        per_gold[gold_id] = {
+            "status_by_stage": {},
+            "final_status": "MISSING",
+            "final_representative_id": None,
+        }
+        for stage, ids in stage_ids.items():
+            match = best_gold_match_in_ids(case, gold_id, ids, evidence_by_id)
+            per_gold[gold_id]["status_by_stage"][stage] = match
+        final = best_gold_match_in_ids(case, gold_id, stage_ids["final_evidence_ids"], evidence_by_id)
+        per_gold[gold_id]["final_status"] = final["status"]
+        per_gold[gold_id]["final_representative_id"] = final["representative_id"]
+
+    preserved_statuses = {"EXACT_MATCH", "ASSERTION_EQUIVALENT_OVERLAP"}
+    exact_final = all(per_gold[gold_id]["final_status"] == "EXACT_MATCH" for gold_id in case["gold_evidence_ids"])
+    assertion_final = all(per_gold[gold_id]["final_status"] in preserved_statuses for gold_id in case["gold_evidence_ids"])
+    raw_ids = stage_ids["raw_semantic_ids"] | stage_ids["raw_lexical_ids"]
+    raw_available = all(
+        best_gold_match_in_ids(case, gold_id, raw_ids, evidence_by_id)["status"] in preserved_statuses
+        for gold_id in case["gold_evidence_ids"]
+    )
+    return {
+        "per_gold": per_gold,
+        "exact_present_final": exact_final,
+        "assertion_preserving_present_final": assertion_final,
+        "raw_gold_available": raw_available,
+    }
+
+
 def detailed_retrieval_trace(retriever, query: str) -> dict:
     channels = [RetrievalIntent("CANONICAL", query), *decompose_movement_query(query)]
+    evidence_by_id: dict[str, Evidence] = {}
     raw_semantic: set[str] = set()
     raw_lexical: set[str] = set()
     proposal_ids: set[str] = set()
-    rerank_ids: set[str] = set()
+    per_intent_rerank_ids: set[str] = set()
+
+    def remember(items: list[Evidence]) -> None:
+        for item in items:
+            evidence_by_id[item.id] = item
+
     for intent in channels:
         pool = retriever._collect_candidates(intent.query, semantic_k=60, lexical_k=60)
+        remember(pool)
         for item in pool:
             meta = item.metadata or {}
             if meta.get("semantic_candidate"):
@@ -458,37 +643,59 @@ def detailed_retrieval_trace(retriever, query: str) -> dict:
             if meta.get("lexical_candidate"):
                 raw_lexical.add(item.id)
         ranked = rerank_evidence(intent.query, pool, pool_relative=False)
-        rerank_ids.update(item.id for item in ranked)
-        proposal_ids.update(item.id for item in select_qualified_local_proposals(ranked, 60))
+        remember(ranked)
+        per_intent_rerank_ids.update(item.id for item in ranked)
+        proposal_ids.update(item.id for item in select_qualified_local_proposals(ranked, DEFAULT_RAW_OBSERVATION_K))
+
     intent_results = [
         (intent, retriever.retrieve_candidates(intent.query, DEFAULT_RAW_OBSERVATION_K))
         for intent in channels
     ]
-    union_items = merge_coverage_results(query, intent_results, DEFAULT_COVERAGE_BUDGET)
-    final_items = retriever.retrieve_with_coverage(query, DEFAULT_COVERAGE_BUDGET)
+    for _intent, items in intent_results:
+        remember(items)
+
+    coverage_input_ids = sorted({item.id for _intent, items in intent_results for item in items})
+    merged_candidates = list({item.id: item for _intent, items in intent_results for item in items}.values())
+    canonical_union_rerank_ids = [item.id for item in rerank_evidence(query, merged_candidates, pool_relative=False)]
+    coverage_output = merge_coverage_results(query, intent_results, DEFAULT_COVERAGE_BUDGET)
+    remember(coverage_output)
+    coverage_output_ids = [item.id for item in coverage_output]
+
     return {
         "mode": "REAL_RETRIEVAL",
         "raw_semantic_ids": sorted(raw_semantic),
         "raw_lexical_ids": sorted(raw_lexical),
         "proposal_ids": sorted(proposal_ids),
-        "union_ids": [item.id for item in union_items],
-        "rerank_ids": sorted(rerank_ids),
-        "coverage_ids": [item.id for item in union_items],
-        "final_evidence_ids": [item.id for item in final_items],
+        "coverage_input_ids": coverage_input_ids,
+        "canonical_union_rerank_ids": canonical_union_rerank_ids,
+        "coverage_output_ids": coverage_output_ids,
+        "final_evidence_ids": coverage_output_ids,
+        "per_intent_rerank_ids_approx": sorted(per_intent_rerank_ids),
+        "evidence_by_id": evidence_by_id,
+        # Backward-compatible aliases for older readers.
+        "union_ids": coverage_input_ids,
+        "rerank_ids": canonical_union_rerank_ids,
+        "coverage_ids": coverage_output_ids,
     }
 
 
 def synthetic_retrieval_trace(case: dict) -> dict:
+    evidence = build_synthetic_evidence(case)
     evidence_id = case["gold_evidence_ids"][0]
     return {
         "mode": "SYNTHETIC_BYPASS",
         "raw_semantic_ids": [],
         "raw_lexical_ids": [],
         "proposal_ids": [],
+        "coverage_input_ids": [],
+        "canonical_union_rerank_ids": [],
+        "coverage_output_ids": [],
+        "final_evidence_ids": [evidence_id],
+        "per_intent_rerank_ids_approx": [],
+        "evidence_by_id": {evidence_id: evidence},
         "union_ids": [],
         "rerank_ids": [],
         "coverage_ids": [],
-        "final_evidence_ids": [evidence_id],
     }
 
 
@@ -654,14 +861,37 @@ def route_trace(state: AgentState, route_diagnostics: dict | None) -> dict:
 
 
 def gold_stage_presence(retrieval: dict, gold_ids: set[str]) -> dict:
-    stages = ["raw_semantic_ids", "raw_lexical_ids", "proposal_ids", "union_ids", "rerank_ids", "coverage_ids", "final_evidence_ids"]
-    return {stage: sorted(gold_ids & set(retrieval.get(stage, []))) for stage in stages}
+    stage_map = {
+        "raw_semantic_ids": set(retrieval.get("raw_semantic_ids", [])),
+        "raw_lexical_ids": set(retrieval.get("raw_lexical_ids", [])),
+        "proposal_ids": set(retrieval.get("proposal_ids", [])),
+        "coverage_input_ids": set(retrieval.get("coverage_input_ids", retrieval.get("union_ids", []))),
+        "canonical_union_rerank_ids": set(
+            retrieval.get("canonical_union_rerank_ids", retrieval.get("rerank_ids", []))
+        ),
+        "coverage_output_ids": set(retrieval.get("coverage_output_ids", retrieval.get("coverage_ids", []))),
+        "final_evidence_ids": set(retrieval.get("final_evidence_ids", [])),
+    }
+    return {stage: sorted(gold_ids & ids) for stage, ids in stage_map.items()}
 
 
 def compare_gold(case: dict, retrieval: dict, state: AgentState, route_section: dict, relation_section: dict) -> dict:
     gold_ids = set(case["gold_evidence_ids"])
-    final_ids = set(retrieval["final_evidence_ids"])
-    gold_present_final = gold_ids <= final_ids
+    evidence_by_id = retrieval.get("evidence_by_id") or {}
+    stage_ids = {
+        "raw_semantic_ids": set(retrieval.get("raw_semantic_ids", [])),
+        "raw_lexical_ids": set(retrieval.get("raw_lexical_ids", [])),
+        "proposal_ids": set(retrieval.get("proposal_ids", [])),
+        "coverage_input_ids": set(retrieval.get("coverage_input_ids", retrieval.get("union_ids", []))),
+        "canonical_union_rerank_ids": set(
+            retrieval.get("canonical_union_rerank_ids", retrieval.get("rerank_ids", []))
+        ),
+        "coverage_output_ids": set(retrieval.get("coverage_output_ids", retrieval.get("coverage_ids", []))),
+        "final_evidence_ids": set(retrieval.get("final_evidence_ids", [])),
+    }
+    match_report = evaluate_gold_matches(case, stage_ids, evidence_by_id)
+    final_ids = stage_ids["final_evidence_ids"]
+    gold_present_final = match_report["exact_present_final"]
     route_status_matched = route_section["status"] == case["expected_route_status"]
     gold_relations = case.get("gold_relations") or []
     admitted = relation_section.get("admitted_relations") or []
@@ -676,8 +906,11 @@ def compare_gold(case: dict, retrieval: dict, state: AgentState, route_section: 
     ) if gold_relations else True
     return {
         "gold_present_final": gold_present_final,
+        "assertion_preserving_present_final": match_report["assertion_preserving_present_final"],
+        "raw_gold_available": match_report["raw_gold_available"],
         "gold_missing_final": sorted(gold_ids - final_ids),
         "gold_stage_presence": gold_stage_presence(retrieval, gold_ids),
+        "gold_match_report": match_report,
         "gold_events_represented": bool(state.historical_events) if case.get("gold_events") else True,
         "geography_compatible": True,
         "gold_relations_represented": relations_represented,
@@ -741,7 +974,7 @@ def check_prohibited_claim(case: dict, state: AgentState, route_section: dict) -
 
 
 def determine_first_divergence(case: dict, gold_comparison: dict, retrieval: dict) -> str:
-    if case["case_origin"] == "REAL_CORPUS" and not gold_comparison["gold_present_final"]:
+    if case["case_origin"] == "REAL_CORPUS" and not gold_comparison["assertion_preserving_present_final"]:
         return "RETRIEVAL"
     if not gold_comparison["gold_events_represented"]:
         return "EVENT_EXTRACTION"
@@ -765,7 +998,13 @@ def run_case(case: dict, tools: AgentToolRegistry, retriever) -> dict:
         populate_events(tools, state, query)
     else:
         retrieval = detailed_retrieval_trace(retriever, query)
-        tools.execute("search_historical_evidence", {"query": query, "top_k": 20}, state)
+        evidence_by_id = retrieval.get("evidence_by_id") or {}
+        state.historical_evidence = [
+            evidence_by_id[item_id]
+            for item_id in retrieval["final_evidence_ids"]
+            if item_id in evidence_by_id
+        ]
+        populate_events(tools, state, query)
     build_args = {"event_id": case["case_id"], "name": case["historical_subject"], "period": case.get("episode_label") or "unspecified"}
     tools.execute("build_historical_route", build_args, state)
     route_diagnostics = state.historical_route_diagnostics or {}
@@ -793,10 +1032,14 @@ def run_case(case: dict, tools: AgentToolRegistry, retriever) -> dict:
             "RAW_SEMANTIC": retrieval["raw_semantic_ids"],
             "RAW_LEXICAL": retrieval["raw_lexical_ids"],
             "LOCAL_PROPOSAL": retrieval["proposal_ids"],
-            "UNION": retrieval["union_ids"],
-            "COMMON_RERANK": retrieval["rerank_ids"],
-            "COVERAGE": retrieval["coverage_ids"],
+            "COVERAGE_INPUT": retrieval.get("coverage_input_ids", retrieval.get("union_ids", [])),
+            "CANONICAL_UNION_RERANK": retrieval.get(
+                "canonical_union_rerank_ids",
+                retrieval.get("rerank_ids", []),
+            ),
+            "COVERAGE_OUTPUT": retrieval.get("coverage_output_ids", retrieval.get("coverage_ids", [])),
             "FINAL_EVIDENCE": retrieval["final_evidence_ids"],
+            "PER_INTENT_RERANK_APPROX": retrieval.get("per_intent_rerank_ids_approx", []),
             "EVENTS": event_trace(state),
             "RESOLVED_PLACES": geography_trace(state, route_diagnostics),
             "RELATIONS": relation_section,
@@ -804,10 +1047,17 @@ def run_case(case: dict, tools: AgentToolRegistry, retriever) -> dict:
             "ROUTE": route_section,
             "GIS_PRESENTATION": gis,
         },
-        "retrieval": retrieval,
+        "retrieval": {
+            key: value for key, value in retrieval.items() if key != "evidence_by_id"
+        },
         "evidence": {
             "final_count": len(retrieval["final_evidence_ids"]),
-            **{key: gold_comparison[key] for key in ("gold_present_final", "gold_missing_final", "gold_stage_presence")},
+            "gold_present_final": gold_comparison["gold_present_final"],
+            "assertion_preserving_present_final": gold_comparison["assertion_preserving_present_final"],
+            "raw_gold_available": gold_comparison["raw_gold_available"],
+            "gold_missing_final": gold_comparison["gold_missing_final"],
+            "gold_stage_presence": gold_comparison["gold_stage_presence"],
+            "gold_match_report": gold_comparison["gold_match_report"],
         },
         "events": event_trace(state),
         "geography": geography_trace(state, route_diagnostics),
@@ -825,9 +1075,28 @@ def run_case(case: dict, tools: AgentToolRegistry, retriever) -> dict:
 
 def aggregate_metrics(cases: list[dict]) -> dict:
     real = [case for case in cases if case["case_origin"] == "REAL_CORPUS"]
+    exact_final = (
+        round(sum(item["gold_comparison"]["gold_present_final"] for item in real) / len(real), 3)
+        if real
+        else "N/A"
+    )
+    assertion_final = (
+        round(
+            sum(item["gold_comparison"]["assertion_preserving_present_final"] for item in real) / len(real),
+            3,
+        )
+        if real
+        else "N/A"
+    )
+    raw_availability = (
+        round(sum(item["gold_comparison"]["raw_gold_available"] for item in real) / len(real), 3)
+        if real
+        else "N/A"
+    )
     metrics = {
-        "Trusted Evidence Recall": round(sum(item["gold_comparison"]["gold_present_final"] for item in real) / len(real), 3) if real else "N/A",
-        "Final Evidence Recall": round(sum(item["gold_comparison"]["gold_present_final"] for item in real) / len(real), 3) if real else "N/A",
+        "Raw Gold Availability": raw_availability,
+        "Exact Final Evidence Recall": exact_final,
+        "Assertion-Preserving Final Evidence Recall": assertion_final,
         "Movement Event Recall": "N/A",
         "Movement Event Precision": "N/A",
         "Endpoint Role Accuracy": "N/A",
