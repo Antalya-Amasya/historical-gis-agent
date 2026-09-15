@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import subprocess
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -26,8 +28,14 @@ from backend.app.rag.retrieval_intents import RetrievalIntent, decompose_movemen
 from backend.app.rag.retriever import EmptyHistoricalRetriever
 
 FIXTURE_PATH = ROOT / "backend" / "tests" / "fixtures" / "g7_broad_full_chain_evaluation.json"
-TRACE_PATH = ROOT / "outputs" / "g7c_case_traces.json"
-SUMMARY_PATH = ROOT / "outputs" / "g7c_summary.json"
+LEGACY_TRACE_PATH = ROOT / "outputs" / "g7c_case_traces.json"
+LEGACY_SUMMARY_PATH = ROOT / "outputs" / "g7c_summary.json"
+TRACE_PATH = LEGACY_TRACE_PATH
+SUMMARY_PATH = LEGACY_SUMMARY_PATH
+LATEST_MANIFEST_PATH = ROOT / "outputs" / "g7c_latest.json"
+TRACE_FILENAME = "g7c_case_traces.json"
+SUMMARY_FILENAME = "g7c_summary.json"
+PREFLIGHT_SCRIPT = ROOT / "scripts" / "run_g7_preflight.py"
 
 REQUIRED_SNAPSHOT_FILES = (
     "config.json",
@@ -74,6 +82,174 @@ class OfflineEmbeddingError(RuntimeError):
             "missing_requirement": missing_requirement,
         }
         super().__init__(json.dumps(payload, indent=2))
+
+
+class OutputPersistenceError(RuntimeError):
+    def __init__(self, run_id: str, target_path: str, error: Exception) -> None:
+        self.run_id = run_id
+        self.target_path = target_path
+        self.error = error
+        payload = {
+            "error": "G7_OUTPUT_PERSISTENCE_FAILED",
+            "run_id": run_id,
+            "target_path": target_path,
+            "exception": str(error),
+        }
+        super().__init__(json.dumps(payload, indent=2))
+
+
+def _load_preflight_module():
+    spec = importlib.util.spec_from_file_location("run_g7_preflight", PREFLIGHT_SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def select_writable_temp_root() -> Path:
+    return _load_preflight_module().select_writable_temp_root()
+
+
+def make_unique_run_output_dir(runtime_root: Path | None = None) -> tuple[Path, str]:
+    root = runtime_root or select_writable_temp_root()
+    run_id = f"run-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}"
+    run_dir = root / "results" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir, run_id
+
+
+def _write_json_atomic(path: Path, payload) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f"{path.name}.tmp-{uuid.uuid4().hex}")
+    with temp_path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temp_path, path)
+
+
+def validate_completed_run(
+    traces: list[dict],
+    summary: dict,
+    current_head: str,
+    expected_case_count: int | None = None,
+) -> dict:
+    issues: list[str] = []
+    if summary.get("head") != current_head:
+        issues.append("head mismatch")
+    if summary.get("stale") is not False:
+        issues.append("stale flag set")
+    if expected_case_count is not None and summary.get("case_count") != expected_case_count:
+        issues.append("summary case_count mismatch")
+    if expected_case_count is not None and len(traces) != expected_case_count:
+        issues.append("trace case_count mismatch")
+    return {"valid": not issues, "issues": issues}
+
+
+def update_latest_manifest(summary: dict, trace_path: Path, summary_path: Path, run_id: str) -> tuple[bool, str | None]:
+    manifest = {
+        "run_id": run_id,
+        "head": summary["head"],
+        "trace_path": str(trace_path),
+        "summary_path": str(summary_path),
+        "case_count": summary["case_count"],
+        "completed": summary.get("completed") is True,
+    }
+    try:
+        LATEST_MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _write_json_atomic(LATEST_MANIFEST_PATH, manifest)
+        return True, None
+    except OSError as error:
+        return False, str(error)
+
+
+def persist_evaluation_results(
+    traces: list[dict],
+    summary: dict,
+    *,
+    run_dir: Path,
+    run_id: str,
+    current_head: str,
+    expected_case_count: int | None = None,
+) -> dict:
+    trace_path = run_dir / TRACE_FILENAME
+    summary_path = run_dir / SUMMARY_FILENAME
+    summary_payload = dict(summary)
+    summary_payload["run_id"] = run_id
+    summary_payload["trace_path"] = str(trace_path)
+    summary_payload["summary_path"] = str(summary_path)
+    summary_payload["completed"] = False
+    try:
+        _write_json_atomic(trace_path, traces)
+        _write_json_atomic(summary_path, summary_payload)
+    except OSError as error:
+        raise OutputPersistenceError(run_id, str(trace_path), error) from error
+
+    validation = validate_completed_run(traces, summary_payload, current_head, expected_case_count)
+    if not validation["valid"]:
+        raise OutputPersistenceError(run_id, str(summary_path), RuntimeError("; ".join(validation["issues"])))
+
+    summary_payload["completed"] = True
+    try:
+        _write_json_atomic(summary_path, summary_payload)
+    except OSError as error:
+        raise OutputPersistenceError(run_id, str(summary_path), error) from error
+
+    manifest_updated, manifest_error = update_latest_manifest(summary_payload, trace_path, summary_path, run_id)
+    return {
+        "run_id": run_id,
+        "run_dir": str(run_dir),
+        "trace_path": str(trace_path),
+        "summary_path": str(summary_path),
+        "completed": True,
+        "manifest_updated": manifest_updated,
+        "manifest_error": manifest_error,
+        "validation": validation,
+    }
+
+
+def load_latest_manifest() -> dict | None:
+    if not LATEST_MANIFEST_PATH.exists():
+        return None
+    try:
+        return json.loads(LATEST_MANIFEST_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+def load_existing_summary() -> dict | None:
+    manifest = load_latest_manifest()
+    if manifest is None:
+        return None
+    summary_path = Path(manifest["summary_path"])
+    if not summary_path.exists():
+        return None
+    try:
+        return json.loads(summary_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+def output_is_current(current_head: str) -> bool:
+    manifest = load_latest_manifest()
+    if manifest is None or manifest.get("completed") is not True:
+        return False
+    return manifest.get("head") == current_head
+
+
+def check_stale_outputs(current_head: str) -> dict:
+    manifest = load_latest_manifest()
+    if manifest is None:
+        return {"stale": False, "accepted_as_current": False}
+    output_head = manifest.get("head")
+    stale = output_head != current_head or manifest.get("completed") is not True
+    return {
+        "stale": stale,
+        "accepted_as_current": not stale,
+        "output_head": output_head,
+        "current_head": current_head,
+        "manifest_path": str(LATEST_MANIFEST_PATH),
+    }
 
 
 def enforce_offline_env() -> None:
@@ -181,36 +357,6 @@ def verify_offline_embedding_ready(model_name: str, device: str, batch_size: int
         "model_name": model_name,
         "local_path": str(local_path),
         "dimensions": len(vectors[0]),
-    }
-
-
-def load_existing_summary() -> dict | None:
-    if not SUMMARY_PATH.exists():
-        return None
-    try:
-        return json.loads(SUMMARY_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return None
-
-
-def output_is_current(current_head: str) -> bool:
-    existing = load_existing_summary()
-    if existing is None:
-        return False
-    return existing.get("head") == current_head and existing.get("stale") is not True
-
-
-def check_stale_outputs(current_head: str) -> dict:
-    existing = load_existing_summary()
-    if existing is None:
-        return {"stale": False, "accepted_as_current": False}
-    output_head = existing.get("head")
-    stale = output_head != current_head or existing.get("stale") is True
-    return {
-        "stale": stale,
-        "accepted_as_current": not stale,
-        "output_head": output_head,
-        "current_head": current_head,
     }
 
 
@@ -722,9 +868,13 @@ def main() -> int:
     stale_info = check_stale_outputs(current_head)
     if stale_info.get("stale"):
         print(
-            f"Stale outputs detected: summary head={stale_info.get('output_head')} "
-            f"!= current {current_head}; will overwrite after successful run"
+            f"Stale current-run manifest detected: head={stale_info.get('output_head')} "
+            f"!= current {current_head}"
         )
+
+    runtime_root = select_writable_temp_root()
+    run_dir, run_id = make_unique_run_output_dir(runtime_root)
+    print(f"G7 evaluation output run: {run_dir}")
 
     needs_real_retrieval = any(case["case_origin"] == "REAL_CORPUS" for case in cases_to_run)
     offline_preflight = None
@@ -745,9 +895,10 @@ def main() -> int:
     traces = [run_case(case, tools, retriever) for case in cases_to_run]
     summary = {
         "head": current_head,
-        "run_id": datetime.now(timezone.utc).isoformat(),
+        "run_id": run_id,
         "case_count": len(traces),
         "stale": False,
+        "completed": False,
         "offline_preflight": offline_preflight,
         "embedding_local_path": embedding_local_path,
         "metrics": aggregate_metrics(traces),
@@ -757,9 +908,21 @@ def main() -> int:
         key = trace["diagnostics"]["first_divergence"]
         summary["first_divergence"][key] = summary["first_divergence"].get(key, 0) + 1
 
-    TRACE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    TRACE_PATH.write_text(json.dumps(traces, indent=2), encoding="utf-8")
-    SUMMARY_PATH.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    expected_case_count = len(fixture["cases"]) if len(cases_to_run) == len(fixture["cases"]) else len(traces)
+    try:
+        persistence = persist_evaluation_results(
+            traces,
+            summary,
+            run_dir=run_dir,
+            run_id=run_id,
+            current_head=current_head,
+            expected_case_count=expected_case_count,
+        )
+    except OutputPersistenceError as error:
+        raise SystemExit(str(error)) from error
+
+    if not persistence["manifest_updated"]:
+        print(f"Warning: latest manifest not updated: {persistence['manifest_error']}")
 
     if args.summary_only:
         print(json.dumps(summary["metrics"], indent=2))
@@ -769,8 +932,10 @@ def main() -> int:
                 f"{trace['case_id']} tier={trace['tier']} origin={trace['case_origin']} "
                 f"first={trace['diagnostics']['first_divergence']} route={trace['route']['status']}"
             )
-    print(f"Wrote {TRACE_PATH}")
-    print(f"Wrote {SUMMARY_PATH}")
+    print(f"Wrote {persistence['trace_path']}")
+    print(f"Wrote {persistence['summary_path']}")
+    if persistence["manifest_updated"]:
+        print(f"Updated {LATEST_MANIFEST_PATH}")
     return 0
 
 

@@ -93,12 +93,26 @@ def test_incomplete_local_cache_fails_fast(tmp_path):
 
 def test_stale_output_head_is_not_current(tmp_path, monkeypatch):
     module = _load_module()
-    trace_path = tmp_path / "g7c_case_traces.json"
-    summary_path = tmp_path / "g7c_summary.json"
-    monkeypatch.setattr(module, "TRACE_PATH", trace_path)
-    monkeypatch.setattr(module, "SUMMARY_PATH", summary_path)
+    run_dir = tmp_path / "results" / "run-old"
+    run_dir.mkdir(parents=True)
+    summary_path = run_dir / module.SUMMARY_FILENAME
+    summary_path.write_text(json.dumps({"head": "old-head", "stale": False, "completed": True}), encoding="utf-8")
+    manifest_path = tmp_path / "g7c_latest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "run_id": "run-old",
+                "head": "old-head",
+                "trace_path": str(run_dir / module.TRACE_FILENAME),
+                "summary_path": str(summary_path),
+                "case_count": 1,
+                "completed": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "LATEST_MANIFEST_PATH", manifest_path)
 
-    summary_path.write_text(json.dumps({"head": "old-head", "stale": False}), encoding="utf-8")
     stale = module.check_stale_outputs("current-head")
     assert stale["stale"] is True
     assert stale["accepted_as_current"] is False
@@ -107,9 +121,25 @@ def test_stale_output_head_is_not_current(tmp_path, monkeypatch):
 
 def test_current_output_head_is_accepted(tmp_path, monkeypatch):
     module = _load_module()
-    summary_path = tmp_path / "g7c_summary.json"
-    monkeypatch.setattr(module, "SUMMARY_PATH", summary_path)
-    summary_path.write_text(json.dumps({"head": "same-head", "stale": False}), encoding="utf-8")
+    run_dir = tmp_path / "results" / "run-current"
+    run_dir.mkdir(parents=True)
+    summary_path = run_dir / module.SUMMARY_FILENAME
+    summary_path.write_text(json.dumps({"head": "same-head", "stale": False, "completed": True}), encoding="utf-8")
+    manifest_path = tmp_path / "g7c_latest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "run_id": "run-current",
+                "head": "same-head",
+                "trace_path": str(run_dir / module.TRACE_FILENAME),
+                "summary_path": str(summary_path),
+                "case_count": 1,
+                "completed": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "LATEST_MANIFEST_PATH", manifest_path)
     assert module.check_stale_outputs("same-head")["accepted_as_current"] is True
     assert module.output_is_current("same-head") is True
 
