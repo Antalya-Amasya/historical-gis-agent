@@ -422,6 +422,7 @@ class ChatResponse(BaseModel):
     session_id: str
     reply: str
     state: AgentState
+    route_result_status: str | None = None
 
 
 class RagSearchRequest(BaseModel):

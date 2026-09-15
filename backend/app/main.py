@@ -12,6 +12,7 @@ from backend.app.agent.mock_agent import MockAgent
 from backend.app.core.config import settings
 from backend.app.memory.store import InMemorySessionStore
 from backend.app.models import AgentState, ChatRequest, ChatResponse, RagSearchRequest, RagSearchResponse
+from backend.app.route_result_status import derive_route_result_status
 from backend.app.rag.http_store import build_production_retriever
 from backend.app.routes.evidence import SemanticRouteEvidenceRetriever
 from backend.app.candidate_routes.presentation import HistoricalRouteResponse
@@ -145,7 +146,13 @@ def chat(request: ChatRequest) -> ChatResponse:
     logger.info("agent_mode=%s session_id=%s", settings.agent_mode, request.session_id)
     reply, state = agent.respond(request.message, state)
     store.save(state)
-    return ChatResponse(session_id=request.session_id, reply=reply, state=state)
+    status = derive_route_result_status(state)
+    return ChatResponse(
+        session_id=request.session_id,
+        reply=reply,
+        state=state,
+        route_result_status=status.value if status is not None else None,
+    )
 
 
 @app.get("/api/v1/historical-routes/{route_id}/presentation", response_model=HistoricalRouteResponse)
