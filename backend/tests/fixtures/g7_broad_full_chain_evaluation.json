@@ -1,0 +1,1439 @@
+{
+  "schema_version": "g7-broad-v1",
+  "aggregate_policy": {
+    "real_case_count": 15,
+    "synthetic_case_count": 5,
+    "excluded_sets": [
+      "G5R"
+    ],
+    "unsafe_fabrication_target": 0
+  },
+  "cases": [
+    {
+      "case_id": "G7-A01",
+      "case_origin": "REAL_CORPUS",
+      "tier": "A",
+      "source": {
+        "author": "Appian",
+        "work": "Roman History / Civil Wars",
+        "document_id": "appian_roman_history_civil_wars",
+        "parent_id": "9c2e0033cd4639b6dd8817e3aa75441f",
+        "spine_index": 46,
+        "parent_start_offset": 0,
+        "parent_end_offset": 1697,
+        "passage_start": 661,
+        "passage_end": 819
+      },
+      "gold_evidence_ids": [
+        "9c2e0033cd4639b6dd8817e3aa75441f:661:819"
+      ],
+      "exact_bounded_passage": "4. When Eumenes was returning to Asia he went up from Cirrha to Delphi to sacrifice, and there four men, hiding behind a wall, made an attempt upon his life.",
+      "query": "Trace Eumenes's journey associated with the attempted attack near Delphi.",
+      "historical_subject": "Eumenes",
+      "episode_label": "Delphi sacrifice during return toward Asia",
+      "subject_status": "MATCH",
+      "movement_polarity": "ASSERTED",
+      "gold_events": [
+        {
+          "actor": "Eumenes",
+          "actor_status": "MATCH",
+          "movement_predicate": "went up",
+          "polarity": "ASSERTED",
+          "origin": "Cirrha/Kirra",
+          "destination": "Delphi",
+          "provenance_evidence_id": "9c2e0033cd4639b6dd8817e3aa75441f:661:819"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Cirrh/Kirra",
+          "semantic_role": "ORIGIN",
+          "geographic_status": "EXACT",
+          "authority": {
+            "source": "Pleiades",
+            "entity_id": "540868"
+          }
+        },
+        {
+          "mention": "Delphi",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "EXACT",
+          "authority": {
+            "source": "Pleiades",
+            "entity_id": "540726"
+          }
+        },
+        {
+          "mention": "Asia",
+          "semantic_role": "RELATED_PLACE",
+          "geographic_status": "NON_POINT"
+        }
+      ],
+      "gold_relations": [
+        {
+          "earlier": "Cirrh/Kirra",
+          "later": "Delphi",
+          "type": "SAME_MOVEMENT_EVENT",
+          "provenance_evidence_ids": [
+            "9c2e0033cd4639b6dd8817e3aa75441f:661:819"
+          ]
+        }
+      ],
+      "expected_terminal_stage": "GIS",
+      "expected_route_status": "FULL",
+      "expected_waypoints": [
+        "Cirrh/Kirra",
+        "Delphi"
+      ],
+      "prohibited_claims": [
+        "DO_NOT_ADD_UNMENTIONED_WAYPOINTS",
+        "DO_NOT_PRESENT_RECONSTRUCTED_GIS_AS_ATTESTED_MOVEMENT"
+      ],
+      "annotation_risk": "MEDIUM",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [],
+      "adjudication_notes": "One statement supplies the actor, movement, and directed endpoints. Cirrha/Kirra orthographic equivalence noted. Do not append Asia or the attackers' hiding place."
+    },
+    {
+      "case_id": "G7-A02",
+      "case_origin": "REAL_CORPUS",
+      "tier": "A",
+      "source": {
+        "author": "Livy",
+        "work": "History of Rome",
+        "document_id": "livy_history_of_rome_books_9_26",
+        "parent_id": "06a74e3ed1fd6d5d34f29a3439d7e0ef",
+        "spine_index": 6,
+        "parent_start_offset": 23800,
+        "parent_end_offset": 27800,
+        "passage_start": 3012,
+        "passage_end": 3177
+      },
+      "gold_evidence_ids": [
+        "06a74e3ed1fd6d5d34f29a3439d7e0ef:3012:3177"
+      ],
+      "exact_bounded_passage": "11 While these things were carrying on, Quintus Fabius Pictor, the ambassador, returned from Delphi to Rome, and read the response of the oracle from a written copy.",
+      "query": "Reconstruct Quintus Fabius Pictor's return journey after consulting the oracle.",
+      "historical_subject": "Quintus Fabius Pictor",
+      "episode_label": "Return from the Delphic embassy",
+      "subject_status": "MATCH",
+      "movement_polarity": "ASSERTED",
+      "gold_events": [
+        {
+          "actor": "Quintus Fabius Pictor",
+          "actor_status": "MATCH",
+          "movement_predicate": "returned",
+          "polarity": "ASSERTED",
+          "origin": "Delphi",
+          "destination": "Rome",
+          "provenance_evidence_id": "06a74e3ed1fd6d5d34f29a3439d7e0ef:3012:3177"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Delphi",
+          "semantic_role": "ORIGIN",
+          "geographic_status": "EXACT",
+          "authority": {
+            "source": "Pleiades",
+            "entity_id": "540726"
+          }
+        },
+        {
+          "mention": "Rome",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "EXACT",
+          "authority": {
+            "source": "Pleiades",
+            "entity_id": "423025"
+          }
+        }
+      ],
+      "gold_relations": [
+        {
+          "earlier": "Delphi",
+          "later": "Rome",
+          "type": "SAME_MOVEMENT_EVENT",
+          "provenance_evidence_ids": [
+            "06a74e3ed1fd6d5d34f29a3439d7e0ef:3012:3177"
+          ]
+        }
+      ],
+      "expected_terminal_stage": "GIS",
+      "expected_route_status": "FULL",
+      "expected_waypoints": [
+        "Delphi",
+        "Rome"
+      ],
+      "prohibited_claims": [
+        "DO_NOT_ADD_UNMENTIONED_WAYPOINTS",
+        "DO_NOT_PRESENT_RECONSTRUCTED_GIS_AS_ATTESTED_MOVEMENT"
+      ],
+      "annotation_risk": "LOW",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [],
+      "adjudication_notes": "Actor and directed endpoints occur in one source sentence."
+    },
+    {
+      "case_id": "G7-A03",
+      "case_origin": "REAL_CORPUS",
+      "tier": "A",
+      "source": {
+        "author": "Plutarch",
+        "work": "Parallel Lives — Marcus Cato",
+        "document_id": "plutarch_parallel_lives",
+        "parent_id": "f3e3bd4d1e9e6f98ae1b833b2157c282",
+        "spine_index": 27,
+        "parent_start_offset": 51000,
+        "parent_end_offset": 55000,
+        "passage_start": 2971,
+        "passage_end": 3390
+      },
+      "gold_evidence_ids": [
+        "f3e3bd4d1e9e6f98ae1b833b2157c282:2971:3390"
+      ],
+      "exact_bounded_passage": "He was now grown old, when Carneades the Academic, and Diogenes the Stoic, came as deputies from Athens to Rome, praying for release from a penalty of five hundred talents laid on the Athenians, in a suit, to which they did not appear, in which the Oropians were plaintiffs, and Sicyonians judges. All the most studious youth immediately waited on these philosophers, and frequently, with admiration, heard them speak.",
+      "query": "Map the diplomatic journey made by Carneades and Diogenes during Cato's later life.",
+      "historical_subject": "Carneades and Diogenes",
+      "episode_label": "Athenian embassy to Rome during Cato's later life",
+      "subject_status": "MATCH",
+      "movement_polarity": "ASSERTED",
+      "gold_events": [
+        {
+          "actor": "Carneades and Diogenes",
+          "actor_status": "MATCH",
+          "movement_predicate": "came as deputies",
+          "polarity": "ASSERTED",
+          "origin": "Athens",
+          "destination": "Rome",
+          "provenance_evidence_id": "f3e3bd4d1e9e6f98ae1b833b2157c282:2971:3390"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Athens",
+          "semantic_role": "ORIGIN",
+          "geographic_status": "EXACT",
+          "authority": {
+            "source": "Pleiades",
+            "entity_id": "579885"
+          }
+        },
+        {
+          "mention": "Rome",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "EXACT",
+          "authority": {
+            "source": "Pleiades",
+            "entity_id": "423025"
+          }
+        }
+      ],
+      "gold_relations": [
+        {
+          "earlier": "Athens",
+          "later": "Rome",
+          "type": "SAME_MOVEMENT_EVENT",
+          "provenance_evidence_ids": [
+            "f3e3bd4d1e9e6f98ae1b833b2157c282:2971:3390"
+          ]
+        }
+      ],
+      "expected_terminal_stage": "GIS",
+      "expected_route_status": "FULL",
+      "expected_waypoints": [
+        "Athens",
+        "Rome"
+      ],
+      "prohibited_claims": [
+        "DO_NOT_COMPOSE_DIFFERENT_ACTORS",
+        "DO_NOT_ADD_UNMENTIONED_WAYPOINTS",
+        "DO_NOT_PRESENT_RECONSTRUCTED_GIS_AS_ATTESTED_MOVEMENT"
+      ],
+      "annotation_risk": "LOW",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [
+        "fdd7cc22f0101becb09038160ca5bb78:2960:3378"
+      ],
+      "adjudication_notes": "Both named actors jointly participate in one explicit movement. Do not create separate journeys or add Oropus and Sicyon."
+    },
+    {
+      "case_id": "G7-A04",
+      "case_origin": "REAL_CORPUS",
+      "tier": "A",
+      "source": {
+        "author": "Cassius Dio",
+        "work": "Roman History",
+        "document_id": "cassius_dio_roman_history_v3",
+        "parent_id": "e2698fa32c836a515191464e3bf62397",
+        "spine_index": 2,
+        "parent_start_offset": 6800,
+        "parent_end_offset": 10799,
+        "passage_start": 142,
+        "passage_end": 489
+      },
+      "gold_evidence_ids": [
+        "e2698fa32c836a515191464e3bf62397:142:489"
+      ],
+      "exact_bounded_passage": "[-5-] While the naval battle was in progress, Caesar, as soon as he perceived that Sextus was gone from Messana and that the strait was destitute of guards, did not let slip this opportunity of the war but immediately embarked on Antony's vessels and crossed to Tauromenium. Yet this seizure of the opportunity was not accompanied by good fortune.",
+      "query": "Trace Caesar's crossing during the Sicilian naval operations against Sextus.",
+      "historical_subject": "Caesar",
+      "episode_label": "Sicilian naval operations against Sextus",
+      "subject_status": "MATCH",
+      "movement_polarity": "ASSERTED",
+      "gold_events": [
+        {
+          "actor": "Caesar",
+          "actor_status": "MATCH",
+          "movement_predicate": "embarked and crossed",
+          "polarity": "ASSERTED",
+          "origin": "Messana",
+          "destination": "Tauromenium",
+          "provenance_evidence_id": "e2698fa32c836a515191464e3bf62397:142:489"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Messana",
+          "semantic_role": "ORIGIN",
+          "geographic_status": "EXACT",
+          "authority": {
+            "source": "Pleiades",
+            "entity_id": "462538"
+          }
+        },
+        {
+          "mention": "Tauromenium",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "EXACT",
+          "authority": {
+            "source": "Pleiades",
+            "entity_id": "462506"
+          }
+        }
+      ],
+      "gold_relations": [
+        {
+          "earlier": "Messana",
+          "later": "Tauromenium",
+          "type": "SAME_MOVEMENT_EVENT",
+          "provenance_evidence_ids": [
+            "e2698fa32c836a515191464e3bf62397:142:489"
+          ]
+        }
+      ],
+      "expected_terminal_stage": "GIS",
+      "expected_route_status": "FULL",
+      "expected_waypoints": [
+        "Messana",
+        "Tauromenium"
+      ],
+      "prohibited_claims": [
+        "DO_NOT_COMPOSE_DIFFERENT_ACTORS",
+        "DO_NOT_ADD_UNMENTIONED_WAYPOINTS",
+        "DO_NOT_PRESENT_RECONSTRUCTED_GIS_AS_ATTESTED_MOVEMENT"
+      ],
+      "annotation_risk": "LOW",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [
+        "38b95cee7bff2d5b81ddc06db4248b05:3543:3890"
+      ],
+      "adjudication_notes": "Explicit actor and destination; Messana establishes the departure context within the same clause. The person overlaps G5R, but the Sicilian episode and passage do not."
+    },
+    {
+      "case_id": "G7-A05",
+      "case_origin": "REAL_CORPUS",
+      "tier": "A",
+      "source": {
+        "author": "Polybius",
+        "work": "Histories",
+        "document_id": "polybius_histories_v2",
+        "parent_id": "e18d56bc132575c68cdeb326348f9ec0",
+        "spine_index": 2,
+        "parent_start_offset": 6800,
+        "parent_end_offset": 10799,
+        "passage_start": 3341,
+        "passage_end": 3742
+      },
+      "gold_evidence_ids": [
+        "e18d56bc132575c68cdeb326348f9ec0:3341:3742"
+      ],
+      "exact_bounded_passage": "The hero of Callisthenes, again, was a man by universal consent of a superhuman elevation of spirit; while Timoleon, far from having accomplished any action of first-rate importance, never even undertook one. The one expedition which he achieved in the course of his life took him no farther than from Corinth to Syracuse; and how paltry is such a distance when compared with the extent of the world!",
+      "query": "What route is attributed to Timoleon's principal expedition?",
+      "historical_subject": "Timoleon",
+      "episode_label": "Timoleon's principal expedition",
+      "subject_status": "MATCH",
+      "movement_polarity": "ASSERTED",
+      "gold_events": [
+        {
+          "actor": "Timoleon",
+          "actor_status": "MATCH",
+          "movement_predicate": "expedition took him",
+          "polarity": "ASSERTED",
+          "origin": "Corinth",
+          "destination": "Syracuse",
+          "provenance_evidence_id": "e18d56bc132575c68cdeb326348f9ec0:3341:3742"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Corinth",
+          "semantic_role": "ORIGIN",
+          "geographic_status": "EXACT",
+          "authority": {
+            "source": "Pleiades",
+            "entity_id": "570182"
+          }
+        },
+        {
+          "mention": "Syracuse",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "EXACT",
+          "authority": {
+            "source": "Pleiades",
+            "entity_id": "462503"
+          }
+        }
+      ],
+      "gold_relations": [
+        {
+          "earlier": "Corinth",
+          "later": "Syracuse",
+          "type": "SAME_MOVEMENT_EVENT",
+          "provenance_evidence_ids": [
+            "e18d56bc132575c68cdeb326348f9ec0:3341:3742"
+          ]
+        }
+      ],
+      "expected_terminal_stage": "GIS",
+      "expected_route_status": "FULL",
+      "expected_waypoints": [
+        "Corinth",
+        "Syracuse"
+      ],
+      "prohibited_claims": [
+        "DO_NOT_COMPOSE_DIFFERENT_ACTORS",
+        "DO_NOT_ADD_UNMENTIONED_WAYPOINTS",
+        "DO_NOT_PRESENT_RECONSTRUCTED_GIS_AS_ATTESTED_MOVEMENT"
+      ],
+      "annotation_risk": "MEDIUM",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [],
+      "adjudication_notes": "The first sentence establishes Timoleon as the antecedent of 'he'; both occur in one derived passage. Do not treat Callisthenes as the traveler or Sicily as an exact waypoint."
+    },
+    {
+      "case_id": "G7-A06",
+      "case_origin": "REAL_CORPUS",
+      "tier": "A",
+      "source": {
+        "author": "Livy",
+        "work": "History of Rome",
+        "document_id": "livy_history_of_rome_books_27_36",
+        "parent_id": "3e02d5a052e86ae0c5e05989e0095567",
+        "spine_index": 5,
+        "parent_start_offset": 37400,
+        "parent_end_offset": 41400,
+        "passage_start": 2605,
+        "passage_end": 2949
+      },
+      "gold_evidence_ids": [
+        "3e02d5a052e86ae0c5e05989e0095567:2605:2949"
+      ],
+      "exact_bounded_passage": "29 Hannibal had by this time arrived at Adrumetum; from which place, after employing a few days there in refreshing his soldiers, who had suffered from the motion by sea, he proceeded by forced marches to Zama, roused by the alarming statements of messengers, who brought word, that all the country around Carthage was filled with armed troops.",
+      "query": "Trace Hannibal's movement after landing in Africa before the operations at Zama.",
+      "historical_subject": "Hannibal",
+      "episode_label": "Landing in Africa before operations at Zama",
+      "subject_status": "MATCH",
+      "movement_polarity": "ASSERTED",
+      "gold_events": [
+        {
+          "actor": "Hannibal",
+          "actor_status": "MATCH",
+          "movement_predicate": "proceeded by forced marches",
+          "polarity": "ASSERTED",
+          "origin": "Adrumetum/Hadrumetum",
+          "destination": "Zama",
+          "provenance_evidence_id": "3e02d5a052e86ae0c5e05989e0095567:2605:2949"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Adrumetum/Hadrumetum",
+          "semantic_role": "ORIGIN",
+          "geographic_status": "EXACT",
+          "authority": {
+            "source": "Pleiades",
+            "entity_id": "324716"
+          }
+        },
+        {
+          "mention": "Zama",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "EXACT",
+          "authority": {
+            "source": "Pleiades",
+            "entity_id": "315267"
+          }
+        },
+        {
+          "mention": "Carthage",
+          "semantic_role": "RELATED_PLACE",
+          "geographic_status": "NON_POINT"
+        }
+      ],
+      "gold_relations": [
+        {
+          "earlier": "Adrumetum/Hadrumetum",
+          "later": "Zama",
+          "type": "SAME_MOVEMENT_EVENT",
+          "provenance_evidence_ids": [
+            "3e02d5a052e86ae0c5e05989e0095567:2605:2949"
+          ]
+        }
+      ],
+      "expected_terminal_stage": "GIS",
+      "expected_route_status": "FULL",
+      "expected_waypoints": [
+        "Hadrumetum",
+        "Zama Regia"
+      ],
+      "prohibited_claims": [
+        "DO_NOT_ADD_UNMENTIONED_WAYPOINTS",
+        "DO_NOT_PRESENT_RECONSTRUCTED_GIS_AS_ATTESTED_MOVEMENT"
+      ],
+      "annotation_risk": "MEDIUM",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [],
+      "adjudication_notes": "'From which place' directly binds Adrumetum to the movement toward Zama. Adrumetum/Hadrumetum equivalence noted; Zama contextually Zama Regia. Do not add Carthage or use the surrounding country as a waypoint."
+    },
+    {
+      "case_id": "G7-B01",
+      "case_origin": "REAL_CORPUS",
+      "tier": "B",
+      "source": {
+        "author": "Appian",
+        "work": "Roman History / Civil Wars",
+        "document_id": "appian_roman_history_civil_wars",
+        "parent_id": "eac7403498bca8eb7dea9ed4028ee3e7",
+        "spine_index": 18,
+        "parent_start_offset": 0,
+        "parent_end_offset": 1465,
+        "passage_start": 309,
+        "passage_end": 471
+      },
+      "gold_evidence_ids": [
+        "eac7403498bca8eb7dea9ed4028ee3e7:309:471"
+      ],
+      "exact_bounded_passage": "IV. From 'THe Enmpassigs' Wuen Marius arrived at Cirta messengers came to 107 him from Bocchus asking that he would send somebody to hold a conference with him.",
+      "query": "What movement of Marius is attested during the negotiations involving Bocchus?",
+      "historical_subject": "Marius",
+      "episode_label": "Negotiations involving Bocchus",
+      "subject_status": "MATCH",
+      "movement_polarity": "ASSERTED",
+      "gold_events": [
+        {
+          "actor": "Marius",
+          "actor_status": "MATCH",
+          "movement_predicate": "arrived",
+          "polarity": "ASSERTED",
+          "origin": null,
+          "destination": "Cirta",
+          "provenance_evidence_id": "eac7403498bca8eb7dea9ed4028ee3e7:309:471"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Cirta",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "EXACT"
+        }
+      ],
+      "gold_relations": [],
+      "expected_terminal_stage": "EVENT",
+      "expected_route_status": "NONE",
+      "prohibited_claims": [
+        "DO_NOT_INFER_ORIGIN",
+        "DO_NOT_COMPOSE_DIFFERENT_ACTORS"
+      ],
+      "annotation_risk": "LOW",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [],
+      "adjudication_notes": "Preserve Marius's arrival and Cirta destination. Do not use Bocchus or the messengers to complete Marius's route."
+    },
+    {
+      "case_id": "G7-B02",
+      "case_origin": "REAL_CORPUS",
+      "tier": "B",
+      "source": {
+        "author": "Sallust",
+        "work": "Catiline / Jugurthine War",
+        "document_id": "sallust_catiline_jugurthine_war",
+        "parent_id": "d82e5929c67afd41a1fd401d80c14af2",
+        "spine_index": 2,
+        "parent_start_offset": 112200,
+        "parent_end_offset": 116200,
+        "passage_start": 2397,
+        "passage_end": 2426
+      },
+      "gold_evidence_ids": [
+        "d82e5929c67afd41a1fd401d80c14af2:2397:2426"
+      ],
+      "exact_bounded_passage": "LVII. Marius arrived at Zama.",
+      "query": "What does Sallust attest about Marius's movement around Zama?",
+      "historical_subject": "Marius",
+      "episode_label": "Arrival at Zama",
+      "subject_status": "MATCH",
+      "movement_polarity": "ASSERTED",
+      "gold_events": [
+        {
+          "actor": "Marius",
+          "actor_status": "MATCH",
+          "movement_predicate": "arrived",
+          "polarity": "ASSERTED",
+          "origin": null,
+          "destination": "Zama",
+          "provenance_evidence_id": "d82e5929c67afd41a1fd401d80c14af2:2397:2426"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Zama",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "AMBIGUOUS"
+        }
+      ],
+      "gold_relations": [],
+      "expected_terminal_stage": "EVENT",
+      "expected_route_status": "NONE",
+      "prohibited_claims": [
+        "DO_NOT_INFER_ORIGIN",
+        "DO_NOT_RESOLVE_AMBIGUOUS_PLACE"
+      ],
+      "annotation_risk": "LOW",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [],
+      "adjudication_notes": "Preserve arrival event and literal destination. Zama remains ambiguous without broader context."
+    },
+    {
+      "case_id": "G7-B03",
+      "case_origin": "REAL_CORPUS",
+      "tier": "B",
+      "source": {
+        "author": "Cassius Dio",
+        "work": "Roman History",
+        "document_id": "cassius_dio_roman_history_v4",
+        "parent_id": "a3ced27fa3a1d40dfdf9deb77e156cf9",
+        "spine_index": 1,
+        "parent_start_offset": 51000,
+        "parent_end_offset": 55000,
+        "passage_start": 2792,
+        "passage_end": 3012
+      },
+      "gold_evidence_ids": [
+        "a3ced27fa3a1d40dfdf9deb77e156cf9:2792:3012"
+      ],
+      "exact_bounded_passage": "These, then, were the occurrences in the City worthy of note that year. [-29-] As soon as Augustus had departed from Spain, leaving behind Lucius Æmilius as governor of it, the Cantabri and Astures made an uprising.",
+      "query": "What departure by Augustus is attested immediately before the Cantabrian and Asturian uprising?",
+      "historical_subject": "Augustus",
+      "episode_label": "Departure from Spain before Cantabrian and Asturian uprising",
+      "subject_status": "MATCH",
+      "movement_polarity": "ASSERTED",
+      "gold_events": [
+        {
+          "actor": "Augustus",
+          "actor_status": "MATCH",
+          "movement_predicate": "departed",
+          "polarity": "ASSERTED",
+          "origin": "Spain/Hispania",
+          "destination": null,
+          "provenance_evidence_id": "a3ced27fa3a1d40dfdf9deb77e156cf9:2792:3012"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Spain/Hispania",
+          "semantic_role": "ORIGIN",
+          "geographic_status": "NON_POINT"
+        }
+      ],
+      "gold_relations": [],
+      "expected_terminal_stage": "GEOGRAPHY",
+      "expected_route_status": "NONE",
+      "prohibited_claims": [
+        "DO_NOT_INFER_DESTINATION",
+        "DO_NOT_USE_REGION_CENTROID_AS_EXACT"
+      ],
+      "annotation_risk": "LOW",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [],
+      "adjudication_notes": "Preserve origin-only departure event."
+    },
+    {
+      "case_id": "G7-B04",
+      "case_origin": "REAL_CORPUS",
+      "tier": "B",
+      "source": {
+        "author": "Plutarch",
+        "work": "Parallel Lives",
+        "document_id": "plutarch_parallel_lives",
+        "parent_id": "6dee1ba6ddc4ea4b84e50e9ad28704f2",
+        "spine_index": 3,
+        "parent_start_offset": 61200,
+        "parent_end_offset": 65199,
+        "passage_start": 2182,
+        "passage_end": 2685
+      },
+      "gold_evidence_ids": [
+        "6dee1ba6ddc4ea4b84e50e9ad28704f2:2182:2685"
+      ],
+      "exact_bounded_passage": "And at last, despairing of any good success of his affairs in Athens, he sent away his children privately to Euboea, commending them to the care of Elephenor, the son of Chalcodon; and he himself, having solemnly cursed the people of Athens in the village of Gargettus, in which there yet remains the place called Araterion, or the place of cursing, sailed to Scyros, where he had lands left him by his father, and friendship, as he thought, with those of the island. Lycomedes was then king of Scyros.",
+      "query": "Trace Theseus's final attested movement after he lost control at Athens.",
+      "historical_subject": "Theseus",
+      "episode_label": "Final movement after loss of control at Athens",
+      "subject_status": "MATCH",
+      "movement_polarity": "ASSERTED",
+      "gold_events": [
+        {
+          "actor": "Theseus",
+          "actor_status": "MATCH",
+          "movement_predicate": "sailed",
+          "polarity": "ASSERTED",
+          "origin": null,
+          "destination": "Scyros",
+          "provenance_evidence_id": "6dee1ba6ddc4ea4b84e50e9ad28704f2:2182:2685"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Scyros",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "NON_POINT"
+        }
+      ],
+      "gold_relations": [],
+      "expected_terminal_stage": "GEOGRAPHY",
+      "expected_route_status": "NONE",
+      "prohibited_claims": [
+        "DO_NOT_USE_ISLAND_CENTROID_AS_EXACT",
+        "DO_NOT_INFER_ORIGIN",
+        "DO_NOT_COMPOSE_DIFFERENT_ACTORS"
+      ],
+      "annotation_risk": "MEDIUM",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [
+        "2ce94d921bb70e8f668b4bc336ea5950:2174:2677"
+      ],
+      "adjudication_notes": "Preserve Theseus sailed to Scyros; children were sent to Euboea. Do not use Gargettus as embarkation origin; do not merge the children's movement."
+    },
+    {
+      "case_id": "G7-B05",
+      "case_origin": "REAL_CORPUS",
+      "tier": "B",
+      "source": {
+        "author": "Livy",
+        "work": "History of Rome",
+        "document_id": "livy_history_of_rome_books_9_26",
+        "parent_id": "bdf40b7fd5e732c0c2e0839dd39a2e49",
+        "spine_index": 6,
+        "parent_start_offset": 10200,
+        "parent_end_offset": 14200,
+        "passage_start": 2629,
+        "passage_end": 2951
+      },
+      "gold_evidence_ids": [
+        "bdf40b7fd5e732c0c2e0839dd39a2e49:2629:2951"
+      ],
+      "exact_bounded_passage": "And yet both the fight at the Allia with the Gauls, and at Heraclea with Pyrrhus, was disgraceful, not so much on account of the loss as the panic and flight. Heaps of Roman carcasses cover the plains of Cannae; nor would any of us have survived the battle, had not the enemy wanted the strength and the sword to slay us.",
+      "query": "Does this comparison attest a directed journey by Pyrrhus through Heraclea?",
+      "historical_subject": "Pyrrhus/reference narrator",
+      "episode_label": "Battle-site comparison",
+      "subject_status": "MATCH",
+      "movement_polarity": "ABSENT",
+      "gold_events": [],
+      "endpoints": [
+        {
+          "mention": "Heraclea",
+          "semantic_role": "EVENT_SITE",
+          "geographic_status": "AMBIGUOUS"
+        }
+      ],
+      "gold_relations": [],
+      "expected_terminal_stage": "EVIDENCE",
+      "expected_route_status": "NONE",
+      "prohibited_claims": [
+        "DO_NOT_RESOLVE_AMBIGUOUS_PLACE",
+        "DO_NOT_ADD_UNMENTIONED_WAYPOINTS"
+      ],
+      "annotation_risk": "LOW",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [],
+      "adjudication_notes": "No directed movement event. Heraclea is an event site and ambiguous by name alone. Do not construct Allia → Heraclea → Cannae."
+    },
+    {
+      "case_id": "G7-B06",
+      "case_origin": "REAL_CORPUS",
+      "tier": "B",
+      "source": {
+        "author": "Appian",
+        "work": "Roman History / Civil Wars",
+        "document_id": "appian_roman_history_civil_wars",
+        "parent_id": "4fcceedab5358f13eb946c1ae7ec53a5",
+        "spine_index": 62,
+        "parent_start_offset": 0,
+        "parent_end_offset": 1581,
+        "passage_start": 967,
+        "passage_end": 1196
+      },
+      "gold_evidence_ids": [
+        "4fcceedab5358f13eb946c1ae7ec53a5:967:1196"
+      ],
+      "exact_bounded_passage": "'Paulus alluded to this as much as anything in his address to the people. When he came to the forum to give an account of his doings, according to the eustom of generals, he said, 'I sailed from Brundusium to Corcyra in one day.'",
+      "query": "What voyage did Paulus report when accounting for his campaign?",
+      "historical_subject": "Paulus",
+      "episode_label": "Reported campaign voyage",
+      "subject_status": "MATCH",
+      "movement_polarity": "ASSERTED",
+      "gold_events": [
+        {
+          "actor": "Paulus",
+          "actor_status": "MATCH",
+          "movement_predicate": "sailed",
+          "polarity": "ASSERTED",
+          "origin": "Brundisium",
+          "destination": "Corcyra",
+          "provenance_evidence_id": "4fcceedab5358f13eb946c1ae7ec53a5:967:1196"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Brundisium",
+          "semantic_role": "ORIGIN",
+          "geographic_status": "EXACT",
+          "authority": {
+            "source": "Pleiades",
+            "entity_id": "442509"
+          }
+        },
+        {
+          "mention": "Corcyra",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "AMBIGUOUS"
+        }
+      ],
+      "gold_relations": [
+        {
+          "earlier": "Brundisium",
+          "later": "Corcyra",
+          "type": "SAME_MOVEMENT_EVENT",
+          "provenance_evidence_ids": [
+            "4fcceedab5358f13eb946c1ae7ec53a5:967:1196"
+          ]
+        }
+      ],
+      "expected_terminal_stage": "GEOGRAPHY",
+      "expected_route_status": "NONE",
+      "prohibited_claims": [
+        "DO_NOT_RESOLVE_AMBIGUOUS_PLACE",
+        "DO_NOT_PRESENT_RECONSTRUCTED_GIS_AS_ATTESTED_MOVEMENT"
+      ],
+      "annotation_risk": "LOW",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [],
+      "adjudication_notes": "Directed movement and exact Brundisium origin preserved in reported speech. Corcyra is ambiguous between settlement 530834 and island 530835."
+    },
+    {
+      "case_id": "G7-B07",
+      "case_origin": "REAL_CORPUS",
+      "tier": "B",
+      "source": {
+        "author": "Plutarch",
+        "work": "Parallel Lives",
+        "document_id": "plutarch_parallel_lives",
+        "parent_id": "cc38205698c77d066d0af0abf509bbd5",
+        "spine_index": 62,
+        "parent_start_offset": 51000,
+        "parent_end_offset": 55000,
+        "passage_start": 776,
+        "passage_end": 1302
+      },
+      "gold_evidence_ids": [
+        "cc38205698c77d066d0af0abf509bbd5:776:1302"
+      ],
+      "exact_bounded_passage": "So, scarcely at last rousing himself from sleep, and shaking off the fumes of wine, he set out to attack the Parthians, and went as far as Phoenicia; but, upon the receipt of lamentable letters from Fulvia, turned his course with two hundred ships to Italy. And, in his way, receiving, such of his friends as fled from Italy, he was given to understand that Fulvia was the sole cause of the war, a woman of a restless spirit and very bold, and withal her hopes were that commotions in Italy would force Antony from Cleopatra.",
+      "query": "Trace Antony's change of direction after receiving news from Fulvia.",
+      "historical_subject": "Antony",
+      "episode_label": "Change of direction after news from Fulvia",
+      "subject_status": "MATCH",
+      "movement_polarity": "ASSERTED",
+      "gold_events": [
+        {
+          "actor": "Antony",
+          "actor_status": "MATCH",
+          "movement_predicate": "set out/went",
+          "polarity": "ASSERTED",
+          "origin": null,
+          "destination": "Phoenicia",
+          "provenance_evidence_id": "cc38205698c77d066d0af0abf509bbd5:776:1302"
+        },
+        {
+          "actor": "Antony",
+          "actor_status": "MATCH",
+          "movement_predicate": "turned course",
+          "polarity": "ASSERTED",
+          "origin": "Phoenicia",
+          "destination": "Italy",
+          "provenance_evidence_id": "cc38205698c77d066d0af0abf509bbd5:776:1302"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Phoenicia",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "NON_POINT"
+        },
+        {
+          "mention": "Italy",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "NON_POINT"
+        }
+      ],
+      "gold_relations": [
+        {
+          "earlier": "Phoenicia",
+          "later": "Italy",
+          "type": "SOURCE_STRUCTURAL_ORDER",
+          "provenance_evidence_ids": [
+            "cc38205698c77d066d0af0abf509bbd5:776:1302"
+          ]
+        }
+      ],
+      "expected_terminal_stage": "GEOGRAPHY",
+      "expected_route_status": "NONE",
+      "prohibited_claims": [
+        "DO_NOT_USE_REGION_CENTROID_AS_EXACT",
+        "DO_NOT_ADD_UNMENTIONED_WAYPOINTS",
+        "DO_NOT_PRESENT_RECONSTRUCTED_GIS_AS_ATTESTED_MOVEMENT"
+      ],
+      "annotation_risk": "MEDIUM",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [
+        "618aa3e294764249a2b48cf90b240a05:769:1295"
+      ],
+      "adjudication_notes": "Both events and their order are preserved. The explicit 'but, upon receipt' connector supports SOURCE_STRUCTURAL_ORDER from event 1 to event 2. Do not add reported Parthian locations."
+    },
+    {
+      "case_id": "G7-C01",
+      "case_origin": "REAL_CORPUS",
+      "tier": "C",
+      "source": {
+        "author": "Appian",
+        "work": "Roman History / Civil Wars",
+        "document_id": "appian_roman_history_civil_wars",
+        "parent_id": "1858a8898538cf342c123172767e531b",
+        "spine_index": 109,
+        "parent_start_offset": 0,
+        "parent_end_offset": 1660,
+        "passage_start": 1367,
+        "passage_end": 1593
+      },
+      "gold_evidence_ids": [
+        "1858a8898538cf342c123172767e531b:1367:1593"
+      ],
+      "exact_bounded_passage": "While he was besieging the city Setovia a force of barbarians came to its assistance, which he met and prevented from entering the place. In this conflict he was struck by a stone on the knee and was laid up for several days.",
+      "query": "Did the relieving force enter Setovia during the siege?",
+      "historical_subject": "Relieving force",
+      "episode_label": "Relief attempt during siege of Setovia",
+      "subject_status": "MATCH",
+      "movement_polarity": "MIXED",
+      "gold_events": [
+        {
+          "actor": "Relieving force",
+          "actor_status": "MATCH",
+          "movement_predicate": "came to assist",
+          "polarity": "ASSERTED",
+          "origin": null,
+          "destination": "vicinity of Setovia",
+          "provenance_evidence_id": "1858a8898538cf342c123172767e531b:1367:1593"
+        },
+        {
+          "actor": "Relieving force",
+          "actor_status": "MATCH",
+          "movement_predicate": "enter",
+          "polarity": "PREVENTED",
+          "origin": null,
+          "destination": "Setovia",
+          "provenance_evidence_id": "1858a8898538cf342c123172767e531b:1367:1593"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Setovia",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "EXACT",
+          "authority": {
+            "source": "Pleiades",
+            "entity_id": "197510"
+          }
+        }
+      ],
+      "gold_relations": [],
+      "expected_terminal_stage": "EVENT",
+      "expected_route_status": "NONE",
+      "prohibited_claims": [
+        "DO_NOT_TREAT_MODAL_AS_ASSERTED",
+        "DO_NOT_ADD_UNMENTIONED_WAYPOINTS"
+      ],
+      "annotation_risk": "LOW",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [],
+      "adjudication_notes": "Converting prevented entry into positive arrival is forbidden. Asserted entry into Setovia or a route ending inside Setovia is prohibited output."
+    },
+    {
+      "case_id": "G7-C02",
+      "case_origin": "REAL_CORPUS",
+      "tier": "C",
+      "source": {
+        "author": "Cassius Dio",
+        "work": "Roman History",
+        "document_id": "cassius_dio_roman_history_v4",
+        "parent_id": "13b6dea830e1dd51533028efb8c2d4b7",
+        "spine_index": 1,
+        "parent_start_offset": 40800,
+        "parent_end_offset": 44800,
+        "passage_start": 1619,
+        "passage_end": 1893
+      },
+      "gold_evidence_ids": [
+        "13b6dea830e1dd51533028efb8c2d4b7:1619:1893"
+      ],
+      "exact_bounded_passage": "He also set out apparently to make a campaign into Britain, but on coming to the provinces of Gaul lingered there. For the Britons seemed likely to make terms with him and Gallic affairs were still unsettled, as the civil wars had begun immediately after their subjugation.",
+      "query": "Did Augustus complete a movement from Gaul into Britain in this episode?",
+      "historical_subject": "Augustus",
+      "episode_label": "Proposed Britain campaign; lingering in Gaul",
+      "subject_status": "MATCH",
+      "movement_polarity": "MIXED",
+      "gold_events": [
+        {
+          "actor": "Augustus",
+          "actor_status": "MATCH",
+          "movement_predicate": "proposed campaign",
+          "polarity": "HYPOTHETICAL",
+          "origin": null,
+          "destination": "Britain",
+          "provenance_evidence_id": "13b6dea830e1dd51533028efb8c2d4b7:1619:1893"
+        },
+        {
+          "actor": "Augustus",
+          "actor_status": "MATCH",
+          "movement_predicate": "came/lingered",
+          "polarity": "ASSERTED",
+          "origin": null,
+          "destination": "Gaul",
+          "provenance_evidence_id": "13b6dea830e1dd51533028efb8c2d4b7:1619:1893"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Britain",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "NON_POINT"
+        },
+        {
+          "mention": "Gaul",
+          "semantic_role": "EVENT_SITE",
+          "geographic_status": "NON_POINT"
+        }
+      ],
+      "gold_relations": [],
+      "expected_terminal_stage": "EVENT",
+      "expected_route_status": "NONE",
+      "prohibited_claims": [
+        "DO_NOT_TREAT_MODAL_AS_ASSERTED",
+        "DO_NOT_USE_REGION_CENTROID_AS_EXACT",
+        "DO_NOT_USE_ISLAND_CENTROID_AS_EXACT"
+      ],
+      "annotation_risk": "LOW",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [],
+      "adjudication_notes": "Planned endpoint must not override the asserted stopping point. Arrival in Britain, Gaul → Britain, or exact region/island centroids are forbidden output."
+    },
+    {
+      "case_id": "G7-C03",
+      "case_origin": "SYNTHETIC_CONTRACT",
+      "tier": "C",
+      "source": {
+        "author": "SYNTHETIC",
+        "work": "G7 Contract Probes",
+        "document_id": "g7_synthetic_contracts",
+        "parent_id": "g7-synthetic:G7-C03",
+        "spine_index": 0,
+        "parent_start_offset": 0,
+        "parent_end_offset": 69,
+        "passage_start": 0,
+        "passage_end": 69
+      },
+      "gold_evidence_ids": [
+        "g7-synthetic:G7-C03:0:69"
+      ],
+      "exact_bounded_passage": "Marcus marched from Alba to Tibur. Marcus marched from Capua to Nola.",
+      "query": "Trace Marcus's movements in this account.",
+      "historical_subject": "Marcus",
+      "episode_label": "Plain source order",
+      "subject_status": "MATCH",
+      "movement_polarity": "ASSERTED",
+      "gold_events": [
+        {
+          "actor": "Marcus",
+          "actor_status": "MATCH",
+          "movement_predicate": "marched",
+          "polarity": "ASSERTED",
+          "origin": "Alba",
+          "destination": "Tibur",
+          "provenance_evidence_id": "g7-synthetic:G7-C03:0:69"
+        },
+        {
+          "actor": "Marcus",
+          "actor_status": "MATCH",
+          "movement_predicate": "marched",
+          "polarity": "ASSERTED",
+          "origin": "Capua",
+          "destination": "Nola",
+          "provenance_evidence_id": "g7-synthetic:G7-C03:0:69"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Alba",
+          "semantic_role": "ORIGIN",
+          "geographic_status": "EXACT"
+        },
+        {
+          "mention": "Tibur",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "EXACT"
+        },
+        {
+          "mention": "Capua",
+          "semantic_role": "ORIGIN",
+          "geographic_status": "EXACT"
+        },
+        {
+          "mention": "Nola",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "EXACT"
+        }
+      ],
+      "gold_relations": [
+        {
+          "earlier": "Alba",
+          "later": "Tibur",
+          "type": "SAME_MOVEMENT_EVENT",
+          "provenance_evidence_ids": [
+            "g7-synthetic:G7-C03:0:69"
+          ]
+        },
+        {
+          "earlier": "Capua",
+          "later": "Nola",
+          "type": "SAME_MOVEMENT_EVENT",
+          "provenance_evidence_ids": [
+            "g7-synthetic:G7-C03:0:69"
+          ]
+        }
+      ],
+      "expected_terminal_stage": "RELATION",
+      "expected_route_status": "PARTIAL_COMPONENTS",
+      "prohibited_claims": [
+        "DO_NOT_USE_SOURCE_ORDER_AS_CHRONOLOGY",
+        "DO_NOT_ADD_UNMENTIONED_WAYPOINTS"
+      ],
+      "annotation_risk": "LOW",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [],
+      "adjudication_notes": "Two asserted events and two SAME_MOVEMENT_EVENT components; no inter-event relation. Forbidden: Alba→Tibur→Capua→Nola."
+    },
+    {
+      "case_id": "G7-C04",
+      "case_origin": "SYNTHETIC_CONTRACT",
+      "tier": "C",
+      "source": {
+        "author": "SYNTHETIC",
+        "work": "G7 Contract Probes",
+        "document_id": "g7_synthetic_contracts",
+        "parent_id": "g7-synthetic:G7-C04",
+        "spine_index": 0,
+        "parent_start_offset": 0,
+        "parent_end_offset": 82,
+        "passage_start": 0,
+        "passage_end": 82
+      },
+      "gold_evidence_ids": [
+        "g7-synthetic:G7-C04:0:82"
+      ],
+      "exact_bounded_passage": "Marcus arrived at Nola from Capua. Earlier, Marcus had marched from Alba to Tibur.",
+      "query": "Reconstruct the order of Marcus's movements.",
+      "historical_subject": "Marcus",
+      "episode_label": "Retrospective reversal",
+      "subject_status": "MATCH",
+      "movement_polarity": "MIXED",
+      "gold_events": [
+        {
+          "actor": "Marcus",
+          "actor_status": "MATCH",
+          "movement_predicate": "arrived",
+          "polarity": "ASSERTED",
+          "origin": "Capua",
+          "destination": "Nola",
+          "provenance_evidence_id": "g7-synthetic:G7-C04:0:82"
+        },
+        {
+          "actor": "Marcus",
+          "actor_status": "MATCH",
+          "movement_predicate": "marched",
+          "polarity": "RETROSPECTIVE",
+          "origin": "Alba",
+          "destination": "Tibur",
+          "provenance_evidence_id": "g7-synthetic:G7-C04:0:82"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Capua",
+          "semantic_role": "ORIGIN",
+          "geographic_status": "EXACT"
+        },
+        {
+          "mention": "Nola",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "EXACT"
+        },
+        {
+          "mention": "Alba",
+          "semantic_role": "ORIGIN",
+          "geographic_status": "EXACT"
+        },
+        {
+          "mention": "Tibur",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "EXACT"
+        }
+      ],
+      "gold_relations": [
+        {
+          "earlier": "Capua",
+          "later": "Nola",
+          "type": "SAME_MOVEMENT_EVENT",
+          "provenance_evidence_ids": [
+            "g7-synthetic:G7-C04:0:82"
+          ]
+        },
+        {
+          "earlier": "Alba",
+          "later": "Tibur",
+          "type": "SAME_MOVEMENT_EVENT",
+          "provenance_evidence_ids": [
+            "g7-synthetic:G7-C04:0:82"
+          ]
+        },
+        {
+          "earlier": "Tibur",
+          "later": "Capua",
+          "type": "TEMPORAL_ORDER",
+          "provenance_evidence_ids": [
+            "g7-synthetic:G7-C04:0:82"
+          ]
+        }
+      ],
+      "expected_terminal_stage": "RELATION",
+      "expected_route_status": "PARTIAL_COMPONENTS",
+      "prohibited_claims": [
+        "DO_NOT_USE_SOURCE_ORDER_AS_CHRONOLOGY",
+        "DO_NOT_ADD_UNMENTIONED_WAYPOINTS"
+      ],
+      "annotation_risk": "LOW",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [],
+      "adjudication_notes": "Alba→Tibur temporally precedes Capua→Nola; disconnected components remain separate. Forbidden: sentence-order chronology or invented Tibur→Capua movement."
+    },
+    {
+      "case_id": "G7-C05",
+      "case_origin": "SYNTHETIC_CONTRACT",
+      "tier": "C",
+      "source": {
+        "author": "SYNTHETIC",
+        "work": "G7 Contract Probes",
+        "document_id": "g7_synthetic_contracts",
+        "parent_id": "g7-synthetic:G7-C05",
+        "spine_index": 0,
+        "parent_start_offset": 0,
+        "parent_end_offset": 51,
+        "passage_start": 0,
+        "passage_end": 51
+      },
+      "gold_evidence_ids": [
+        "g7-synthetic:G7-C05:0:51"
+      ],
+      "exact_bounded_passage": "Marcus departed from Rome. Lucius arrived at Capua.",
+      "query": "Trace Marcus from Rome to Capua.",
+      "historical_subject": "Marcus",
+      "episode_label": "Different actors",
+      "subject_status": "MATCH",
+      "movement_polarity": "ASSERTED",
+      "gold_events": [
+        {
+          "actor": "Marcus",
+          "actor_status": "MATCH",
+          "movement_predicate": "departed",
+          "polarity": "ASSERTED",
+          "origin": "Rome",
+          "destination": null,
+          "provenance_evidence_id": "g7-synthetic:G7-C05:0:51"
+        },
+        {
+          "actor": "Lucius",
+          "actor_status": "MATCH",
+          "movement_predicate": "arrived",
+          "polarity": "ASSERTED",
+          "origin": null,
+          "destination": "Capua",
+          "provenance_evidence_id": "g7-synthetic:G7-C05:0:51"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Rome",
+          "semantic_role": "ORIGIN",
+          "geographic_status": "EXACT"
+        },
+        {
+          "mention": "Capua",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "EXACT"
+        }
+      ],
+      "gold_relations": [],
+      "expected_terminal_stage": "EVENT",
+      "expected_route_status": "NONE",
+      "prohibited_claims": [
+        "DO_NOT_COMPOSE_DIFFERENT_ACTORS",
+        "DO_NOT_CROSS_EPISODE"
+      ],
+      "annotation_risk": "LOW",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [],
+      "adjudication_notes": "Marcus origin-only event; Lucius destination-only event; no route. Forbidden: Marcus Rome→Capua."
+    },
+    {
+      "case_id": "G7-C06",
+      "case_origin": "SYNTHETIC_CONTRACT",
+      "tier": "C",
+      "source": {
+        "author": "SYNTHETIC",
+        "work": "G7 Contract Probes",
+        "document_id": "g7_synthetic_contracts",
+        "parent_id": "g7-synthetic:G7-C06",
+        "spine_index": 0,
+        "parent_start_offset": 0,
+        "parent_end_offset": 68,
+        "passage_start": 0,
+        "passage_end": 68
+      },
+      "gold_evidence_ids": [
+        "g7-synthetic:G7-C06:0:68"
+      ],
+      "exact_bounded_passage": "Marcus planned to march from Rome to Capua, but he remained in Rome.",
+      "query": "Map Marcus's journey toward Capua.",
+      "historical_subject": "Marcus",
+      "episode_label": "Modal movement",
+      "subject_status": "MATCH",
+      "movement_polarity": "MIXED",
+      "gold_events": [
+        {
+          "actor": "Marcus",
+          "actor_status": "MATCH",
+          "movement_predicate": "planned to march",
+          "polarity": "HYPOTHETICAL",
+          "origin": "Rome",
+          "destination": "Capua",
+          "provenance_evidence_id": "g7-synthetic:G7-C06:0:68"
+        },
+        {
+          "actor": "Marcus",
+          "actor_status": "MATCH",
+          "movement_predicate": "remained",
+          "polarity": "ASSERTED",
+          "origin": "Rome",
+          "destination": null,
+          "provenance_evidence_id": "g7-synthetic:G7-C06:0:68"
+        }
+      ],
+      "endpoints": [
+        {
+          "mention": "Rome",
+          "semantic_role": "EVENT_SITE",
+          "geographic_status": "EXACT"
+        },
+        {
+          "mention": "Capua",
+          "semantic_role": "DESTINATION",
+          "geographic_status": "NON_POINT"
+        }
+      ],
+      "gold_relations": [],
+      "expected_terminal_stage": "EVENT",
+      "expected_route_status": "NONE",
+      "prohibited_claims": [
+        "DO_NOT_TREAT_MODAL_AS_ASSERTED",
+        "DO_NOT_ADD_UNMENTIONED_WAYPOINTS"
+      ],
+      "annotation_risk": "LOW",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [],
+      "adjudication_notes": "Hypothetical movement only; no positive route. Forbidden: asserted Rome→Capua or Capua waypoint."
+    },
+    {
+      "case_id": "G7-C07",
+      "case_origin": "SYNTHETIC_CONTRACT",
+      "tier": "C",
+      "source": {
+        "author": "SYNTHETIC",
+        "work": "G7 Contract Probes",
+        "document_id": "g7_synthetic_contracts",
+        "parent_id": "g7-synthetic:G7-C07",
+        "spine_index": 0,
+        "parent_start_offset": 0,
+        "parent_end_offset": 101,
+        "passage_start": 0,
+        "passage_end": 101
+      },
+      "gold_evidence_ids": [
+        "g7-synthetic:G7-C07:0:101"
+      ],
+      "exact_bounded_passage": "Marcus inspected grain stores at Ostia and discussed the repair of military roads with the engineers.",
+      "query": "Trace Marcus from Rome to Capua.",
+      "historical_subject": "Marcus",
+      "episode_label": "Query contamination",
+      "subject_status": "MATCH",
+      "movement_polarity": "ABSENT",
+      "gold_events": [],
+      "endpoints": [
+        {
+          "mention": "Ostia",
+          "semantic_role": "EVENT_SITE",
+          "geographic_status": "EXACT"
+        }
+      ],
+      "gold_relations": [],
+      "expected_terminal_stage": "EVIDENCE",
+      "expected_route_status": "NONE",
+      "prohibited_claims": [
+        "DO_NOT_CROSS_EPISODE",
+        "DO_NOT_ADD_UNMENTIONED_WAYPOINTS"
+      ],
+      "annotation_risk": "LOW",
+      "previously_optimized_exact_passage": false,
+      "duplicate_evidence_ids_excluded": [],
+      "adjudication_notes": "No movement event; Ostia may remain a related event site. Forbidden: Rome or Capua from query; Ostia as route endpoint."
+    }
+  ]
+}
