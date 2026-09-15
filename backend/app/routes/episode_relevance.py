@@ -13,6 +13,7 @@ from backend.app.routes.evidence_relevance import (
     classify_evidence_relevance,
     event_relevance,
     has_normalized_subject_overlap,
+    has_query_term_overlap,
     narrative_subject_proper_nouns,
     normalize_subject_name,
     normalized_query_person_identities,
@@ -577,6 +578,8 @@ def _explicit_query_subject_satisfied(combined: str, contexts: tuple[str, ...] |
     campaign_terms = _query_campaign_phrase_terms(contexts)
     query_persons = normalized_query_subject_terms(contexts) - campaign_terms - _SUBJECT_CONSTRAINT_NOISE
     query_persons -= _GENERIC_EPISODE_SUBJECTS
+    if _query_explicit_origin_destination(contexts) is not None:
+        query_persons -= _query_endpoint_scope_terms(contexts)
     if not query_persons:
         return True
     spatial = {_normalize_subject_name(name) for name in _spatial_role_proper_nouns(combined)}
@@ -1093,6 +1096,91 @@ def _query_has_episode_constraints(contexts: tuple[str, ...] | None) -> bool:
     return bool(_query_endpoint_scope_terms(contexts))
 
 
+def _statement_asserts_endpoint_movement(statement: str) -> bool:
+    text = statement.strip()
+    if not text:
+        return False
+    return bool(
+        re.search(r"\b(?:from|having sailed from)\b", text, re.IGNORECASE)
+        and re.search(r"\b(?:to|into|came to)\b", text, re.IGNORECASE)
+        and re.search(
+            r"\b(?:sail(?:ed|ing)?|marched|went|came|travel(?:led|ed|ing)?|crossed|departed|having sailed)\b",
+            text,
+            re.IGNORECASE,
+        )
+    )
+
+
+def _query_endpoint_statement_compatible(
+    probe: _MovementEpisodeProbe,
+    statement: str,
+    contexts: tuple[str, ...] | None,
+) -> bool:
+    pair = _query_explicit_origin_destination(contexts)
+    if pair is None or not (probe.source_place and probe.destination_place):
+        return False
+    query_origin, query_dest = pair
+    statement_tokens = normalized_terms(statement)
+    query_origin_tokens = _endpoint_place_tokens(query_origin)
+    query_dest_tokens = _endpoint_place_tokens(query_dest)
+    if not (query_origin_tokens & statement_tokens and query_dest_tokens & statement_tokens):
+        return False
+    if not (_endpoint_place_tokens(probe.destination_place) & query_dest_tokens):
+        return False
+    if _endpoint_place_tokens(probe.source_place) & query_origin_tokens:
+        return True
+    return bool(query_origin_tokens & statement_tokens)
+
+
+def _same_movement_direct_subject_authority(
+    statement: str,
+    contexts: tuple[str, ...] | None,
+    *,
+    subject_relevance: EvidenceRelevance | None,
+) -> bool:
+    local = statement.strip()
+    if not local or not contexts:
+        return False
+    if subject_relevance is EvidenceRelevance.OTHER_CAMPAIGN:
+        return False
+    if subject_relevance is EvidenceRelevance.DIRECT_SUBJECT:
+        return True
+    if _query_explicit_origin_destination(contexts) and has_query_term_overlap(local, contexts):
+        return not _other_campaign_subject_conflict(local, contexts)
+    return False
+
+
+def _direct_same_movement_subject_episode_admission(
+    probe: _MovementEpisodeProbe,
+    statement: str,
+    contexts: tuple[str, ...] | None,
+    *,
+    subject_relevance: EvidenceRelevance | None,
+    window: str | None = None,
+) -> bool:
+    local = statement.strip()
+    if not local or not contexts or not (probe.source_place and probe.destination_place):
+        return False
+    if not _same_movement_direct_subject_authority(local, contexts, subject_relevance=subject_relevance):
+        return False
+    if person_identities_conflict(local, contexts):
+        return False
+    if _explicit_temporal_contradiction(local, contexts, window):
+        return False
+    if _episode_framing_conflict(local, contexts):
+        return False
+    if not _query_endpoint_statement_compatible(probe, local, contexts):
+        return False
+    residual_subjects = (
+        normalized_query_subject_terms(contexts)
+        - _query_endpoint_scope_terms(contexts)
+        - _GENERIC_EPISODE_SUBJECTS
+    )
+    if residual_subjects and not _explicit_query_subject_satisfied(local, contexts):
+        return False
+    return _statement_asserts_endpoint_movement(local)
+
+
 def _classify_movement_episode(
     probe: _MovementEpisodeProbe,
     evidence_by_id: dict[str, Evidence],
@@ -1114,7 +1202,12 @@ def _classify_movement_episode(
         for ref in probe.supporting_evidence_ids
         if ref in evidence_by_id
     )
-    if _other_campaign_subject_conflict(local or chunk, contexts):
+    conflict_text = (
+        statement.strip()
+        if _statement_asserts_endpoint_movement(statement)
+        else (local or chunk)
+    )
+    if _other_campaign_subject_conflict(conflict_text, contexts):
         tag = EvidenceRelevance.OTHER_CAMPAIGN
     elif subject_relevance is not None:
         tag = subject_relevance
@@ -1180,6 +1273,17 @@ def _classify_movement_episode(
     ):
         episode = EpisodeRelevance.DIRECT_QUERY_EPISODE
     admitted = episode_route_admission_allowed(episode)
+    same_movement_admit = _direct_same_movement_subject_episode_admission(
+        probe,
+        statement,
+        contexts,
+        subject_relevance=(
+            EvidenceRelevance.DIRECT_SUBJECT
+            if tag is EvidenceRelevance.OTHER_CAMPAIGN
+            else tag
+        ),
+        window=window,
+    )
     endpoint_contradiction = _movement_contradicts_query_endpoints(
         probe.source_place,
         probe.destination_place,
@@ -1192,6 +1296,8 @@ def _classify_movement_episode(
     ) == "disjoint" and _proven_query_chain_member(
         probe.source_place, probe.destination_place, statement, chain_window, contexts,
     ):
+        endpoint_contradiction = False
+    if endpoint_contradiction and same_movement_admit:
         endpoint_contradiction = False
     if endpoint_contradiction:
         episode = EpisodeRelevance.UNKNOWN
@@ -1208,7 +1314,9 @@ def _classify_movement_episode(
         if not explicit_od:
             admitted = False
         elif tag is EvidenceRelevance.DIRECT_SUBJECT:
-            if _query_has_episode_constraints(contexts):
+            if same_movement_admit:
+                admitted = True
+            elif _query_has_episode_constraints(contexts):
                 admitted = False
             elif not _episode_subject_overlap(local, contexts):
                 admitted = False

@@ -508,6 +508,34 @@ def relation_admission_allowed(
     final = classify_relation_relevance(
         relation, events_by_id, evidence_by_id, contexts, rule=rule,
     )
+    from backend.app.routes.episode_relevance import (
+        _other_campaign_subject_conflict,
+        classify_event_anchor_episode,
+    )
+
+    episode, detail = classify_event_anchor_episode(
+        relation, events_by_id, evidence_by_id, contexts, subject_relevance=final,
+    )
+    if detail.get("admitted"):
+        return True
+    if rule.value == "SAME_MOVEMENT_EVENT" and final is EvidenceRelevance.OTHER_CAMPAIGN:
+        for event_id in relation.event_ids:
+            event = events_by_id.get(event_id)
+            if event is None:
+                continue
+            statement = next((item for item in relation_supporting_statements(event) if item.strip()), "")
+            if not statement or _other_campaign_subject_conflict(statement, contexts):
+                break
+            _, retry_detail = classify_event_anchor_episode(
+                relation,
+                events_by_id,
+                evidence_by_id,
+                contexts,
+                subject_relevance=EvidenceRelevance.DIRECT_SUBJECT,
+            )
+            if retry_detail.get("admitted"):
+                return True
+            break
     if final is EvidenceRelevance.OTHER_CAMPAIGN:
         return False
     if rule.value == "SAME_MOVEMENT_EVENT":
@@ -520,11 +548,6 @@ def relation_admission_allowed(
         evidence_allowed = True
     if not evidence_allowed:
         return False
-    from backend.app.routes.episode_relevance import classify_event_anchor_episode
-
-    episode, detail = classify_event_anchor_episode(
-        relation, events_by_id, evidence_by_id, contexts, subject_relevance=final,
-    )
     return bool(detail["admitted"])
 
 
