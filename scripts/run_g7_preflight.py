@@ -1,4 +1,4 @@
-"""G7 pre-flight: run mandatory tests with a fresh repo-local pytest basetemp."""
+"""G7 pre-flight: run mandatory tests with a verified writable pytest basetemp."""
 from __future__ import annotations
 
 import importlib.util
@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BASETMP_ROOT = ROOT / ".pytest_tmp"
+REPO_FALLBACK_TMP_ROOT = ROOT / ".pytest_tmp"
 PREFLIGHT_TESTS = (
     "backend/tests/test_g7_broad_fixture_contract.py",
     "backend/tests/test_g7c_broad_full_chain_trace_harness.py",
@@ -18,9 +18,68 @@ PREFLIGHT_TESTS = (
 G7C_SCRIPT = ROOT / "scripts" / "g7c_broad_full_chain_trace.py"
 
 
-def make_fresh_basetemp() -> Path:
+class PreflightTempRootError(RuntimeError):
+    pass
+
+
+def candidate_temp_roots() -> list[Path]:
+    candidates: list[Path] = []
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        candidates.append(Path(local_app_data) / "Temp" / "historical-gis-g7")
+    temp_dir = os.environ.get("TEMP") or os.environ.get("TMP")
+    if temp_dir:
+        candidates.append(Path(temp_dir) / "historical-gis-g7")
+    candidates.extend([Path(r"C:\D\python\_g7_runtime_tmp"), REPO_FALLBACK_TMP_ROOT])
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return unique
+
+
+def _probe_temp_root(path: Path) -> tuple[bool, str]:
+    probe_dir = path / f".probe-{uuid.uuid4().hex}"
+    probe_file = probe_dir / "probe.txt"
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe_dir.mkdir()
+        probe_file.write_text("ok", encoding="utf-8")
+        if probe_file.read_text(encoding="utf-8") != "ok":
+            return False, "probe read mismatch"
+        probe_file.unlink()
+        probe_dir.rmdir()
+        return True, "ok"
+    except OSError as error:
+        return False, str(error)
+    finally:
+        if probe_file.exists():
+            probe_file.unlink(missing_ok=True)
+        if probe_dir.exists():
+            probe_dir.rmdir()
+
+
+def select_writable_temp_root() -> Path:
+    failures: list[tuple[Path, str]] = []
+    for candidate in candidate_temp_roots():
+        usable, reason = _probe_temp_root(candidate)
+        if usable:
+            print(f"G7 pre-flight temp root: {candidate}")
+            return candidate
+        failures.append((candidate, reason))
+    lines = ["G7_PREFLIGHT_NO_WRITABLE_TEMP_ROOT"]
+    lines.extend(f"  {candidate}: {reason}" for candidate, reason in failures)
+    raise PreflightTempRootError("\n".join(lines))
+
+
+def make_fresh_basetemp(root: Path | None = None) -> Path:
+    base = root or select_writable_temp_root()
     run_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}"
-    path = BASETMP_ROOT / f"run-{run_id}"
+    path = base / f"run-{run_id}"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -47,7 +106,8 @@ def verify_offline_embedding_preflight() -> dict:
 
 
 def run_preflight() -> int:
-    basetemp = make_fresh_basetemp()
+    root = select_writable_temp_root()
+    basetemp = make_fresh_basetemp(root)
     env = os.environ.copy()
     env.setdefault("PYTHONPATH", str(ROOT))
     cmd = [
