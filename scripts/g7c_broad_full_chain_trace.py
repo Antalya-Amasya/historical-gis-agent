@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +29,13 @@ FIXTURE_PATH = ROOT / "backend" / "tests" / "fixtures" / "g7_broad_full_chain_ev
 TRACE_PATH = ROOT / "outputs" / "g7c_case_traces.json"
 SUMMARY_PATH = ROOT / "outputs" / "g7c_summary.json"
 
+REQUIRED_SNAPSHOT_FILES = (
+    "config.json",
+    "modules.json",
+    ("model.safetensors", "pytorch_model.bin"),
+    ("sentence_bert_config.json", "config_sentence_transformers.json"),
+)
+
 PROHIBITED_CHECKS = (
     "DO_NOT_INFER_ORIGIN",
     "DO_NOT_INFER_DESTINATION",
@@ -40,6 +49,169 @@ PROHIBITED_CHECKS = (
     "DO_NOT_PRESENT_RECONSTRUCTED_GIS_AS_ATTESTED_MOVEMENT",
     "DO_NOT_ADD_UNMENTIONED_WAYPOINTS",
 )
+
+
+class OfflineEmbeddingError(RuntimeError):
+    def __init__(
+        self,
+        code: str,
+        *,
+        model_name: str,
+        expected_cache: str,
+        cache_candidates: list[str],
+        missing_requirement: str,
+    ) -> None:
+        self.code = code
+        self.model_name = model_name
+        self.expected_cache = expected_cache
+        self.cache_candidates = cache_candidates
+        self.missing_requirement = missing_requirement
+        payload = {
+            "error": code,
+            "model_name": model_name,
+            "expected_cache": expected_cache,
+            "cache_candidates": cache_candidates,
+            "missing_requirement": missing_requirement,
+        }
+        super().__init__(json.dumps(payload, indent=2))
+
+
+def enforce_offline_env() -> None:
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+
+
+def huggingface_hub_cache_root() -> Path:
+    for key in ("HUGGINGFACE_HUB_CACHE",):
+        value = os.environ.get(key)
+        if value:
+            return Path(value)
+    hf_home = os.environ.get("HF_HOME")
+    if hf_home:
+        return Path(hf_home) / "hub"
+    return Path.home() / ".cache" / "huggingface" / "hub"
+
+
+def model_cache_dir(model_name: str) -> Path:
+    return huggingface_hub_cache_root() / f"models--{model_name.replace('/', '--')}"
+
+
+def snapshot_is_complete(snapshot: Path) -> tuple[bool, str | None]:
+    for requirement in REQUIRED_SNAPSHOT_FILES:
+        if isinstance(requirement, tuple):
+            if not any((snapshot / name).exists() for name in requirement):
+                return False, f"missing one of: {', '.join(requirement)}"
+            continue
+        if not (snapshot / requirement).exists():
+            return False, f"missing {requirement}"
+    return True, None
+
+
+def resolve_local_embedding_snapshot(model_name: str) -> Path:
+    cache_dir = model_cache_dir(model_name)
+    snapshots_dir = cache_dir / "snapshots"
+    candidates: list[Path] = []
+    missing_notes: list[str] = []
+    if snapshots_dir.exists():
+        for snapshot in snapshots_dir.iterdir():
+            if not snapshot.is_dir():
+                continue
+            complete, missing = snapshot_is_complete(snapshot)
+            if complete:
+                candidates.append(snapshot)
+            else:
+                missing_notes.append(f"{snapshot.name}: {missing}")
+    refs_main = cache_dir / "refs" / "main"
+    if refs_main.exists():
+        revision = refs_main.read_text(encoding="utf-8").strip()
+        resolved = snapshots_dir / revision
+        complete, missing = snapshot_is_complete(resolved)
+        if complete:
+            return resolved
+        missing_notes.append(f"refs/main@{revision}: {missing}")
+    if candidates:
+        return max(candidates, key=lambda path: path.stat().st_mtime)
+    raise OfflineEmbeddingError(
+        "LOCAL_MODEL_CACHE_INCOMPLETE",
+        model_name=model_name,
+        expected_cache=str(cache_dir),
+        cache_candidates=[str(path) for path in candidates],
+        missing_requirement="; ".join(missing_notes) or f"no complete snapshot under {snapshots_dir}",
+    )
+
+
+def build_offline_embedding_provider(model_name: str, device: str, batch_size: int):
+    from backend.app.rag.embeddings.provider import SentenceTransformerEmbeddingProvider
+
+    enforce_offline_env()
+    local_path = resolve_local_embedding_snapshot(model_name)
+    provider = SentenceTransformerEmbeddingProvider(str(local_path), device, batch_size)
+    return provider, local_path
+
+
+def verify_offline_embedding_ready(model_name: str, device: str, batch_size: int) -> dict:
+    try:
+        provider, local_path = build_offline_embedding_provider(model_name, device, batch_size)
+    except OfflineEmbeddingError as error:
+        raise OfflineEmbeddingError(
+            "OFFLINE_EMBEDDING_UNAVAILABLE",
+            model_name=error.model_name,
+            expected_cache=error.expected_cache,
+            cache_candidates=error.cache_candidates,
+            missing_requirement=error.missing_requirement,
+        ) from error
+    except Exception as error:
+        raise OfflineEmbeddingError(
+            "OFFLINE_EMBEDDING_UNAVAILABLE",
+            model_name=model_name,
+            expected_cache=str(model_cache_dir(model_name)),
+            cache_candidates=[],
+            missing_requirement=str(error),
+        ) from error
+    vectors = provider.embed(["offline preflight probe"])
+    if not vectors or not vectors[0]:
+        raise OfflineEmbeddingError(
+            "OFFLINE_EMBEDDING_UNAVAILABLE",
+            model_name=model_name,
+            expected_cache=str(model_cache_dir(model_name)),
+            cache_candidates=[str(local_path)],
+            missing_requirement="tiny embedding call returned no vector",
+        )
+    return {
+        "model_name": model_name,
+        "local_path": str(local_path),
+        "dimensions": len(vectors[0]),
+    }
+
+
+def load_existing_summary() -> dict | None:
+    if not SUMMARY_PATH.exists():
+        return None
+    try:
+        return json.loads(SUMMARY_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+def output_is_current(current_head: str) -> bool:
+    existing = load_existing_summary()
+    if existing is None:
+        return False
+    return existing.get("head") == current_head and existing.get("stale") is not True
+
+
+def check_stale_outputs(current_head: str) -> dict:
+    existing = load_existing_summary()
+    if existing is None:
+        return {"stale": False, "accepted_as_current": False}
+    output_head = existing.get("head")
+    stale = output_head != current_head or existing.get("stale") is True
+    return {
+        "stale": stale,
+        "accepted_as_current": not stale,
+        "output_head": output_head,
+        "current_head": current_head,
+    }
 
 
 class OfflineGeography:
@@ -72,12 +244,11 @@ def build_retriever():
     import chromadb
 
     from backend.app.core.config import settings
-    from backend.app.rag.embeddings.provider import SentenceTransformerEmbeddingProvider
-    from backend.app.rag.http_store import ChromaHttpEvidenceStore, build_production_retriever
+    from backend.app.rag.http_store import ChromaHttpEvidenceStore
     from backend.app.rag.query_bridge import HistoricalQueryBridge
     from backend.app.rag.retriever import ChromaHistoricalRetriever
 
-    provider = SentenceTransformerEmbeddingProvider(
+    provider, local_path = build_offline_embedding_provider(
         settings.rag_embedding_model,
         settings.rag_embedding_device,
         settings.rag_embedding_batch_size,
@@ -97,10 +268,14 @@ def build_retriever():
                     HistoricalQueryBridge(settings.rag_query_bridge_enabled),
                 )
                 retriever.retrieve("Rome", 1)
-                return retriever
-    retriever = build_production_retriever(settings)
-    retriever.retrieve("Rome", 1)
-    return retriever
+                return retriever, str(local_path)
+    raise OfflineEmbeddingError(
+        "OFFLINE_EMBEDDING_UNAVAILABLE",
+        model_name=settings.rag_embedding_model,
+        expected_cache=str(model_cache_dir(settings.rag_embedding_model)),
+        cache_candidates=[str(local_path)],
+        missing_requirement="local Chroma collection unavailable for offline retrieval",
+    )
 
 
 def build_synthetic_evidence(case: dict) -> Evidence:
@@ -543,14 +718,41 @@ def main() -> int:
     if not cases_to_run:
         raise SystemExit("No cases selected")
 
-    retriever = (
-        EmptyHistoricalRetriever()
-        if all(case["case_origin"] == "SYNTHETIC_CONTRACT" for case in cases_to_run)
-        else build_retriever()
-    )
+    current_head = git_head()
+    stale_info = check_stale_outputs(current_head)
+    if stale_info.get("stale"):
+        print(
+            f"Stale outputs detected: summary head={stale_info.get('output_head')} "
+            f"!= current {current_head}; will overwrite after successful run"
+        )
+
+    needs_real_retrieval = any(case["case_origin"] == "REAL_CORPUS" for case in cases_to_run)
+    offline_preflight = None
+    if needs_real_retrieval:
+        from backend.app.core.config import settings
+
+        offline_preflight = verify_offline_embedding_ready(
+            settings.rag_embedding_model,
+            settings.rag_embedding_device,
+            settings.rag_embedding_batch_size,
+        )
+
+    retriever = EmptyHistoricalRetriever()
+    embedding_local_path = None
+    if needs_real_retrieval:
+        retriever, embedding_local_path = build_retriever()
     tools = AgentToolRegistry(retriever, OfflineGeography())
     traces = [run_case(case, tools, retriever) for case in cases_to_run]
-    summary = {"head": git_head(), "case_count": len(traces), "metrics": aggregate_metrics(traces), "first_divergence": {}}
+    summary = {
+        "head": current_head,
+        "run_id": datetime.now(timezone.utc).isoformat(),
+        "case_count": len(traces),
+        "stale": False,
+        "offline_preflight": offline_preflight,
+        "embedding_local_path": embedding_local_path,
+        "metrics": aggregate_metrics(traces),
+        "first_divergence": {},
+    }
     for trace in traces:
         key = trace["diagnostics"]["first_divergence"]
         summary["first_divergence"][key] = summary["first_divergence"].get(key, 0) + 1
