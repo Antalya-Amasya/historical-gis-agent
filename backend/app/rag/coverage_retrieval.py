@@ -39,6 +39,13 @@ def _proposal_source_key(item: Evidence) -> str:
     return str(item.metadata.get("source_chunk_id") or item.id.split(":", 1)[0])
 
 
+def _coverage_family_key(item: Evidence) -> str:
+    metadata = item.metadata or {}
+    if metadata.get("parent_id"):
+        return str(metadata["parent_id"])
+    return _proposal_source_key(item)
+
+
 def _qualifies_lexical_proposal(item: Evidence) -> bool:
     if not item.metadata.get("lexical_candidate"):
         return False
@@ -354,13 +361,32 @@ def merge_coverage_results(
             if add(item, intent, rank=rank, reason="intent_coverage_slot"):
                 break
 
-    for item in ranked:
-        if len(selected) >= budget:
-            break
+    global_fill_families: set[str] = set()
+
+    def _try_global_fill(item: Evidence) -> None:
+        if len(selected) >= budget or item.id in selected_ids:
+            return
         matched = channels_by_id[item.id]
         preferred = next((entry for entry in matched if entry["kind"] == "CANONICAL"), matched[0])
         intent = intent_by_key[(str(preferred["kind"]), str(preferred["query"]))]
-        add(item, intent, rank=global_rank.get(item.id, 999), reason="global_rank_fill")
+        if add(item, intent, rank=global_rank.get(item.id, 999), reason="global_rank_fill"):
+            global_fill_families.add(_coverage_family_key(item))
+
+    for item in ranked:
+        if len(selected) >= budget:
+            break
+        if item.id in selected_ids:
+            continue
+        if _coverage_family_key(item) in global_fill_families:
+            continue
+        _try_global_fill(item)
+
+    for item in ranked:
+        if len(selected) >= budget:
+            break
+        if item.id in selected_ids:
+            continue
+        _try_global_fill(item)
 
     return selected[:budget]
 
