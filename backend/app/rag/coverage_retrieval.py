@@ -93,6 +93,130 @@ def _lexical_proposal_key(item: Evidence) -> tuple[float, float, float, str]:
     )
 
 
+def _canonical_proposal_rank_key(item: Evidence) -> tuple[int, str]:
+    return (int(item.metadata.get("rank") or 999), item.id)
+
+
+def _qualifies_proposal(item: Evidence) -> bool:
+    return _qualifies_lexical_proposal(item) or _qualifies_semantic_proposal(item)
+
+
+def _preserve_qualified_proposal_families(
+    ranked: list[Evidence],
+    selected: list[Evidence],
+    selected_ids: set[str],
+    observation_k: int,
+    *,
+    predicate,
+    preserved_ids: set[str] | None = None,
+) -> None:
+    def add(item: Evidence) -> None:
+        if item.id in selected_ids:
+            return
+        selected_ids.add(item.id)
+        selected.append(item)
+        if preserved_ids is not None:
+            preserved_ids.add(item.id)
+
+    remaining = [item for item in ranked if item.id not in selected_ids and predicate(item)]
+    preserved_families: set[str] = set()
+    for item in sorted(remaining, key=_canonical_proposal_rank_key):
+        if len(selected) >= observation_k:
+            break
+        family = _coverage_family_key(item)
+        if family in preserved_families:
+            continue
+        add(item)
+        preserved_families.add(family)
+
+
+def _preserve_qualified_proposal_repeats(
+    ranked: list[Evidence],
+    selected: list[Evidence],
+    selected_ids: set[str],
+    observation_k: int,
+    *,
+    predicate,
+    preserved_ids: set[str] | None = None,
+) -> None:
+    def add(item: Evidence) -> None:
+        if item.id in selected_ids:
+            return
+        selected_ids.add(item.id)
+        selected.append(item)
+        if preserved_ids is not None:
+            preserved_ids.add(item.id)
+
+    remaining = [item for item in ranked if item.id not in selected_ids and predicate(item)]
+    for item in sorted(remaining, key=_canonical_proposal_rank_key):
+        if len(selected) >= observation_k:
+            break
+        add(item)
+
+
+def _preserve_qualified_proposals(
+    ranked: list[Evidence],
+    selected: list[Evidence],
+    selected_ids: set[str],
+    observation_k: int,
+    *,
+    predicate,
+) -> None:
+    _preserve_qualified_proposal_families(
+        ranked, selected, selected_ids, observation_k, predicate=predicate
+    )
+    _preserve_qualified_proposal_repeats(
+        ranked, selected, selected_ids, observation_k, predicate=predicate
+    )
+
+
+def _promote_qualified_by_rank(
+    ranked: list[Evidence],
+    selected: list[Evidence],
+    selected_ids: set[str],
+    *,
+    protected_ids: set[str] | None = None,
+    preserved_ids: set[str] | None = None,
+    observation_k: int,
+) -> None:
+    protected = protected_ids or set()
+    preserved = preserved_ids or set()
+    missing = sorted(
+        (item for item in ranked if _qualifies_proposal(item) and item.id not in selected_ids),
+        key=_canonical_proposal_rank_key,
+    )
+    for item in missing:
+        if item.id in selected_ids:
+            continue
+        if len(selected) < observation_k:
+            selected_ids.add(item.id)
+            selected.append(item)
+            continue
+        removable = [
+            selected_item
+            for selected_item in selected
+            if selected_item.id not in protected
+            and not _qualifies_proposal(selected_item)
+            and _canonical_proposal_rank_key(selected_item) > _canonical_proposal_rank_key(item)
+        ]
+        if not removable:
+            removable = [
+                selected_item
+                for selected_item in selected
+                if selected_item.id not in protected
+                and selected_item.id not in preserved
+                and _qualifies_proposal(selected_item)
+                and _canonical_proposal_rank_key(selected_item) > _canonical_proposal_rank_key(item)
+            ]
+        if not removable:
+            continue
+        worst = max(removable, key=_canonical_proposal_rank_key)
+        selected_ids.discard(worst.id)
+        selected.remove(worst)
+        selected_ids.add(item.id)
+        selected.append(item)
+
+
 def select_qualified_local_proposals(ranked: list[Evidence], observation_k: int) -> list[Evidence]:
     """Preserve bounded lexical-direct and semantic-derived diversity before proposal cutoff."""
     if observation_k < 1 or not ranked:
@@ -102,8 +226,12 @@ def select_qualified_local_proposals(ranked: list[Evidence], observation_k: int)
 
     lexical_budget = max(6, min(20, observation_k // 3))
     semantic_family_budget = max(8, min(30, observation_k // 2))
+    promotion_reserve = max(4, min(8, observation_k // 8))
+    composition_cap = observation_k - promotion_reserve
     selected: list[Evidence] = []
     selected_ids: set[str] = set()
+    protected_ids: set[str] = set()
+    preserved_ids: set[str] = set()
 
     def add(item: Evidence) -> None:
         if item.id in selected_ids:
@@ -116,6 +244,7 @@ def select_qualified_local_proposals(ranked: list[Evidence], observation_k: int)
         key=_lexical_proposal_key,
     )[:lexical_budget]:
         add(item)
+        protected_ids.add(item.id)
 
     semantic_by_source: dict[str, list[Evidence]] = defaultdict(list)
     for item in ranked:
@@ -123,16 +252,79 @@ def select_qualified_local_proposals(ranked: list[Evidence], observation_k: int)
             semantic_by_source[_proposal_source_key(item)].append(item)
 
     family_representatives = sorted(
-        (sorted(items, key=_semantic_proposal_key)[0] for items in semantic_by_source.values()),
-        key=_semantic_proposal_key,
+        (
+            min(items, key=_canonical_proposal_rank_key)
+            for items in semantic_by_source.values()
+        ),
+        key=_canonical_proposal_rank_key,
     )
+    represented_families = {_coverage_family_key(item) for item in selected}
     for item in family_representatives[:semantic_family_budget]:
+        if _coverage_family_key(item) in represented_families:
+            continue
         add(item)
+        represented_families.add(_coverage_family_key(item))
+        protected_ids.add(item.id)
+
+    _preserve_qualified_proposal_families(
+        ranked,
+        selected,
+        selected_ids,
+        composition_cap,
+        predicate=_qualifies_lexical_proposal,
+        preserved_ids=preserved_ids,
+    )
+    _preserve_qualified_proposal_families(
+        ranked,
+        selected,
+        selected_ids,
+        composition_cap,
+        predicate=_qualifies_semantic_proposal,
+        preserved_ids=preserved_ids,
+    )
+    _preserve_qualified_proposal_repeats(
+        ranked,
+        selected,
+        selected_ids,
+        composition_cap,
+        predicate=_qualifies_semantic_proposal,
+        preserved_ids=preserved_ids,
+    )
+    _preserve_qualified_proposal_repeats(
+        ranked,
+        selected,
+        selected_ids,
+        composition_cap,
+        predicate=_qualifies_lexical_proposal,
+        preserved_ids=preserved_ids,
+    )
+
+    for item in ranked:
+        if len(selected) >= composition_cap:
+            break
+        if item.id in selected_ids or _qualifies_proposal(item):
+            continue
+        if item.id in selected_ids:
+            continue
+        selected_ids.add(item.id)
+        selected.append(item)
+
+    _promote_qualified_by_rank(
+        ranked,
+        selected,
+        selected_ids,
+        protected_ids=protected_ids,
+        preserved_ids=preserved_ids,
+        observation_k=observation_k,
+    )
 
     for item in ranked:
         if len(selected) >= observation_k:
             break
-        add(item)
+        if item.id in selected_ids or _qualifies_proposal(item):
+            continue
+        selected_ids.add(item.id)
+        selected.append(item)
 
     return selected[:observation_k]
 
