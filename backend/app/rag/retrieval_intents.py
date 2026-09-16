@@ -42,6 +42,15 @@ _EPISODE_LOCATION_EXCLUDE = frozenset({
     "mithridatic", "campaign", "indian",
 })
 _ROMAN_NUMERAL = re.compile(r"^v+i{0,3}$", re.IGNORECASE)
+_CONTEXT_SCAFFOLD = frozenset({"against", "while", "from", "after", "during", "trace", "follow", "show", "route", "routes"})
+_PERSON_NAME = r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)?)"
+_CONTEXT_PATTERNS = (
+    re.compile(rf"\b(?:[Tt]race\s+(?:the\s+)?route\s+of|[Rr]oute\s+of)\s+{_PERSON_NAME}\b"),
+    re.compile(rf"\b(?i:movements|movement)\s+of\s+{_PERSON_NAME}\b"),
+    re.compile(rf"\b[Tt]race\s+{_PERSON_NAME}\b"),
+    re.compile(rf"\b[Ff]ollow\s+{_PERSON_NAME}\b"),
+    re.compile(rf"\b[Ss]how\s+{_PERSON_NAME}\b"),
+)
 _MULTIWORD_SUBJECT = re.compile(
     r"\b(?:the\s+)?((?:Ten|Three|Five|Six|Seven|Eight|Nine)\s+Thousand)\b",
     re.IGNORECASE,
@@ -83,6 +92,30 @@ def primary_route_subject(query: str, roles: QueryRoleAnalysis | None = None) ->
     return None
 
 
+def _context_person(name: str) -> str:
+    tokens: list[str] = []
+    for token in name.split():
+        folded = token.casefold()
+        if folded in _CONTEXT_SCAFFOLD or _ROMAN_NUMERAL.match(folded):
+            continue
+        tokens.append(token.title() if folded == token else token)
+    if not tokens or tokens[0].casefold() in _CONTEXT_SCAFFOLD:
+        return ""
+    return " ".join(tokens[:3])
+
+
+def _grammar_person_context(query: str) -> str:
+    clauses = [part.strip() for part in re.split(r";\s*", query) if part.strip()] or [query.strip()]
+    for clause in reversed(clauses):
+        for pattern in _CONTEXT_PATTERNS:
+            match = pattern.search(clause)
+            if match:
+                person = _context_person(match.group(1))
+                if person:
+                    return person
+    return ""
+
+
 def _retrieval_person_context(query: str, roles: QueryRoleAnalysis, primary: str | None) -> str:
     """Non-authoritative person prefix for EPISODE/MOVEMENT/ENDPOINT retrieval only."""
     if primary:
@@ -90,15 +123,7 @@ def _retrieval_person_context(query: str, roles: QueryRoleAnalysis, primary: str
     multi = _MULTIWORD_SUBJECT.search(query)
     if multi:
         return multi.group(1)
-    location_folded = {term.casefold() for term in roles.location_terms}
-    excluded = _SUBJECT_SCAFFOLD | location_folded | _EPISODE_LOCATION_EXCLUDE | set(roles.action_terms)
-    for name in roles.person_sequence:
-        token = name.strip()
-        folded = token.casefold()
-        if not token or folded in excluded or _ROMAN_NUMERAL.match(folded):
-            continue
-        return token.title() if folded == token else token
-    return ""
+    return _grammar_person_context(query)
 
 
 def _subject_phrase(query: str, roles: QueryRoleAnalysis) -> str:
