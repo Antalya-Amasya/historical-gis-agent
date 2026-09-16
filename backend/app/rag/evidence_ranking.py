@@ -48,13 +48,19 @@ _ROUTE_OR_MOVEMENT_QUERY = re.compile(
     re.IGNORECASE,
 )
 _MOVEMENT_STATEMENT = re.compile(
-    r"\b(?:march(?:ed|ing)?|moved|advance(?:d|ment)?|cross(?:ed|ing)?|arriv(?:ed|ing)|depart(?:ed|ing)?|left|entered|passed|proceeded|travel(?:led|ed|ing)?)\b",
+    r"\b(?:march(?:ed|ing|es)?|moved|advance(?:d|ment)?|cross(?:ed|ing)?|"
+    r"arriv(?:ed|ing)|depart(?:ed|ing)?|left|entered|passed|proceeded|"
+    r"travel(?:led|ed|ing)?|sail(?:ed|ing|s)?|flee|fled|fleeing|fly|flew|"
+    r"land(?:ed|ing|s)?|steer(?:ed|ing|s)?|embark(?:ed|ing)?|"
+    r"withdraw|withdrew|retreat(?:ed|ing)?)\b",
     re.IGNORECASE,
 )
 _MOVEMENT_PAIR_STATEMENT = re.compile(
     r"\b(?:march(?:ed|es|ing)?|moved|advance(?:d|ment)?|cross(?:ed|ing)?|"
     r"arriv(?:ed|ing)|depart(?:ed|ing)?|left|entered|passed|proceeded|"
-    r"travel(?:led|ed|ing)?)\b(?!\s+(?:was|is|were|has|had)\b)"
+    r"travel(?:led|ed|ing)?|sail(?:ed|ing|s)?|flee|fled|fleeing|fly|flew|"
+    r"land(?:ed|ing|s)?|steer(?:ed|ing|s)?|embark(?:ed|ing)?|"
+    r"withdraw|withdrew|retreat(?:ed|ing)?)\b(?!\s+(?:was|is|were|has|had)\b)"
     r"[^,;.!?]{0,50}\bfrom\b[^,;.!?]{1,80}"
     r"\b(?:to|into|toward(?:s)?)\b",
     re.IGNORECASE,
