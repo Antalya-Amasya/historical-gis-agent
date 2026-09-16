@@ -128,16 +128,74 @@ export function panelForFeature(payload: HistoricalRoutePresentationPayload, fea
 }
 
 
+export type RouteResultStatus = "FULL_ROUTE" | "PARTIAL" | "NO_ROUTE" | "ERROR";
+
+export type AgentHistoricalEvidence = {
+  id: string;
+  author: string;
+  work: string;
+  locator: string;
+  excerpt?: string | null;
+  text?: string | null;
+};
+
+export type AgentHistoricalRouteSnapshot = {
+  ordered_points?: Array<{
+    historical_place: { canonical_name: string };
+    evidence_refs?: string[];
+    event_summary?: string | null;
+  }>;
+  route_components?: Array<{
+    component_id: string;
+    ordered_points: Array<{ historical_place: { canonical_name: string } }>;
+  }>;
+  limitations?: string[];
+};
+
 export type AgentRouteChatResponse = {
   reply: string;
-  state: { route_intent?: { intent: string; campaign_id: string } | null; historical_route_presentation?: HistoricalRoutePresentationPayload | null; historical_route_diagnostics?: { route_source?: string } | null; };
+  route_result_status: RouteResultStatus | null;
+  state: {
+    route_intent?: { intent: string; campaign_id: string } | null;
+    historical_route_presentation?: HistoricalRoutePresentationPayload | null;
+    historical_route_diagnostics?: { route_source?: string; reason_codes?: string[] } | null;
+    historical_route?: AgentHistoricalRouteSnapshot | null;
+    historical_evidence?: AgentHistoricalEvidence[];
+    resolved_places?: Array<{ canonical_name: string }>;
+  };
 };
+
+export type AgentRouteChatResult = {
+  reply: string;
+  routeResultStatus: RouteResultStatus | null;
+  payload: HistoricalRoutePresentationPayload | null;
+  campaignId: string | null;
+  routeSource: string | null;
+  evidence: AgentHistoricalEvidence[];
+  resolvedPlaces: string[];
+  limitations: string[];
+  waypoints: string[];
+};
+
+function extractWaypoints(route: AgentHistoricalRouteSnapshot | null | undefined): string[] {
+  if (!route) return [];
+  const ordered = (route.ordered_points ?? []).map((point) => point.historical_place.canonical_name);
+  if (ordered.length) return ordered;
+  return (route.route_components ?? []).flatMap((component) =>
+    (component.ordered_points ?? []).map((point) => point.historical_place.canonical_name),
+  );
+}
+
+function extractLimitations(state: AgentRouteChatResponse["state"]): string[] {
+  const routeLimitations = state.historical_route?.limitations ?? [];
+  return [...new Set(routeLimitations.filter(Boolean))];
+}
 
 export async function fetchAgentHistoricalRoutePresentation(
   message: string,
   sessionId: string,
   request: FetchLike = fetch,
-): Promise<{ reply: string; payload: HistoricalRoutePresentationPayload | null; campaignId: string | null; routeSource: string | null }> {
+): Promise<AgentRouteChatResult> {
   const response = await request(`${BACKEND_ORIGIN}/api/v1/agent/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -148,8 +206,13 @@ export async function fetchAgentHistoricalRoutePresentation(
   const payload = body.state.historical_route_presentation;
   return {
     reply: body.reply,
+    routeResultStatus: body.route_result_status ?? null,
     payload: payload ? loadHistoricalRoutePresentation(payload) : null,
     campaignId: body.state.route_intent?.campaign_id ?? null,
     routeSource: body.state.historical_route_diagnostics?.route_source ?? null,
+    evidence: body.state.historical_evidence ?? [],
+    resolvedPlaces: (body.state.resolved_places ?? []).map((place) => place.canonical_name),
+    limitations: extractLimitations(body.state),
+    waypoints: extractWaypoints(body.state.historical_route),
   };
 }

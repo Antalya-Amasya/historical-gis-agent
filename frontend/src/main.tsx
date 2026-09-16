@@ -3,9 +3,11 @@ import { createRoot } from "react-dom/client";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./phase17.css";
-import { type GeoJsonFeature, type HistoricalRoutePresentationPayload, drawableRouteSegments, fetchAgentHistoricalRoutePresentation, markerFeatures, routeFragmentFeatures, toLeafletLineCoordinates, waypointPopupMetadata } from "./phase10-contract";
+import { type AgentHistoricalEvidence, type GeoJsonFeature, type HistoricalRoutePresentationPayload, drawableRouteSegments, fetchAgentHistoricalRoutePresentation, markerFeatures, routeFragmentFeatures, toLeafletLineCoordinates, waypointPopupMetadata } from "./phase10-contract";
 import { AnswerResult } from "./answer-result";
 import { RouteDetails } from "./historical-route-details";
+import { RouteEvidencePanel } from "./route-evidence-panel";
+import { shouldRenderRouteMap, type RouteResultStatus } from "./route-result-status";
 
 function HistoricalMap({ payload }: { payload: HistoricalRoutePresentationPayload }) {
   const container = useRef<HTMLDivElement | null>(null); const map = useRef<L.Map | null>(null); const layer = useRef<L.LayerGroup | null>(null);
@@ -24,6 +26,11 @@ function QueryApp() {
   const [reply, setReply] = useState("");
   const [payload, setPayload] = useState<HistoricalRoutePresentationPayload | null>(null);
   const [routeSource, setRouteSource] = useState<string | null>(null);
+  const [routeResultStatus, setRouteResultStatus] = useState<RouteResultStatus | null>(null);
+  const [evidence, setEvidence] = useState<AgentHistoricalEvidence[]>([]);
+  const [resolvedPlaces, setResolvedPlaces] = useState<string[]>([]);
+  const [limitations, setLimitations] = useState<string[]>([]);
+  const [waypoints, setWaypoints] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sessionId = useRef(`historical-gis-${crypto.randomUUID()}`);
@@ -34,24 +41,47 @@ function QueryApp() {
     setReply("");
     setPayload(null);
     setRouteSource(null);
+    setRouteResultStatus(null);
+    setEvidence([]);
+    setResolvedPlaces([]);
+    setLimitations([]);
+    setWaypoints([]);
     try {
       const result = await fetchAgentHistoricalRoutePresentation(query, sessionId.current);
       setReply(result.reply);
-      setPayload(result.payload);
+      setRouteResultStatus(result.routeResultStatus);
       setRouteSource(result.routeSource);
+      setEvidence(result.evidence);
+      setResolvedPlaces(result.resolvedPlaces);
+      setLimitations(result.limitations);
+      setWaypoints(result.waypoints);
+      if (result.routeResultStatus === "ERROR") {
+        setPayload(null);
+        setError("查询处理失败");
+        return;
+      }
+      if (shouldRenderRouteMap(result.routeResultStatus, Boolean(result.payload))) {
+        setPayload(result.payload);
+      } else {
+        setPayload(null);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Request failed");
+      setRouteResultStatus("ERROR");
     } finally {
       setLoading(false);
     }
   };
 
+  const showMap = Boolean(payload) && shouldRenderRouteMap(routeResultStatus, Boolean(payload));
+  const showEvidencePanel = routeResultStatus === "PARTIAL" || routeResultStatus === "NO_ROUTE" || (routeResultStatus === "FULL_ROUTE" && !showMap);
+
   return <main className="demo-shell">
     <header className="demo-header"><p className="eyebrow">Historical GIS Agent</p><h1>Historical GIS Agent</h1><p>Ask about a historical campaign, movement, or place.</p></header>
     <section className="controls"><label>Historical question<textarea value={query} onChange={(event) => setQuery(event.target.value)} /></label><button type="button" disabled={loading || !query.trim()} onClick={() => void submit()}>{loading ? "Loading…" : "Ask"}</button></section>
-    {error && <p className="error" role="alert">{error}</p>}
-    {reply && <AnswerResult reply={reply} routeStatus={payload?.road_network?.route_status} />}
-    {payload && <div className="route-layout"><section className="map-card"><div className="map-card-header"><div><p className="panel-kicker">Historical Route / 历史路线</p><h2>{payload.presentation_summary?.title ?? payload.route.route_name ?? "历史路线重建"}</h2></div><span className="candidate-badge">候选路线 · 非精确史实轨迹</span></div><HistoricalMap payload={payload} /><div className="map-legend" aria-label="Route map legend"><span><i className="legend-marker" /> 史料约束路点</span><span><i className="legend-crossing">△</i> 算法推定穿越点</span><span><i className="legend-line legend-road" /> 古罗马道路重建</span><span><i className="legend-line legend-terrain" /> 地形算法重建</span><span><i className="legend-gap" /> 未重建区段（不连线）</span></div></section><RouteDetails payload={payload} routeSource={routeSource} /></div>}
+    {error && <p className="error" role="alert">{error}</p>}    {reply && <AnswerResult reply={reply} routeResultStatus={routeResultStatus} />}
+    {showMap && payload && <div className="route-layout"><section className="map-card"><div className="map-card-header"><div><p className="panel-kicker">Historical Route / 历史路线</p><h2>{payload.presentation_summary?.title ?? payload.route.route_name ?? "历史路线重建"}</h2></div><span className="candidate-badge">{routeResultStatus === "PARTIAL" ? "部分路线 · 非完整轨迹" : "候选路线 · 非精确史实轨迹"}</span></div><HistoricalMap payload={payload} /><div className="map-legend" aria-label="Route map legend"><span><i className="legend-marker" /> 史料约束路点</span><span><i className="legend-crossing">△</i> 算法推定穿越点</span><span><i className="legend-line legend-road" /> 古罗马道路重建</span><span><i className="legend-line legend-terrain" /> 地形算法重建</span><span><i className="legend-gap" /> 未重建区段（不连线）</span></div></section><RouteDetails payload={payload} routeSource={routeSource} /></div>}
+    {showEvidencePanel && <RouteEvidencePanel evidence={evidence} resolvedPlaces={resolvedPlaces} waypoints={waypoints} limitations={limitations} />}
   </main>;
 }
 

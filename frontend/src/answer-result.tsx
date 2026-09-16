@@ -1,11 +1,20 @@
 import { AnswerMarkdown } from "./answer-markdown";
+import { routeResultNoticeClass, routeResultStatusLabel, type RouteResultStatus } from "./route-result-status";
 
-type RouteStatus = "COMPLETE" | "PARTIAL" | "UNAVAILABLE" | undefined;
-
-export function AnswerResult({ reply, routeStatus }: { reply: string; routeStatus: RouteStatus }) {
-  return <section className="presentation-summary answer-markdown">
-    <h2>Agent answer</h2>
-    <AnswerMarkdown answer={reply} />
-    {routeStatus === "UNAVAILABLE" && <p className="route-status">A requested route could not be safely reconstructed from the available evidence and geographic data.</p>}
-  </section>;
+export function AnswerResult({
+  reply,
+  routeResultStatus,
+}: {
+  reply: string;
+  routeResultStatus?: RouteResultStatus | null;
+}) {
+  const label = routeResultStatusLabel(routeResultStatus);
+  const noticeClass = routeResultNoticeClass(routeResultStatus);
+  return (
+    <section className="presentation-summary answer-markdown">
+      <h2>Agent answer</h2>
+      {label && noticeClass ? <p className={noticeClass} role="status">{label}</p> : null}
+      <AnswerMarkdown answer={reply} />
+    </section>
+  );
 }

@@ -28,9 +28,10 @@ describe("Phase 10.1 presentation API contract", () => {
   });
 
   it("loads the Agent-returned terrain presentation without frontend coordinate inference", async () => {
-    const agentResponse = { reply: "Ready", state: { route_intent: { intent: "historical_route", campaign_id: "hannibal_italy_campaign" }, historical_route_presentation: response } };
+    const agentResponse = { reply: "Ready", route_result_status: "FULL_ROUTE", state: { route_intent: { intent: "historical_route", campaign_id: "hannibal_italy_campaign" }, historical_route_presentation: response } };
     const result = await fetchAgentHistoricalRoutePresentation("展示汉尼拔路线", "test", async () => ({ ok: true, status: 200, json: async () => agentResponse }));
     expect(result.campaignId).toBe("hannibal_italy_campaign");
+    expect(result.routeResultStatus).toBe("FULL_ROUTE");
     expect(result.payload).not.toBeNull();
     expect(routeFeature(result.payload!)?.geometry?.type).toBe("LineString");
   });

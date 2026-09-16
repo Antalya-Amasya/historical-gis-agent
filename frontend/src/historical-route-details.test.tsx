@@ -37,8 +37,8 @@ const road: HistoricalRoutePresentationPayload = {
 
 describe("Phase 33A historical route presentation", () => {
   it("keeps an ordinary non-route response presentation-free", async () => {
-    const result = await fetchAgentHistoricalRoutePresentation("ordinary question", "s", async () => ({ ok: true, status: 200, json: async () => ({ reply: "Normal answer", state: {} }) }));
-    expect(result).toMatchObject({ reply: "Normal answer", payload: null });
+    const result = await fetchAgentHistoricalRoutePresentation("ordinary question", "s", async () => ({ ok: true, status: 200, json: async () => ({ reply: "Normal answer", route_result_status: null, state: {} }) }));
+    expect(result).toMatchObject({ reply: "Normal answer", payload: null, routeResultStatus: null });
   });
 
   it("creates waypoint markers and a drawable candidate polyline", () => {
@@ -92,9 +92,11 @@ describe("Phase 33A historical route presentation", () => {
   });
 
   it("does not retain a previous route in a later non-route response", async () => {
-    const first = await fetchAgentHistoricalRoutePresentation("route", "s", async () => ({ ok: true, status: 200, json: async () => ({ reply: "route", state: { historical_route_presentation: terrain } }) }));
-    const second = await fetchAgentHistoricalRoutePresentation("ordinary", "s", async () => ({ ok: true, status: 200, json: async () => ({ reply: "ordinary", state: { historical_route_presentation: null } }) }));
+    const first = await fetchAgentHistoricalRoutePresentation("route", "s", async () => ({ ok: true, status: 200, json: async () => ({ reply: "route", route_result_status: "FULL_ROUTE", state: { historical_route_presentation: terrain } }) }));
+    const second = await fetchAgentHistoricalRoutePresentation("ordinary", "s", async () => ({ ok: true, status: 200, json: async () => ({ reply: "ordinary", route_result_status: null, state: { historical_route_presentation: null } }) }));
     expect(first.payload).not.toBeNull();
+    expect(first.routeResultStatus).toBe("FULL_ROUTE");
     expect(second.payload).toBeNull();
+    expect(second.routeResultStatus).toBeNull();
   });
 });
