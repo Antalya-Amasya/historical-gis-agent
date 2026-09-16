@@ -113,79 +113,28 @@ def _explicit_fragment_actor_conflict(roles, text: str) -> bool:
     return False
 
 
-def _primary_subject_tokens(query: str, roles) -> frozenset[str]:
-    subject = primary_route_subject(query, roles)
-    return normalized_tokens(subject) if subject else frozenset()
+_PERSON_SCAFFOLD = frozenset({"commander", "general", "king", "emperor", "vi"})
 
 
-def _clause_actor_tokens(text: str) -> frozenset[str]:
+def _passage_person_signals(query: str, roles, text: str, text_tokens: frozenset[str]) -> tuple[float, float] | None:
+    ptokens = normalized_tokens(primary_route_subject(query, roles) or "")
+    if not ptokens:
+        return None
+    core = (ptokens - _PERSON_SCAFFOLD) or ptokens
+    present = core & text_tokens
+    primary, secondary = 0.0, 0.0
+    opponents = roles.person_terms - ptokens
     for match in _EXPLICIT_ACTOR_MOVEMENT.finditer(text or ""):
         actor = normalized_tokens(match.group("actor"))
-        if actor and not (actor <= _FRAGMENT_PRONOUNS):
-            return actor
-    return frozenset()
-
-
-_PRIMARY_PERSON_SCAFFOLD = frozenset({"commander", "general", "king", "emperor", "vi"})
-
-
-def _primary_content_tokens(primary_tokens: frozenset[str]) -> frozenset[str]:
-    core = primary_tokens - _PRIMARY_PERSON_SCAFFOLD
-    return core or primary_tokens
-
-
-def _primary_mover_actor(text: str, primary_tokens: frozenset[str]) -> frozenset[str]:
-    content = _primary_content_tokens(primary_tokens)
-    for match in _EXPLICIT_ACTOR_MOVEMENT.finditer(text or ""):
-        actor = normalized_tokens(match.group("actor"))
-        if not actor or actor <= _FRAGMENT_PRONOUNS or not (actor & content):
+        if not actor or actor <= _FRAGMENT_PRONOUNS:
             continue
-        if content <= actor or actor <= primary_tokens:
-            return actor
-    return frozenset()
-
-
-def _opponent_mover_actor(text: str, primary_tokens: frozenset[str], secondary_tokens: frozenset[str]) -> frozenset[str]:
-    content = _primary_content_tokens(primary_tokens)
-    for match in _EXPLICIT_ACTOR_MOVEMENT.finditer(text or ""):
-        actor = normalized_tokens(match.group("actor"))
-        if not actor or actor <= _FRAGMENT_PRONOUNS or actor & content:
-            continue
-        if actor & secondary_tokens:
-            return actor
-    return frozenset()
-
-
-def _primary_secondary_support(query: str, roles, text: str, text_tokens: frozenset[str]) -> tuple[float, float]:
-    primary_tokens = _primary_subject_tokens(query, roles)
-    if not primary_tokens:
-        return 0.0, 0.0
-    broad_person = role_person_support(roles, text_tokens)
-    content = _primary_content_tokens(primary_tokens)
-    in_passage = content & text_tokens
-    secondary_tokens = roles.person_terms - primary_tokens
-    has_movement = bool(_MOVEMENT_STATEMENT.search(text or "") or _MOVEMENT_PAIR_STATEMENT.search(text or ""))
-    if _primary_mover_actor(text, primary_tokens):
-        primary = 0.08
-    elif (
-        in_passage
-        and broad_person >= 0.08
-        and has_movement
-        and not roles.multiple_person_phrases_detected
-        and not _opponent_mover_actor(text, primary_tokens, secondary_tokens)
-    ):
-        primary = 0.08
-    elif in_passage:
-        primary = 0.04
-    else:
-        primary = 0.0
-    secondary = 0.0
-    overlap = secondary_tokens & text_tokens & frozenset(roles.person_sequence)
-    if overlap and primary < 0.08:
-        if _opponent_mover_actor(text, primary_tokens, secondary_tokens):
+        if actor & core and (core <= actor or actor <= ptokens):
+            primary = 0.08
+            break
+        if not (actor & core) and actor & opponents:
             secondary = 0.02
-        elif not in_passage:
-            secondary = min(0.02, 0.01 * len(overlap))
+    if primary == 0.0 and present:
+        primary = 0.04
     return primary, secondary
 
 
@@ -326,94 +275,70 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
     for item in evidence:
         text_tokens = normalized_tokens(item.text or "")
         parent_semantic_prior = percentile(semantic_order.get(item.id), len(semantic_items))
-        broad_person = role_person_support(roles, text_tokens)
-        primary_tokens = _primary_subject_tokens(query, roles)
-        primary_person, secondary_person = (
-            _primary_secondary_support(query, roles, item.text or "", text_tokens) if primary_tokens else (0.0, 0.0)
-        )
-        person = primary_person if primary_tokens else broad_person
-        location = role_location_support(roles, text_tokens)
         passage_text = item.text or ""
-        has_movement = bool(
-            _MOVEMENT_STATEMENT.search(passage_text) or _MOVEMENT_PAIR_STATEMENT.search(passage_text)
-        )
-        actor = _clause_actor_tokens(passage_text)
-        primary_actor = _primary_mover_actor(passage_text, primary_tokens) if primary_tokens else frozenset()
-        in_passage = (_primary_content_tokens(primary_tokens) & text_tokens) if primary_tokens else frozenset()
-        if primary_tokens:
-            if primary_person >= 0.08:
-                action = role_action_support(roles, text_tokens, person=primary_person, location=location)
-            elif secondary_person > 0 and has_movement:
-                action = 0.04
-            elif primary_person >= 0.04 and (not has_movement or (actor and not primary_actor)):
-                action = 0.0
-            elif primary_person >= 0.04 and has_movement and not actor:
-                action = min(role_action_support(roles, text_tokens, person=0, location=location), 0.06)
-            elif not in_passage:
-                if broad_person == 0:
-                    action = 0.02 if location > 0 and has_movement else 0.0
-                else:
-                    action = min(
-                        role_action_support(roles, text_tokens, person=broad_person, location=location),
-                        0.06,
-                    )
+        person = role_person_support(roles, text_tokens)
+        signals = _passage_person_signals(query, roles, passage_text, text_tokens)
+        primary_subject = signals[0] if signals else 0.0
+        secondary_context = signals[1] if signals else 0.0
+        location = role_location_support(roles, text_tokens)
+        if signals:
+            action = role_action_support(
+                roles, text_tokens, person=primary_subject if primary_subject >= 0.08 else 0.0, location=location
+            )
+            if primary_subject == 0.0 and secondary_context > 0.0 and _MOVEMENT_STATEMENT.search(passage_text):
+                action = min(action, 0.02)
+            if primary_subject >= 0.08:
+                person_local = (primary_subject / 0.08) * 0.40
+            elif primary_subject == 0.04:
+                person_local = (primary_subject / 0.08) * 0.40
+            elif person:
+                person_local = (min(person, 0.04) / 0.08) * 0.40
             else:
-                action = 0.0
+                person_local = 0.0
+            entity_support = 0.0 if primary_subject >= 0.08 else (
+                0.04 if primary_subject >= 0.04 else (min(person, 0.04) if person else 0.0)
+            )
+            joint = 0.0
         else:
             action = role_action_support(roles, text_tokens, person=person, location=location)
-        generic = role_generic_support(roles, text_tokens)
-        statement_bonus = 0.04 if action >= 0.12 and len(text_tokens) >= 20 else 0.0
-        joint = 0.04 if (primary_person if primary_tokens else person) > 0 and location > 0 else 0.0
-        route_local_evidence = action > 0 or statement_bonus > 0
-        if primary_tokens:
-            if primary_person >= 0.08:
-                entity_support = 0.0
-            elif primary_person >= 0.04:
-                entity_support = 0.04
-            elif broad_person >= 0.08 and roles.multiple_person_phrases_detected:
-                entity_support = 0.04
-            elif not in_passage:
-                entity_support = 0.0
-            else:
-                entity_support = min(broad_person, 0.04) if broad_person else 0.0
-        else:
+            statement_bonus = 0.04 if action >= 0.12 and len(text_tokens) >= 20 else 0.0
+            joint = 0.04 if person > 0 and location > 0 else 0.0
+            route_local_evidence = action > 0 or statement_bonus > 0
             entity_support = person
-        person_local = (person / 0.08) * 0.40
-        if not primary_tokens:
+            person_local = (person / 0.08) * 0.40
             if person >= 0.08 and roles.multiple_person_phrases_detected:
                 person_local = (0.04 / 0.08) * 0.40
                 entity_support = 0.04
             elif person >= 0.08 and not route_local_evidence:
                 entity_support = 0.04
                 person_local = (0.04 / 0.08) * 0.40
-        fragment_person = 0.08 if primary_person >= 0.08 else 0.0
-        fragment_action = (
-            role_action_support(roles, text_tokens, person=broad_person, location=location)
-            if primary_tokens and primary_person < 0.08
+        generic = role_generic_support(roles, text_tokens)
+        statement_bonus = 0.04 if action >= 0.12 and len(text_tokens) >= 20 else 0.0
+        route_local_evidence = action > 0 or statement_bonus > 0
+        opponent_only_context = bool(
+            signals and primary_subject == 0.0 and secondary_context > 0.0
+        )
+        location_score = 0.0 if opponent_only_context else location
+        frag_person = primary_subject if signals and primary_subject >= 0.08 else (0.0 if signals else person)
+        frag_action = (
+            role_action_support(roles, text_tokens, person=person, location=location)
+            if signals and primary_subject < 0.08
             else action
         )
         fragment = route_fragment_relevance(
-            query,
-            roles,
-            item,
-            passage_text,
-            text_tokens,
-            person=fragment_person,
-            location=location,
-            action=fragment_action,
+            query, roles, item, passage_text, text_tokens,
+            person=frag_person, location=location, action=frag_action,
         )
-        meta_primary = extract_subject_context_terms(item.metadata) & _primary_content_tokens(primary_tokens)
-        if primary_tokens and fragment > 0 and meta_primary and primary_person < 0.08:
-            action = max(action, 0.10)
-        if primary_tokens and fragment > 0 and meta_primary and primary_person == 0:
-            person = 0.04
-            primary_person = 0.04
-            person_local = (0.04 / 0.08) * 0.40
-            entity_support = 0.04
-            if location > 0:
-                joint = 0.04
+        if signals:
+            joint = 0.04 if location > 0 and (
+                primary_subject >= 0.08
+                or primary_subject == 0.04
+                or (primary_subject == 0.0 and 0.0 < person < 0.08)
+                or (primary_subject == 0.0 and secondary_context > 0 and fragment > 0)
+            ) else 0.0
         fragment_local = (fragment / _ROUTE_FRAGMENT_MAX) * 0.20 if fragment else 0.0
-        local_support = min(1.0, person_local + (action / 0.12) * 0.40 + (location / 0.06) * 0.10 + (statement_bonus / 0.04) * 0.10 + fragment_local) if (person or action or location or statement_bonus or fragment) else 0.0
+        location_local = 0.0 if opponent_only_context else location
+        local_support = min(1.0, person_local + (action / 0.12) * 0.40 + (location_local / 0.06) * 0.10 + (statement_bonus / 0.04) * 0.10 + fragment_local) if (primary_subject or person or action or location or statement_bonus or fragment) else 0.0
         semantic_relevance = local_support if item.metadata.get("semantic_candidate") else 0.0
         lexical_score = float(item.metadata.get("lexical_score", 0.0))
         if pool_relative:
@@ -424,8 +349,7 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
             lexical_score_relevance = lexical_score / (lexical_score + 1.0) if lexical_score > 0 else 0.0
         role_parts = []
         if roles.person_terms:
-            scoped_person = (primary_person + secondary_person) if primary_tokens else person
-            role_parts.append(scoped_person / 0.08)
+            role_parts.append(((primary_subject + secondary_context) if signals else person) / 0.08)
         if roles.location_terms:
             role_parts.append(location / 0.06)
         coverage = sum(role_parts) / len(role_parts) if role_parts else 1.0
@@ -433,18 +357,7 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
         passage_relevance = min(1.0, max(semantic_relevance, lexical_support) + (fragment if fragment and (semantic_relevance == 0 and lexical_support > 0 or fragment < _ROUTE_FRAGMENT_MAX) else 0.0))
         channel_confidence = 0.02 if item.metadata.get("semantic_candidate") and item.metadata.get("lexical_candidate") else 0.0
         navigation_penalty = 0.32 if is_navigation_or_heading(item) else 0.0
-        final_score = (
-            passage_relevance
-            + channel_confidence
-            + entity_support
-            + location
-            + action
-            + generic
-            + joint
-            + statement_bonus
-            + secondary_person
-            - navigation_penalty
-        )
+        final_score = passage_relevance + channel_confidence + entity_support + location_score + action + generic + joint + statement_bonus - navigation_penalty
         metadata = dict(item.metadata)
         metadata["retrieval_ranking"] = {
             "base_vector_score": round(parent_semantic_prior, 6),
@@ -457,9 +370,9 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
             "passage_relevance": round(passage_relevance, 6),
             "channel_confidence": round(channel_confidence, 6),
             "entity_support": round(entity_support, 6),
-            "person_support": round(broad_person, 6),
-            "primary_subject_support": round(primary_person, 6),
-            "secondary_person_context_support": round(secondary_person, 6),
+            "person_support": round(person, 6),
+            "primary_subject_support": round(primary_subject, 6),
+            "secondary_person_context_support": round(secondary_context, 6),
             "location_support": round(location, 6),
             "generic_support": round(generic, 6),
             "joint_support": round(joint, 6),
