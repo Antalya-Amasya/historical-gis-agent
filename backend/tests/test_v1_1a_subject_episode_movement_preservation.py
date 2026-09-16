@@ -4,8 +4,10 @@ from __future__ import annotations
 from backend.app.models import Evidence
 from backend.app.rag.coverage_retrieval import (
     DEFAULT_COVERAGE_BUDGET,
+    _qualifies_subject_episode_movement,
     merge_coverage_results,
 )
+import pytest
 from backend.app.rag.evidence_ranking import rerank_evidence
 from backend.app.rag.retrieval_intents import RetrievalIntent
 
@@ -209,3 +211,41 @@ def test_budget_remains_twenty():
     qualified = _item(QUALIFIED_ID, QUALIFIED_TEXT, family="qualified-family", score=0.2)
     merged = _stress_merge(qualified)
     assert len(merged) == DEFAULT_COVERAGE_BUDGET
+
+
+CONTROL_QUERY = "Trace Commander Alpha's route after the Battle of Zeta toward Delta Bay."
+
+
+def _qualifies(text: str) -> bool:
+    item = _item("control:0:200", text, family="control")
+    return _qualifies_subject_episode_movement(CONTROL_QUERY, rerank_evidence(CONTROL_QUERY, [item], pool_relative=False)[0])
+
+
+def test_explicit_local_subject_episode_movement_qualifies():
+    assert _qualifies("Commander Alpha sailed from Gamma Harbor to Delta Bay after the Battle of Zeta.")
+
+
+@pytest.mark.parametrize("text", [
+    "Commander Alpha did not sail from Gamma Harbor to Delta Bay after the Battle of Zeta.",
+    "Commander Alpha would have sailed from Gamma Harbor to Delta Bay after the Battle of Zeta.",
+    "It was said that Commander Alpha sailed from Gamma Harbor to Delta Bay after the Battle of Zeta.",
+    "Commander Beta sailed from Gamma Harbor to Delta Bay while Commander Alpha remained behind after the Battle of Zeta.",
+    "Commander Alpha defeated Commander Beta. He sailed from Gamma Harbor to Delta Bay after the Battle of Zeta.",
+    "Commander Alpha sailed from Gamma Harbor to Delta Bay in a different campaign.",
+    "Commander Alpha remained at Gamma Harbor after the Battle of Zeta.",
+    "The army sailed from Gamma Harbor to Delta Bay after the Battle of Zeta.",
+    "Gamma Harbor and Delta Bay were important ports after the Battle of Zeta.",
+    "Commander Alpha policy steered the debate toward reform after the Battle of Zeta.",
+])
+def test_unsafe_or_incomplete_candidate_is_not_preserved(text: str):
+    assert not _qualifies(text)
+
+
+def test_cross_parent_duplicate_prefix_uses_one_preservation_slot():
+    text = "Commander Alpha sailed from Gamma Harbor toward Delta Bay after the battle."
+    merged = _merge_channels(("CANONICAL", QUERY, [
+        _item("copy-a:0:100", text, family="copy-a"),
+        _item("copy-b:0:100", text, family="copy-b"),
+        *_generic_flood(),
+    ]))
+    assert len(_preservation_ids(merged) & {"copy-a:0:100", "copy-b:0:100"}) == 1

@@ -5,7 +5,7 @@ import re
 from collections import defaultdict
 
 from backend.app.models import Evidence
-from backend.app.rag.evidence_ranking import _MOVEMENT_PAIR_STATEMENT, _MOVEMENT_STATEMENT, _explicit_fragment_actor_conflict, rerank_evidence
+from backend.app.rag.evidence_ranking import _EXPLICIT_ACTOR_MOVEMENT, _MOVEMENT_PAIR_STATEMENT, _MOVEMENT_STATEMENT, _explicit_fragment_actor_conflict, rerank_evidence
 from backend.app.rag.query_roles import analyze_query, episode_context_terms, movement_scoring_terms, normalized_tokens
 from backend.app.rag.retrieval_intents import RetrievalIntent
 
@@ -34,6 +34,9 @@ DEFAULT_COVERAGE_BUDGET = 20
 DEFAULT_PER_INTENT_K = 6
 DEFAULT_RAW_OBSERVATION_K = 60
 SUBJECT_EPISODE_MOVEMENT_SLOTS = 2
+
+_PRESERVATION_REJECT = re.compile(r"\b(?:did\s+not|never|would|could|might|should|may|planned\s+to|intended\s+to|it\s+was\s+said|reported|rumou?r\w*|different\s+campaign)\b", re.I)
+_DIRECTIONAL_MOVEMENT = re.compile(r"\b(?:from|to|into|toward(?:s)?|across|through)\b", re.I)
 
 
 def _proposal_source_key(item: Evidence) -> str:
@@ -186,73 +189,31 @@ def movement_bearing_text(text: str) -> bool:
     return bool(_MOVEMENT_PAIR_STATEMENT.search(normalized) or _MOVEMENT_STATEMENT.search(normalized))
 
 
-_REPORTED_MOVEMENT = re.compile(
-    r"\b(?:conjectur\w+|report(?:ed|s|ing)?|heard|rumou?r\w*)\b",
-    re.I,
-)
-
-
-def _person_local_movement_clause(roles, text: str) -> bool:
-    sentences = [match.group() for match in _SENTENCE_SPAN.finditer(text or "") if match.group().strip()]
-    subject_established = False
-    for sentence in sentences:
-        if roles.person_terms & normalized_tokens(sentence):
-            subject_established = True
-        if not subject_established:
-            continue
-        if _REPORTED_MOVEMENT.search(sentence):
-            continue
-        if _NON_ASSERTED_MOVEMENT.search(sentence) and not (
-            _CONTINUATION_MOVEMENT.search(sentence) and _MOVEMENT_STATEMENT.search(sentence)
-        ):
-            continue
-        if _MOVEMENT_PAIR_STATEMENT.search(sentence) or _STEER_PHYSICAL.search(sentence):
-            return True
-        if _CONTINUATION_MOVEMENT.search(sentence) and _MOVEMENT_STATEMENT.search(sentence):
-            return True
-    return False
-
-
 def _qualifies_subject_episode_movement(user_query: str, item: Evidence) -> bool:
     text = item.text or item.excerpt or ""
     roles = analyze_query(user_query)
-    if not roles.person_terms:
-        return False
     ranking = item.metadata.get("retrieval_ranking") or {}
-    person = float(ranking.get("person_support", 0.0))
-    if person <= 0.0 or _explicit_fragment_actor_conflict(roles, text):
+    if float(ranking.get("person_support", 0.0)) < 0.08 or float(ranking.get("action_support", 0.0)) < 0.12:
+        return False
+    if _explicit_fragment_actor_conflict(roles, text):
         return False
     tokens = normalized_tokens(text)
-    episode_tokens = episode_context_terms(roles) - roles.person_terms - roles.location_match_terms
-    if not (episode_tokens & tokens) and not (roles.location_match_terms & tokens):
+    episode = episode_context_terms(roles) - roles.person_terms
+    if not ((episode | roles.location_match_terms) & tokens):
         return False
-    action = float(ranking.get("action_support", 0.0))
-    if not _person_local_movement_clause(roles, text):
-        return False
-    return bool(
-        _MOVEMENT_PAIR_STATEMENT.search(text)
-        or _STEER_PHYSICAL.search(text)
-        or (_CONTINUATION_MOVEMENT.search(text) and action >= 0.12)
-        or (movement_bearing_text(text) and action >= 0.12 and person >= 0.08)
-    )
-
-
-def _subject_episode_movement_preservation_key(user_query: str, item: Evidence) -> tuple:
-    text = item.text or item.excerpt or ""
-    ranking = item.metadata.get("retrieval_ranking") or {}
-    movement_total, movement_asserted, _neg_rank = _movement_assertion_score(user_query, item)
-    pair_or_steer = int(
-        bool(_MOVEMENT_PAIR_STATEMENT.search(text) or _STEER_PHYSICAL.search(text))
-    )
-    endpoint_terms = analyze_query(user_query).location_match_terms & normalized_tokens(text)
-    return (
-        -pair_or_steer,
-        -len(endpoint_terms),
-        -movement_asserted,
-        -movement_total,
-        int(item.metadata.get("rank") or 999),
-        item.id,
-    )
+    for match in _SENTENCE_SPAN.finditer(text):
+        sentence = match.group()
+        local = normalized_tokens(sentence)
+        if not (roles.person_terms & local) or _PRESERVATION_REJECT.search(sentence):
+            continue
+        if not _DIRECTIONAL_MOVEMENT.search(sentence):
+            continue
+        actors = list(_EXPLICIT_ACTOR_MOVEMENT.finditer(sentence))
+        if actors and any(normalized_tokens(actor.group("actor")) & (roles.person_terms - {"commander", "emperor", "general", "king"}) for actor in actors):
+            return True
+        if not actors and "course" in local:
+            return True
+    return False
 
 
 def movement_bearing_evidence(evidence: list[Evidence]) -> list[Evidence]:
@@ -506,33 +467,22 @@ def merge_coverage_results(
             if add(item, intent, rank=rank, reason="intent_coverage_slot"):
                 break
 
-    subject_episode_reserved = 0
-    preserved_families: set[str] = set()
-    for item in sorted(ranked, key=lambda candidate: _subject_episode_movement_preservation_key(user_query, candidate)):
-        if subject_episode_reserved >= SUBJECT_EPISODE_MOVEMENT_SLOTS:
+    preserved_families, preserved_prefixes = set(), set()
+    for item in ranked:
+        if len(preserved_families) >= SUBJECT_EPISODE_MOVEMENT_SLOTS:
             break
-        if item.id in selected_ids:
-            continue
-        if not _qualifies_subject_episode_movement(user_query, item):
-            continue
-        if overlaps_selected(item):
+        if item.id in selected_ids or overlaps_selected(item) or not _qualifies_subject_episode_movement(user_query, item):
             continue
         family = _coverage_family_key(item)
-        if family in preserved_families:
-            continue
+        prefix = " ".join((item.text or item.excerpt or "").casefold().split())[:180]
         matched = channels_by_id.get(item.id)
-        if not matched:
+        if family in preserved_families or prefix in preserved_prefixes or not matched:
             continue
         preferred = next((entry for entry in matched if entry["kind"] == "CANONICAL"), matched[0])
         intent = intent_by_key[(str(preferred["kind"]), str(preferred["query"]))]
-        if add(
-            item,
-            intent,
-            rank=global_rank.get(item.id, 999),
-            reason="subject_episode_movement",
-        ):
-            subject_episode_reserved += 1
+        if add(item, intent, rank=global_rank.get(item.id, 999), reason="subject_episode_movement"):
             preserved_families.add(family)
+            preserved_prefixes.add(prefix)
 
     global_fill_families: set[str] = set()
 
