@@ -55,3 +55,10 @@ data/raw/itiner_e/topology_benchmark.json
 
 # General local logs
 *.log
+
+# Local evaluation and diagnostic outputs
+outputs/
+scripts/_v1*.py
+scripts/_geo.json
+scripts/g6bk_*.py
+scripts/g6bn_*.py
