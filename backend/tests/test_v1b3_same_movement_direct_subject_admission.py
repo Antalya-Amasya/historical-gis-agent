@@ -36,7 +36,7 @@ OTHER_CAMPAIGN = "Bion marched from Alpha Port to Beta Harbor."
 MISMATCH = "The commander marched from Gamma Bay to Delta Sound."
 
 EID = "9d81ae3d968b243004d968dd420cd9d6:915:1212"
-LIBO_QUERY = "Trace the route from Oricum to Brundisium."
+LIBO_QUERY = "Trace Libo's route from Oricum to Brundisium."
 
 
 def _movement_event(

@@ -13,7 +13,7 @@ from backend.app.routes.event_route_orchestration import EventAnchorRouteBuilder
 from backend.tests.test_g4d_route_preservation import structured_route
 
 EID = "9d81ae3d968b243004d968dd420cd9d6:915:1212"
-LIBO_QUERY = "Trace the route from Oricum to Brundisium."
+LIBO_QUERY = "Trace Libo's route from Oricum to Brundisium."
 
 
 def _route_state(**overrides) -> AgentState:
@@ -180,7 +180,7 @@ def test_chat_response_serializes_route_result_status(monkeypatch):
     monkeypatch.setattr(main, "agent", StubAgent())
     response = TestClient(main.app).post(
         "/api/v1/agent/chat",
-        json={"session_id": "v1c-serialize", "message": "Trace the route from Oricum to Brundisium."},
+        json={"session_id": "v1c-serialize", "message": LIBO_QUERY},
     )
     assert response.status_code == 200
     body = response.json()
