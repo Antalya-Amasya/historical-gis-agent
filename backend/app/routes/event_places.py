@@ -8,10 +8,18 @@ from backend.app.models import (
     EventPlaceResolutionStatus,
     HistoricalEvent,
     HistoricalEventPlaceBinding,
+    HistoricalEventType,
     HistoricalPlace,
     PlaceMentionValidationClass,
     PlaceSpatialSemantics,
+    EventPlaceRole,
 )
+
+
+_OPPOSITE_MOVEMENT_ENDPOINT = {
+    EventPlaceRole.ORIGIN: EventPlaceRole.DESTINATION,
+    EventPlaceRole.DESTINATION: EventPlaceRole.ORIGIN,
+}
 
 
 class GeographyResolver(Protocol):
@@ -32,6 +40,24 @@ class HistoricalEventPlaceResolver:
     @staticmethod
     def _limitations(place: HistoricalPlace) -> list[str]:
         return place_limitations(place)
+
+    @staticmethod
+    def _resolved_context_bindings(
+        mention,
+        event: HistoricalEvent,
+        bindings: list[HistoricalEventPlaceBinding],
+    ) -> list[HistoricalEventPlaceBinding]:
+        resolved_bindings = [
+            binding
+            for binding in bindings
+            if binding.place is not None and binding.resolution_status is EventPlaceResolutionStatus.RESOLVED
+        ]
+        if event.event_type is HistoricalEventType.MOVEMENT and mention.role in _OPPOSITE_MOVEMENT_ENDPOINT:
+            opposite_role = _OPPOSITE_MOVEMENT_ENDPOINT[mention.role]
+            resolved_bindings = [
+                binding for binding in resolved_bindings if binding.role is not opposite_role
+            ]
+        return resolved_bindings
 
     def resolve(self, events: list[HistoricalEvent]) -> tuple[list[HistoricalEvent], dict[str, object]]:
         diagnostics = {
@@ -86,8 +112,7 @@ class HistoricalEventPlaceResolver:
                         "longitude": binding.place.longitude,
                         "spatial_semantics": binding.place.spatial_semantics.value if binding.place.spatial_semantics else None,
                     }
-                    for binding in bindings
-                    if binding.place is not None and binding.resolution_status is EventPlaceResolutionStatus.RESOLVED
+                    for binding in self._resolved_context_bindings(mention, event, bindings)
                 ]
                 statement = next(
                     (stmt for stmt in (event.source_statements or [event.summary]) if lookup.casefold() in stmt.casefold()),
