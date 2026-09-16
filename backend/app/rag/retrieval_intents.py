@@ -36,7 +36,7 @@ _ENDPOINT_BACK_TO = re.compile(
     r"\bback\s+to\s+(?:the\s+)?([A-Z][A-Za-zÀ-ÖØ-öø-ÿ']+(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ']+){0,2})\b",
 )
 _EPISODE_LOCATION_EXCLUDE = frozenset({
-    "pharsalus", "cunaxa", "pontus", "anatolia", "epirus", "egypt", "greece", "italy",
+    "pharsalus", "cunaxa", "pontus", "anatolia", "epirus", "egypt", "greece", "italy", "rome",
     "bactria", "hindu", "kush", "hydaspes", "armenia", "hispania", "africa", "syria",
     "asia", "minor", "mediterranean", "adriatic", "brundisium", "carthage", "war",
     "mithridatic", "campaign", "indian",
@@ -104,27 +104,26 @@ def _context_person(name: str) -> str:
     return " ".join(tokens[:3])
 
 
-def _valid_context_person(person: str, roles: QueryRoleAnalysis, *, route_of: bool = False) -> bool:
+def _valid_context_person(person: str, roles: QueryRoleAnalysis) -> bool:
     tokens = normalized_tokens(person)
     if not tokens or not (tokens & roles.person_terms):
         return False
     blocked = (
-        roles.location_match_terms | roles.action_terms | roles.context_terms | roles.generic_terms
+        roles.location_terms | roles.location_match_terms | roles.action_terms | roles.context_terms
+        | roles.generic_terms | _EPISODE_LOCATION_EXCLUDE
         | _CONTEXT_SCAFFOLD | _SUBJECT_SCAFFOLD | _EPISODE_HINTS
     )
-    if tokens & blocked or (route_of and len(roles.person_sequence) == 1):
-        return False
-    return True
+    return not bool(tokens & blocked)
 
 
 def _grammar_person_context(query: str, roles: QueryRoleAnalysis) -> str:
     clauses = [part.strip() for part in re.split(r";\s*", query) if part.strip()] or [query.strip()]
     for clause in reversed(clauses):
-        for index, pattern in enumerate(_CONTEXT_PATTERNS):
+        for pattern in _CONTEXT_PATTERNS:
             match = pattern.search(clause)
             if match:
                 person = _context_person(match.group(1))
-                if person and _valid_context_person(person, roles, route_of=index == 0):
+                if person and _valid_context_person(person, roles):
                     return person
     return ""
 
