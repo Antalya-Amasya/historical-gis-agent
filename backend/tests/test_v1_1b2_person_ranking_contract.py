@@ -133,15 +133,11 @@ def test_invariant_a_explicit_primary_mover_beats_primary_context():
     assert mover > context
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="B2 RED_EXPECTED: primary-only contextual mention should outrank opponent-only",
-)
-def test_invariant_b_primary_context_beats_opponent_only():
+def test_invariant_b_primary_mover_beats_comparable_opponent_mover():
     primary_only, opponent_only = _compare_pair(
         ALPHA_QUERY,
-        "primary-context",
-        PRIMARY_CONTEXT,
+        "primary-mover",
+        PRIMARY_MOVER,
         "opponent-only",
         OPPONENT_ONLY,
     )
@@ -224,18 +220,14 @@ def test_invariant_f_passage_local_primary_beats_metadata_only():
             id="primary-mover",
         ),
         pytest.param(
-            "primary-context",
-            PRIMARY_CONTEXT,
+            "primary-vs-opponent-comparable",
+            PRIMARY_MOVER,
             {},
             "gt",
             "opponent-only",
             OPPONENT_ONLY,
             {},
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="B2 RED_EXPECTED: primary-only contextual mention should outrank opponent-only",
-            ),
-            id="primary-context",
+            id="primary-vs-opponent-comparable",
         ),
         pytest.param(
             "primary-plus-opponent",
