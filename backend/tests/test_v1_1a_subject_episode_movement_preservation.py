@@ -249,3 +249,38 @@ def test_cross_parent_duplicate_prefix_uses_one_preservation_slot():
         *_generic_flood(),
     ]))
     assert len(_preservation_ids(merged) & {"copy-a:0:100", "copy-b:0:100"}) == 1
+
+
+LUCULLUS_QUERY = "Trace Lucullus's route from Ephesus through Pontus toward Tigranocerta."
+LUCULLUS_WAR_QUERY = "Trace Lucullus during the war against Mithridates."
+POMPEY_QUERY = "Trace Pompey's route after the Battle of Pharsalus to Egypt."
+
+
+def _qualifies_query(query: str, text: str) -> bool:
+    item = _item("control:0:200", text, family="control")
+    return _qualifies_subject_episode_movement(query, rerank_evidence(query, [item], pool_relative=False)[0])
+
+
+def test_wrong_query_person_mithridates_not_preserved_for_lucullus():
+    text = "Mithridates sailed from Pontus to the Euxine while Lucullus remained in Asia."
+    assert not _qualifies_query(LUCULLUS_QUERY, text)
+
+
+def test_query_subject_is_explicit_mover_may_preserve():
+    text = "Lucullus sailed from Ephesus to Chios during the campaign in Pontus."
+    assert _qualifies_query(LUCULLUS_QUERY, text)
+
+
+def test_opponent_mention_not_preserved():
+    text = "Mithridates sailed from Pontus to Colchis."
+    assert not _qualifies_query(LUCULLUS_WAR_QUERY, text)
+
+
+@pytest.mark.parametrize("text", [
+    "They say Pompey sailed from Cyprus to Egypt after Pharsalus.",
+    "It was reported that Pompey sailed from Cyprus to Egypt.",
+    "The course was directed toward Egypt.",
+    "Pompey considered the course toward Egypt.",
+])
+def test_hearsay_reported_or_actorless_course_not_preserved(text: str):
+    assert not _qualifies_query(POMPEY_QUERY, text)
