@@ -192,7 +192,8 @@ def decompose_movement_query(query: str) -> tuple[RetrievalIntent, ...]:
     if not text:
         return ()
     roles = analyze_query(text)
-    subject = primary_route_subject(text, roles) or _subject_phrase(text, roles)
+    subject = primary_route_subject(text, roles)
+    subject_prefix = subject or ""
     year = _query_year(text)
     endpoints = _endpoint_terms(text, roles)
     regions = _region_terms(text, roles)
@@ -204,7 +205,7 @@ def decompose_movement_query(query: str) -> tuple[RetrievalIntent, ...]:
     if subject:
         intents.append(RetrievalIntent("SUBJECT", subject))
 
-    episode_query = _compose(subject, year, *episode_terms, *endpoints[:2], *regions[:1])
+    episode_query = _compose(subject_prefix, year, *episode_terms, *endpoints[:2], *regions[:1])
     if episode_query and episode_query.casefold() != (subject or "").casefold():
         intents.append(RetrievalIntent("EPISODE", episode_query))
 
@@ -221,15 +222,15 @@ def decompose_movement_query(query: str) -> tuple[RetrievalIntent, ...]:
         intents.append(
             RetrievalIntent(
                 "ENDPOINT",
-                _compose(subject, *endpoints[:3], *regions[:2], "travel", "march", "journey"),
+                _compose(subject_prefix, *endpoints[:3], *regions[:2], "travel", "march", "journey"),
             )
         )
 
     if regions and not endpoints:
-        intents.append(RetrievalIntent("REGION", _compose(subject, *regions, "march", "travel", "journey")))
+        intents.append(RetrievalIntent("REGION", _compose(subject_prefix, *regions, "march", "travel", "journey")))
 
     if features:
-        intents.append(RetrievalIntent("FEATURE", _compose(subject, *features, *movement[:2], "cross", "march")))
+        intents.append(RetrievalIntent("FEATURE", _compose(subject_prefix, *features, *movement[:2], "cross", "march")))
 
     deduped: list[RetrievalIntent] = []
     seen: set[tuple[str, str]] = set()
@@ -240,5 +241,6 @@ def decompose_movement_query(query: str) -> tuple[RetrievalIntent, ...]:
         seen.add(key)
         deduped.append(intent)
     if not deduped:
-        deduped = [RetrievalIntent("SUBJECT", text)]
+        fallback = _movement_language_query(text, movement=movement) or text
+        deduped = [RetrievalIntent("MOVEMENT", fallback)]
     return tuple(deduped[:5])
