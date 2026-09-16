@@ -16,16 +16,23 @@ class RouteResultStatus(str, Enum):
 _RUNTIME_ERROR_STATUSES = frozenset({"provider_error", "tool_failure"})
 
 
-def _is_full_route(route: HistoricalRoute, reason_codes: list[str]) -> bool:
-    if "PARTIAL_ROUTE" in reason_codes:
-        return False
+def _route_is_structurally_incomplete(route: HistoricalRoute, diagnostics: dict) -> bool:
+    """True when the produced HistoricalRoute itself is incomplete."""
+    if len(route.ordered_points) < 2:
+        return True
     if route.branch_relations:
-        return False
+        return True
     if len(route.route_components) > 1:
-        return False
+        return True
     if route.route_components and not route.ordered_points:
-        return False
-    return len(route.ordered_points) >= 2
+        return True
+    if int(diagnostics.get("contradictory_relation_count") or 0) > 0:
+        return True
+    return False
+
+
+def _is_full_route(route: HistoricalRoute, diagnostics: dict) -> bool:
+    return not _route_is_structurally_incomplete(route, diagnostics)
 
 
 def derive_route_result_status(state: AgentState) -> RouteResultStatus | None:
@@ -35,11 +42,10 @@ def derive_route_result_status(state: AgentState) -> RouteResultStatus | None:
         return RouteResultStatus.ERROR
 
     diagnostics = state.historical_route_diagnostics or {}
-    reason_codes = list(diagnostics.get("reason_codes") or [])
     route = state.historical_route
 
     if route is not None:
-        if _is_full_route(route, reason_codes):
+        if _is_full_route(route, diagnostics):
             return RouteResultStatus.FULL_ROUTE
         return RouteResultStatus.PARTIAL
 
