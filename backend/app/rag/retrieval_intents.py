@@ -104,14 +104,27 @@ def _context_person(name: str) -> str:
     return " ".join(tokens[:3])
 
 
-def _grammar_person_context(query: str) -> str:
+def _valid_context_person(person: str, roles: QueryRoleAnalysis, *, route_of: bool = False) -> bool:
+    tokens = normalized_tokens(person)
+    if not tokens or not (tokens & roles.person_terms):
+        return False
+    blocked = (
+        roles.location_match_terms | roles.action_terms | roles.context_terms | roles.generic_terms
+        | _CONTEXT_SCAFFOLD | _SUBJECT_SCAFFOLD | _EPISODE_HINTS
+    )
+    if tokens & blocked or (route_of and len(roles.person_sequence) == 1):
+        return False
+    return True
+
+
+def _grammar_person_context(query: str, roles: QueryRoleAnalysis) -> str:
     clauses = [part.strip() for part in re.split(r";\s*", query) if part.strip()] or [query.strip()]
     for clause in reversed(clauses):
-        for pattern in _CONTEXT_PATTERNS:
+        for index, pattern in enumerate(_CONTEXT_PATTERNS):
             match = pattern.search(clause)
             if match:
                 person = _context_person(match.group(1))
-                if person:
+                if person and _valid_context_person(person, roles, route_of=index == 0):
                     return person
     return ""
 
@@ -123,7 +136,7 @@ def _retrieval_person_context(query: str, roles: QueryRoleAnalysis, primary: str
     multi = _MULTIWORD_SUBJECT.search(query)
     if multi:
         return multi.group(1)
-    return _grammar_person_context(query)
+    return _grammar_person_context(query, roles)
 
 
 def _subject_phrase(query: str, roles: QueryRoleAnalysis) -> str:
