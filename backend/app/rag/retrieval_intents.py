@@ -66,6 +66,23 @@ def _possessive_subject(query: str) -> str | None:
     return None
 
 
+_PRIMARY_ROUTE_GRAMMAR = frozenset({"route", "routes", "movement", "movements", "march", "campaign", "crossing"})
+
+
+def primary_route_subject(query: str, roles: QueryRoleAnalysis | None = None) -> str | None:
+    """Person/entity whose movement the user requested; not broad person_terms."""
+    text = (query or "").strip()
+    if not text or not (normalized_tokens(text) & (_ROUTE_QUERY_HINTS | _PRIMARY_ROUTE_GRAMMAR)):
+        return None
+    possessive = _possessive_subject(text)
+    if possessive:
+        return possessive
+    multi = _MULTIWORD_SUBJECT.search(text)
+    if multi:
+        return multi.group(1)
+    return None
+
+
 def _subject_phrase(query: str, roles: QueryRoleAnalysis) -> str:
     parts: list[str] = []
     match = _MULTIWORD_SUBJECT.search(query)
@@ -175,7 +192,7 @@ def decompose_movement_query(query: str) -> tuple[RetrievalIntent, ...]:
     if not text:
         return ()
     roles = analyze_query(text)
-    subject = _subject_phrase(text, roles)
+    subject = primary_route_subject(text, roles) or _subject_phrase(text, roles)
     year = _query_year(text)
     endpoints = _endpoint_terms(text, roles)
     regions = _region_terms(text, roles)

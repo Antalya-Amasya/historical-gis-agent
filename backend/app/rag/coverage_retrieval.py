@@ -5,9 +5,9 @@ import re
 from collections import defaultdict
 
 from backend.app.models import Evidence
-from backend.app.rag.evidence_ranking import _EXPLICIT_ACTOR_MOVEMENT, _MOVEMENT_PAIR_STATEMENT, _MOVEMENT_STATEMENT, _explicit_fragment_actor_conflict, rerank_evidence
-from backend.app.rag.query_roles import analyze_query, episode_context_terms, movement_scoring_terms, normalized_tokens
-from backend.app.rag.retrieval_intents import RetrievalIntent, _subject_phrase
+from backend.app.rag.evidence_ranking import _MOVEMENT_PAIR_STATEMENT, _MOVEMENT_STATEMENT, _explicit_fragment_actor_conflict, rerank_evidence
+from backend.app.rag.query_roles import analyze_query, movement_scoring_terms, normalized_tokens
+from backend.app.rag.retrieval_intents import RetrievalIntent
 
 _SENTENCE_SPAN = re.compile(r"[^.!?\n]+(?:[.!?]+|$)", re.MULTILINE)
 _NON_ASSERTED_MOVEMENT = re.compile(r"\b(?:would|could|might|should|may|planned\s+to|intended\s+to)\b", re.I)
@@ -33,10 +33,6 @@ _STEER_REJECT = re.compile(
 DEFAULT_COVERAGE_BUDGET = 20
 DEFAULT_PER_INTENT_K = 6
 DEFAULT_RAW_OBSERVATION_K = 60
-SUBJECT_EPISODE_MOVEMENT_SLOTS = 2
-_SUBJECT_TITLE_TOKENS = frozenset({"commander", "emperor", "general", "king"})
-_PRESERVATION_REJECT = re.compile(r"\b(?:did\s+not|never|would|could|might|should|may|planned\s+to|intended\s+to|it\s+was\s+(?:said|reported)|reported|rumou?r\w*|different\s+campaign|they\s+say|conjectur\w*)\b", re.I)
-_DIRECTIONAL_MOVEMENT = re.compile(r"\b(?:from|to|into|toward(?:s)?|across|through)\b", re.I)
 
 
 def _proposal_source_key(item: Evidence) -> str:
@@ -187,35 +183,6 @@ def select_qualified_local_proposals(ranked: list[Evidence], observation_k: int)
 def movement_bearing_text(text: str) -> bool:
     normalized = text or ""
     return bool(_MOVEMENT_PAIR_STATEMENT.search(normalized) or _MOVEMENT_STATEMENT.search(normalized))
-
-
-def _qualifies_subject_episode_movement(user_query: str, item: Evidence) -> bool:
-    text = item.text or item.excerpt or ""
-    roles = analyze_query(user_query)
-    route_subject = normalized_tokens(_subject_phrase(user_query, roles).strip())
-    if not route_subject:
-        return False
-    ranking = item.metadata.get("retrieval_ranking") or {}
-    if float(ranking.get("person_support", 0.0)) < 0.08 or float(ranking.get("action_support", 0.0)) < 0.12:
-        return False
-    if _explicit_fragment_actor_conflict(roles, text):
-        return False
-    tokens = normalized_tokens(text)
-    if not ((episode_context_terms(roles) - roles.person_terms | roles.location_match_terms) & tokens):
-        return False
-    other_persons, route_core = roles.person_terms - route_subject, route_subject - _SUBJECT_TITLE_TOKENS
-    for match in _SENTENCE_SPAN.finditer(text):
-        sentence = match.group()
-        if _PRESERVATION_REJECT.search(sentence) or not _DIRECTIONAL_MOVEMENT.search(sentence):
-            continue
-        for actor in _EXPLICIT_ACTOR_MOVEMENT.finditer(sentence):
-            actor_tokens = normalized_tokens(actor.group("actor"))
-            if actor_tokens & other_persons:
-                continue
-            actor_core = actor_tokens - _SUBJECT_TITLE_TOKENS
-            if (route_core and actor_core & route_core) or (not route_core and actor_tokens & route_subject):
-                return True
-    return False
 
 
 def movement_bearing_evidence(evidence: list[Evidence]) -> list[Evidence]:
@@ -468,22 +435,6 @@ def merge_coverage_results(
         for rank, item in enumerate(items, start=1):
             if add(item, intent, rank=rank, reason="intent_coverage_slot"):
                 break
-
-    preserved_families, preserved_prefixes = set(), set()
-    for item in ranked:
-        if len(preserved_families) >= SUBJECT_EPISODE_MOVEMENT_SLOTS or item.id in selected_ids or overlaps_selected(item) or not _qualifies_subject_episode_movement(user_query, item):
-            if len(preserved_families) >= SUBJECT_EPISODE_MOVEMENT_SLOTS:
-                break
-            continue
-        family = _coverage_family_key(item)
-        prefix = " ".join((item.text or item.excerpt or "").casefold().split())[:180]
-        matched = channels_by_id.get(item.id)
-        if family in preserved_families or prefix in preserved_prefixes or not matched:
-            continue
-        preferred = next((entry for entry in matched if entry["kind"] == "CANONICAL"), matched[0])
-        intent = intent_by_key[(str(preferred["kind"]), str(preferred["query"]))]
-        if add(item, intent, rank=global_rank.get(item.id, 999), reason="subject_episode_movement"):
-            preserved_families.add(family); preserved_prefixes.add(prefix)
 
     global_fill_families: set[str] = set()
 
