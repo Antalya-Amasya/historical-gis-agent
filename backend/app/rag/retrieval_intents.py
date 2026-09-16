@@ -83,6 +83,24 @@ def primary_route_subject(query: str, roles: QueryRoleAnalysis | None = None) ->
     return None
 
 
+def _retrieval_person_context(query: str, roles: QueryRoleAnalysis, primary: str | None) -> str:
+    """Non-authoritative person prefix for EPISODE/MOVEMENT/ENDPOINT retrieval only."""
+    if primary:
+        return primary
+    multi = _MULTIWORD_SUBJECT.search(query)
+    if multi:
+        return multi.group(1)
+    location_folded = {term.casefold() for term in roles.location_terms}
+    excluded = _SUBJECT_SCAFFOLD | location_folded | _EPISODE_LOCATION_EXCLUDE | set(roles.action_terms)
+    for name in roles.person_sequence:
+        token = name.strip()
+        folded = token.casefold()
+        if not token or folded in excluded or _ROMAN_NUMERAL.match(folded):
+            continue
+        return token.title() if folded == token else token
+    return ""
+
+
 def _subject_phrase(query: str, roles: QueryRoleAnalysis) -> str:
     parts: list[str] = []
     match = _MULTIWORD_SUBJECT.search(query)
@@ -193,6 +211,7 @@ def decompose_movement_query(query: str) -> tuple[RetrievalIntent, ...]:
         return ()
     roles = analyze_query(text)
     subject = primary_route_subject(text, roles)
+    retrieval_context = _retrieval_person_context(text, roles, subject)
     subject_prefix = subject or ""
     year = _query_year(text)
     endpoints = _endpoint_terms(text, roles)
@@ -205,7 +224,7 @@ def decompose_movement_query(query: str) -> tuple[RetrievalIntent, ...]:
     if subject:
         intents.append(RetrievalIntent("SUBJECT", subject))
 
-    episode_query = _compose(subject_prefix, year, *episode_terms, *endpoints[:2], *regions[:1])
+    episode_query = _compose(retrieval_context, year, *episode_terms, *endpoints[:2], *regions[:1])
     if episode_query and episode_query.casefold() != (subject or "").casefold():
         intents.append(RetrievalIntent("EPISODE", episode_query))
 
@@ -213,16 +232,16 @@ def decompose_movement_query(query: str) -> tuple[RetrievalIntent, ...]:
     if movement_language:
         intents.append(RetrievalIntent("MOVEMENT", movement_language))
 
-    if subject:
-        subject_movement = _compose(subject, *movement[:3], "march", "route", "travel")
-        if subject_movement and subject_movement.casefold() != movement_language.casefold():
-            intents.append(RetrievalIntent("MOVEMENT", subject_movement))
+    if retrieval_context:
+        context_movement = _compose(retrieval_context, *movement[:3], "march", "route", "travel")
+        if context_movement and context_movement.casefold() != movement_language.casefold():
+            intents.append(RetrievalIntent("MOVEMENT", context_movement))
 
     if endpoints or regions:
         intents.append(
             RetrievalIntent(
                 "ENDPOINT",
-                _compose(subject_prefix, *endpoints[:3], *regions[:2], "travel", "march", "journey"),
+                _compose(retrieval_context, *endpoints[:3], *regions[:2], "travel", "march", "journey"),
             )
         )
 

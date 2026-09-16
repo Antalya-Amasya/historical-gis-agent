@@ -70,8 +70,9 @@ def test_lucullus_during_war_episode_has_no_contaminated_mover_prefix() -> None:
     assert _subject_phrase(query, roles) == "Lucullus Mithridates"
     intents = {intent.kind: intent.query for intent in decompose_movement_query(query)}
     assert "SUBJECT" not in intents
-    assert "Lucullus" not in intents.get("EPISODE", "")
-    assert "Mithridates" not in intents.get("EPISODE", "").split() or "war" in intents.get("EPISODE", "")
+    episode = intents.get("EPISODE", "")
+    assert "Lucullus Mithridates" not in episode
+    assert "Mithridates" not in episode.split()
 
 
 @pytest.mark.parametrize("query,expected", POSSESSIVE_REPLAY)
