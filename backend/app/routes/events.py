@@ -142,6 +142,10 @@ class EvidenceGroundedHistoricalEventExtractor:
         r"\b(?:the\s+)?(?:army|armies|senate|assembly|people|romans|carthaginians|rebels|consul|tribune|leader|reformer|commander|king|queen)\b",
         re.IGNORECASE,
     )
+    _ACTOR_ROLE_TERMS = frozenset(
+        {"army", "armies", "senate", "assembly", "people", "romans", "carthaginians", "rebels",
+         "consul", "tribune", "leader", "reformer", "commander", "king", "queen"}
+    )
     _MOVEMENT_CLAUSE_SPLIT = re.compile(r"[,;]|\bbut\b|\band\b", re.IGNORECASE)
     _POLARITY_CLAUSE_SPLIT = re.compile(r"[,;]|\bbut\b", re.IGNORECASE)
     _NEGATED_AUXILIARIES = frozenset(
@@ -168,6 +172,10 @@ class EvidenceGroundedHistoricalEventExtractor:
     _ACTOR_COORDINATION = re.compile(r"\band\b", re.IGNORECASE)
     _ACTOR_COLLECTIVE = re.compile(
         r"^the\s+(?:soldiers|army|armies|fleet|fleets|people|troops|forces|commissioners|legions?)\b",
+        re.IGNORECASE,
+    )
+    _PRESENCE_PREDICATE = re.compile(
+        r"\b(?:was|were|remained|remain)\s+(?!not\s+)at\b",
         re.IGNORECASE,
     )
 
@@ -306,11 +314,7 @@ class EvidenceGroundedHistoricalEventExtractor:
         return HistoricalEventActorGrounding(actor_status=EventActorStatus.UNKNOWN)
 
     @classmethod
-    def _ground_movement_actor(cls, statement: str) -> HistoricalEventActorGrounding:
-        predicate = cls._asserted_movement_predicate_span(statement)
-        if predicate is None:
-            return cls._unknown_actor()
-        predicate_start, _predicate_end = predicate
+    def _ground_clause_actor(cls, statement: str, predicate_start: int) -> HistoricalEventActorGrounding:
         clause, clause_start = cls._local_clause(statement, predicate_start)
         prefix = clause[: predicate_start - clause_start]
         subject_segment = prefix.split(",")[-1].strip()
@@ -320,7 +324,13 @@ class EvidenceGroundedHistoricalEventExtractor:
             return cls._unknown_actor()
         if cls._ACTOR_COORDINATION.search(subject_segment) or "," in subject_segment:
             return cls._unknown_actor()
-        if cls._ACTOR_COLLECTIVE.match(subject_segment) or cls._ACTOR.search(subject_segment):
+        if cls._ACTOR_COLLECTIVE.match(subject_segment):
+            return cls._unknown_actor()
+        if re.match(
+            r"^the\s+(?:" + "|".join(re.escape(term) for term in cls._ACTOR_ROLE_TERMS) + r")\.?$",
+            subject_segment,
+            re.IGNORECASE,
+        ):
             return cls._unknown_actor()
         name_match = re.search(
             r"((?:[A-Z][A-Za-z'À-ÖØ-öø-ÿÆæŒœ']{2,})(?:\s+(?:[A-Z][A-Za-z'À-ÖØ-öø-ÿÆæŒœ']{2,}))*)[\s,]*$",
@@ -329,6 +339,8 @@ class EvidenceGroundedHistoricalEventExtractor:
         if name_match is None:
             return cls._unknown_actor()
         actor_text = name_match.group(1)
+        if len(actor_text.split()) == 1 and actor_text.casefold() in cls._ACTOR_ROLE_TERMS:
+            return cls._unknown_actor()
         subject_start_in_prefix = prefix.rfind(subject_segment)
         if subject_start_in_prefix < 0:
             return cls._unknown_actor()
@@ -344,6 +356,33 @@ class EvidenceGroundedHistoricalEventExtractor:
             actor_clause_span=(clause_start, clause_start + len(clause)),
         )
 
+    @classmethod
+    def _ground_movement_actor(cls, statement: str) -> HistoricalEventActorGrounding:
+        predicate = cls._asserted_movement_predicate_span(statement)
+        if predicate is None:
+            return cls._unknown_actor()
+        return cls._ground_clause_actor(statement, predicate[0])
+
+    @classmethod
+    def _asserted_presence_predicate_span(cls, statement: str) -> tuple[int, int] | None:
+        best: tuple[int, int] | None = None
+        for start, end in cls._movement_clause_boundaries(statement, split=cls._POLARITY_CLAUSE_SPLIT):
+            clause = statement[start:end]
+            for match in cls._PRESENCE_PREDICATE.finditer(clause):
+                if cls._NON_COMPLETED.search(clause[: match.start()]):
+                    continue
+                span = (start + match.start(), start + match.end())
+                if best is None or span[0] >= best[0]:
+                    best = span
+        return best
+
+    @classmethod
+    def _ground_presence_actor(cls, statement: str) -> HistoricalEventActorGrounding:
+        predicate = cls._asserted_presence_predicate_span(statement)
+        if predicate is None:
+            return cls._unknown_actor()
+        return cls._ground_clause_actor(statement, predicate[0])
+
     def _event_type(self, sentence: str) -> HistoricalEventType:
         # A retrospective reference can name a battle or death while the main
         # assertion describes another event.  Classify the asserted clause.
@@ -355,6 +394,8 @@ class EvidenceGroundedHistoricalEventExtractor:
                 return event_type
         if _has_movement_cue(sentence) and self._has_positive_movement_assertion(sentence):
             return HistoricalEventType.MOVEMENT
+        if self._asserted_presence_predicate_span(sentence) is not None:
+            return HistoricalEventType.PRESENCE
         return HistoricalEventType.UNKNOWN
 
     @staticmethod
@@ -850,6 +891,11 @@ class EvidenceGroundedHistoricalEventExtractor:
         if event_type is HistoricalEventType.MOVEMENT:
             if not self._has_completed_movement_assertion(sentence):
                 return False
+        elif event_type is HistoricalEventType.PRESENCE:
+            if self._asserted_presence_predicate_span(sentence) is None:
+                return False
+            if self._ground_presence_actor(sentence).actor_status is not EventActorStatus.EXPLICIT:
+                return False
         elif self._NON_COMPLETED.search(sentence):
             return False
         if self._REPORTED_SPEECH.search(sentence) or self._NAVIGATION_HEADING.search(sentence):
@@ -920,6 +966,10 @@ class EvidenceGroundedHistoricalEventExtractor:
                     places = self._apply_movement_semantics(
                         movement_context, places, item.id, prior_endpoints=prior_endpoints,
                     )
+                elif event_type is HistoricalEventType.PRESENCE:
+                    places = [mention for mention in places if mention.role is EventPlaceRole.EVENT_SITE]
+                    if not places:
+                        continue
                 origin = (
                     self._anaphoric_origin(sentences[index - 1] if index else None, sentence, item.id)
                     if event_type is HistoricalEventType.MOVEMENT else None
@@ -933,7 +983,8 @@ class EvidenceGroundedHistoricalEventExtractor:
                         existing.role = EventPlaceRole.ORIGIN
                     else:
                         places.insert(0, origin)
-                places = self._enforce_movement_endpoint_polarity(movement_context, places)
+                if event_type is HistoricalEventType.MOVEMENT:
+                    places = self._enforce_movement_endpoint_polarity(movement_context, places)
                 if event_type is HistoricalEventType.MOVEMENT:
                     prior_endpoints = analyze_sentence(
                         movement_context,
@@ -947,11 +998,12 @@ class EvidenceGroundedHistoricalEventExtractor:
                 )
                 temporal_codes.update(codes)
                 temporal = self.temporal_resolver.primary(temporal_readings, item.id)
-                actor = (
-                    self._ground_movement_actor(statement)
-                    if event_type is HistoricalEventType.MOVEMENT
-                    else self._unknown_actor()
-                )
+                if event_type is HistoricalEventType.MOVEMENT:
+                    actor = self._ground_movement_actor(statement)
+                elif event_type is HistoricalEventType.PRESENCE:
+                    actor = self._ground_presence_actor(statement)
+                else:
+                    actor = self._unknown_actor()
                 events.append(HistoricalEvent(
                     id=f"event-{digest}", name=f"{event_type.value.title()} event", summary=statement,
                     period=item.period, event_type=event_type, temporal_grounding=temporal,

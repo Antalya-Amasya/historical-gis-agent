@@ -1,10 +1,12 @@
 from backend.app.agent.tools import AgentToolRegistry
 from backend.app.models import (
     AgentState,
+    EventActorStatus,
     Evidence,
     EventPlaceResolutionStatus,
     EventPlaceRole,
     HistoricalEvent,
+    HistoricalEventActorGrounding,
     HistoricalEventPlaceBinding,
     HistoricalEventPlaceMention,
     HistoricalEventTemporalGrounding,
@@ -105,7 +107,11 @@ def test_multiple_event_sites_are_not_chained_by_their_existence():
 
 
 def test_comparable_evidence_grounded_temporal_values_order_separate_events():
-    events = [site("later", "Lutetia", ["b"], years=(-52, -52)), site("earlier", "Genava", ["a"], years=(-58, -58))]
+    actor = HistoricalEventActorGrounding(actor_text="Caesar", actor_tokens=["Caesar"], actor_status=EventActorStatus.EXPLICIT)
+    events = [
+        site("later", "Lutetia", ["b"], years=(-52, -52)).model_copy(update={"actor": actor}),
+        site("earlier", "Genava", ["a"], years=(-58, -58)).model_copy(update={"actor": actor}),
+    ]
     outcome = build(events, [evidence("a"), evidence("b")])
     assert names(outcome) == ["Genava", "Lutetia"]
     assert [relation.rule for relation in outcome.relations] == [OrderingRule.TEMPORAL_ORDER]

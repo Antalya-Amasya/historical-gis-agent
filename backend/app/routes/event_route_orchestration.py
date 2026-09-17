@@ -15,6 +15,7 @@ from enum import Enum
 from backend.app.models import (
     Evidence,
     EventActorStatus,
+    EventPlaceResolutionStatus,
     EventPlaceRole,
     GeoJsonLineString,
     HistoricalClaim,
@@ -173,12 +174,120 @@ def _sole(anchors: list[EventAnchor], role: EventPlaceRole) -> EventAnchor | Non
     return matches[0] if len(matches) == 1 else None
 
 
+def _unique_role_anchor(anchors: list[EventAnchor], role: EventPlaceRole) -> EventAnchor | None:
+    matches = [anchor for anchor in anchors if anchor.role is role]
+    return matches[0] if len(matches) == 1 else None
+
+
 def _initial(anchors: list[EventAnchor]) -> EventAnchor | None:
-    return _sole(anchors, EventPlaceRole.ORIGIN) or _sole(anchors, EventPlaceRole.EVENT_SITE)
+    origins = [anchor for anchor in anchors if anchor.role is EventPlaceRole.ORIGIN]
+    if len(origins) > 1:
+        return None
+    if len(origins) == 1:
+        return origins[0]
+    return _unique_role_anchor(anchors, EventPlaceRole.EVENT_SITE)
 
 
 def _terminal(anchors: list[EventAnchor]) -> EventAnchor | None:
-    return _sole(anchors, EventPlaceRole.DESTINATION) or _sole(anchors, EventPlaceRole.EVENT_SITE)
+    destinations = [anchor for anchor in anchors if anchor.role is EventPlaceRole.DESTINATION]
+    if len(destinations) > 1:
+        return None
+    if len(destinations) == 1:
+        return destinations[0]
+    return _unique_role_anchor(anchors, EventPlaceRole.EVENT_SITE)
+
+
+def _explicit_actor_tokens(event: HistoricalEvent) -> tuple[str, ...] | None:
+    if event.actor.actor_status is not EventActorStatus.EXPLICIT or not event.actor.actor_tokens:
+        return None
+    tokens = list(event.actor.actor_tokens)
+    if _connector_governs_later_statement(event):
+        connector = _EXPLICIT_CONNECTOR_PREFIX.match(_movement_statement(event))
+        if connector is not None:
+            prefix_tokens = connector.group(0).strip().casefold().split()
+            if [token.casefold() for token in tokens[: len(prefix_tokens)]] == prefix_tokens:
+                tokens = tokens[len(prefix_tokens) :]
+    return tuple(tokens) if tokens else None
+
+
+def _inter_event_actor_compatible(earlier: HistoricalEvent, later: HistoricalEvent) -> bool:
+    earlier_actor, later_actor = earlier.actor, later.actor
+    if earlier_actor.actor_status is EventActorStatus.EXPLICIT and later_actor.actor_status is EventActorStatus.EXPLICIT:
+        earlier_tokens = _explicit_actor_tokens(earlier)
+        later_tokens = _explicit_actor_tokens(later)
+        return bool(earlier_tokens) and earlier_tokens == later_tokens
+    return False
+
+
+def _ordering_earlier_anchor(anchors: list[EventAnchor], event: HistoricalEvent | None = None) -> EventAnchor | None:
+    if len([anchor for anchor in anchors if anchor.role is EventPlaceRole.DESTINATION]) > 1:
+        return None
+    terminal = _terminal(anchors)
+    if terminal is not None:
+        return terminal
+    if event is not None and any(
+        binding.role is EventPlaceRole.DESTINATION
+        for binding in event.place_bindings
+    ):
+        return None
+    return _unique_role_anchor(anchors, EventPlaceRole.ORIGIN) or _unique_role_anchor(anchors, EventPlaceRole.EVENT_SITE)
+
+
+def _ordering_later_anchor(anchors: list[EventAnchor], event: HistoricalEvent | None = None) -> EventAnchor | None:
+    if len([anchor for anchor in anchors if anchor.role is EventPlaceRole.ORIGIN]) > 1:
+        return None
+    initial = _initial(anchors)
+    if initial is not None:
+        return initial
+    if event is not None and any(
+        binding.role is EventPlaceRole.ORIGIN
+        for binding in event.place_bindings
+    ):
+        return None
+    return _unique_role_anchor(anchors, EventPlaceRole.DESTINATION) or _unique_role_anchor(anchors, EventPlaceRole.EVENT_SITE)
+
+
+def _independent_relation_episode_compatible(
+    relation: AnchorOrderingRelation,
+    events_by_id: dict[str, HistoricalEvent],
+    evidence_by_id: dict[str, Evidence],
+) -> bool:
+    from backend.app.routes.episode_relevance import _campaign_phrase_modifier_terms
+    from backend.app.routes.evidence_relevance import EvidenceRelevance, event_relevance
+
+    events = [events_by_id[event_id] for event_id in relation.event_ids if event_id in events_by_id]
+    if len(events) < 2:
+        return True
+    for event in events:
+        if event_relevance(event, evidence_by_id, ()) is EvidenceRelevance.OTHER_CAMPAIGN:
+            return False
+    explicit_terms = [
+        _campaign_phrase_modifier_terms(_movement_statement(event))
+        for event in events
+        if _campaign_phrase_modifier_terms(_movement_statement(event))
+    ]
+    if len(explicit_terms) >= 2:
+        for left in explicit_terms:
+            for right in explicit_terms:
+                if left is not right and left.isdisjoint(right):
+                    return False
+    return True
+
+
+def _independent_inter_event_relation_allowed(
+    relation: AnchorOrderingRelation,
+    events_by_id: dict[str, HistoricalEvent],
+    evidence_by_id: dict[str, Evidence],
+) -> bool:
+    if relation.rule is OrderingRule.SAME_MOVEMENT_EVENT:
+        return True
+    earlier_event = events_by_id.get(relation.event_ids[0])
+    later_event = events_by_id.get(relation.event_ids[1])
+    if earlier_event is None or later_event is None:
+        return False
+    if not _inter_event_actor_compatible(earlier_event, later_event):
+        return False
+    return _independent_relation_episode_compatible(relation, events_by_id, evidence_by_id)
 
 
 def _temporal_interval(event: HistoricalEvent | None) -> tuple[int, int] | None:
@@ -271,10 +380,9 @@ def _adjacent_movement_statements(
 
 
 def _explicit_structural_same_actor(earlier: HistoricalEvent, later: HistoricalEvent) -> bool:
-    for event in (earlier, later):
-        if event.actor.actor_status is not EventActorStatus.EXPLICIT or not event.actor.actor_tokens:
-            return False
-    return earlier.actor.actor_tokens == later.actor.actor_tokens
+    earlier_tokens = _explicit_actor_tokens(earlier)
+    later_tokens = _explicit_actor_tokens(later)
+    return bool(earlier_tokens) and earlier_tokens == later_tokens
 
 
 def _positive_asserted_movement_pair(earlier: HistoricalEvent, later: HistoricalEvent) -> bool:
@@ -288,6 +396,35 @@ def _positive_asserted_movement_pair(earlier: HistoricalEvent, later: Historical
         ):
             return False
     return True
+
+
+def _positive_asserted_presence_movement_pair(earlier: HistoricalEvent, later: HistoricalEvent) -> bool:
+    from backend.app.routes.events import EvidenceGroundedHistoricalEventExtractor
+
+    if earlier.event_type is not HistoricalEventType.PRESENCE or later.event_type is not HistoricalEventType.MOVEMENT:
+        return False
+    if not EvidenceGroundedHistoricalEventExtractor._has_positive_movement_assertion(
+        _movement_statement(later),
+    ):
+        return False
+    earlier_sites = [
+        binding for binding in earlier.place_bindings
+        if binding.role is EventPlaceRole.EVENT_SITE
+        and binding.resolution_status is EventPlaceResolutionStatus.RESOLVED
+    ]
+    later_destinations = [
+        binding for binding in later.place_bindings
+        if binding.role is EventPlaceRole.DESTINATION
+        and binding.resolution_status is EventPlaceResolutionStatus.RESOLVED
+    ]
+    return len(earlier_sites) == 1 and len(later_destinations) == 1
+
+
+def _positive_asserted_structural_order_pair(earlier: HistoricalEvent, later: HistoricalEvent) -> bool:
+    return (
+        _positive_asserted_movement_pair(earlier, later)
+        or _positive_asserted_presence_movement_pair(earlier, later)
+    )
 
 
 def _connector_governs_later_statement(later: HistoricalEvent) -> bool:
@@ -320,7 +457,7 @@ def _authorized_source_structural_order(
 ) -> bool:
     if earlier is None or later is None:
         return False
-    if not _positive_asserted_movement_pair(earlier, later):
+    if not _positive_asserted_structural_order_pair(earlier, later):
         return False
     if not _explicit_structural_same_actor(earlier, later):
         return False
@@ -679,10 +816,17 @@ class EventAnchorRouteBuilder:
                 if ordered is None:
                     continue
                 earlier_id, later_id, rule = ordered
-                tail, head = _terminal(by_event[earlier_id]), _initial(by_event[later_id])
+                tail = _ordering_earlier_anchor(by_event[earlier_id], events_by_id.get(earlier_id))
+                head = _ordering_later_anchor(by_event[later_id], events_by_id.get(later_id))
                 if tail is None or head is None or tail.canonical_name == head.canonical_name:
                     continue
-                found.append(AnchorOrderingRelation(tail.canonical_name, head.canonical_name, rule, (earlier_id, later_id), tuple(sorted(set(tail.evidence_refs) | set(head.evidence_refs)))))
+                relation = AnchorOrderingRelation(
+                    tail.canonical_name, head.canonical_name, rule, (earlier_id, later_id),
+                    tuple(sorted(set(tail.evidence_refs) | set(head.evidence_refs))),
+                )
+                if not _independent_inter_event_relation_allowed(relation, events_by_id, evidence_by_id):
+                    continue
+                found.append(relation)
         return _merge_same_movement_relations(found)
 
     @staticmethod

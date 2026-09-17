@@ -80,6 +80,7 @@ class HistoricalEventType(str, Enum):
     ELECTION = "ELECTION"
     REBELLION = "REBELLION"
     MOVEMENT = "MOVEMENT"
+    PRESENCE = "PRESENCE"
     OTHER = "OTHER"
     UNKNOWN = "UNKNOWN"
 
