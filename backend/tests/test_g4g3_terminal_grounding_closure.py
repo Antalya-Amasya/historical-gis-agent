@@ -107,14 +107,14 @@ def test_route_without_presentation_does_not_claim_map_exists():
 
 def test_malformed_submit_path_unchanged():
     """TEST 5: malformed submit → existing G4D behavior unchanged."""
-    script = [
-        call("search_historical_evidence", {"query": "Hannibal route"}),
+    build_agent, _ = route_script(with_presentation=True)
+    subject = build_agent([
+        call("search_historical_evidence", {"query": "route"}),
         call("build_historical_route", {"event_id": "test", "name": "Test route", "period": "218 BCE"}),
         terminal("Unsupported prose.", []),
-    ]
-    reply, state = agent(script, route_ev(), max_grounding_corrections=0).respond(
-        "show Hannibal route", AgentState(session_id="g4g3-5"),
-    )
+    ])
+    subject.max_grounding_corrections = 0
+    reply, state = subject.respond("show a historical route", AgentState(session_id="g4g3-5"))
     assert state.status == "completed_with_guardrail"
     assert reply == ROUTE_PROSE_GROUNDING_FALLBACK
     assert "unsupported_historical_answer_discarded" in state.warnings
@@ -170,13 +170,13 @@ def test_successful_submit_after_route_build_does_not_trigger_closure():
 
 def test_deterministic_route_build_then_missing_submit_triggers_fallback():
     """TEST 10: deterministic route build + missing submit → fallback."""
-    script = [
-        call("search_historical_evidence", {"query": "Hannibal"}),
+    build_agent, _ = route_script(with_presentation=True)
+    subject = build_agent([
+        call("search_historical_evidence", {"query": "route"}),
         AgentModelResponse(content="I will answer without a route."),
-    ]
-    reply, state = agent(script, route_ev(), max_steps=4).respond(
-        "show a Hannibal historical route", AgentState(session_id="g4g3-10"),
-    )
+    ])
+    subject.max_steps = 4
+    reply, state = subject.respond("show a historical route", AgentState(session_id="g4g3-10"))
     assert state.status == "completed_with_guardrail"
     assert state.tool_execution_stats["completion_corrections"] == 0
     assert reply == ROUTE_PROSE_GROUNDING_FALLBACK

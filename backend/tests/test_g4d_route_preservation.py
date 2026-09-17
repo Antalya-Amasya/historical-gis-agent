@@ -90,14 +90,25 @@ def inject_structured_route_execute(
     return execute
 
 
-def test_route_built_malformed_submit_preserves_structured_route():
-    script = [
-        call("search_historical_evidence", {"query": "Hannibal route"}),
-        call("build_historical_route", {"event_id": "test", "name": "Test route", "period": "218 BCE"}),
-        terminal("Unsupported prose about Hannibal.", []),
-    ]
-    subject = agent(script, route_ev(), max_grounding_corrections=0)
-    reply, state = subject.respond("show Hannibal route", AgentState(session_id="g4d-route-submit"))
+def test_route_built_malformed_submit_preserves_structured_route(monkeypatch):
+    registry = AgentToolRegistry(Retriever(route_ev()), Geo())
+    monkeypatch.setattr(
+        registry,
+        "execute",
+        inject_structured_route_execute(registry, with_presentation=True),
+    )
+    subject = HistoricalGisAgent(
+        ScriptedLLMProvider([
+            call("search_historical_evidence", {"query": "route"}),
+            call("build_historical_route", {"event_id": "test", "name": "Test route", "period": "218 BCE"}),
+            terminal("Unsupported prose about the route.", []),
+        ]),
+        Retriever(route_ev()),
+        Geo(),
+        max_grounding_corrections=0,
+    )
+    subject.tools = registry
+    reply, state = subject.respond("show a historical route", AgentState(session_id="g4d-route-submit"))
     assert state.historical_route is not None
     assert len(state.historical_route.ordered_points) == 2
     assert state.status == "completed_with_guardrail"

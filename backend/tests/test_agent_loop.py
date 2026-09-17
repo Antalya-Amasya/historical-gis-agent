@@ -336,10 +336,24 @@ def test_route_intent_does_not_require_a_successful_route():
     assert state.historical_route_diagnostics.get("reason_codes")
 
 
-def test_route_builder_is_not_invoked_twice_once_attempted():
-    provider=ScriptedLLMProvider([call("search_historical_evidence",{"query":"Hannibal"}),AgentModelResponse(content="I will answer without a route."),call("build_historical_route",{"event_id":"test","name":"Test route","period":"218 BCE"}),AgentModelResponse(content="The structured route is available.")])
-    subject=HistoricalGisAgent(provider,Retriever(route_ev()),Geo(),max_steps=5)
-    _,state=subject.respond("show a Hannibal historical route",AgentState(session_id="route-builder"))
+def test_route_builder_is_not_invoked_twice_once_attempted(monkeypatch):
+    from test_g4d_route_preservation import inject_structured_route_execute
+
+    registry = AgentToolRegistry(Retriever(route_ev()), Geo())
+    monkeypatch.setattr(
+        registry,
+        "execute",
+        inject_structured_route_execute(registry, with_presentation=True),
+    )
+    provider = ScriptedLLMProvider([
+        call("search_historical_evidence", {"query": "route"}),
+        AgentModelResponse(content="I will answer without a route."),
+        call("build_historical_route", {"event_id": "test", "name": "Test route", "period": "218 BCE"}),
+        AgentModelResponse(content="The structured route is available."),
+    ])
+    subject = HistoricalGisAgent(provider, Retriever(route_ev()), Geo(), max_steps=5)
+    subject.tools = registry
+    _, state = subject.respond("show a historical route", AgentState(session_id="route-builder"))
     assert state.status=="completed_with_guardrail" and state.historical_route is not None
     assert [item.tool_name for item in state.tool_history].count("build_historical_route")==1
     assert state.tool_execution_stats["completion_corrections"]==0

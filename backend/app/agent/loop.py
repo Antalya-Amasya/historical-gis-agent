@@ -2,7 +2,7 @@ from __future__ import annotations
 import json, logging, re
 from time import perf_counter
 from backend.app.agent.prompts import SYSTEM_PROMPT
-from backend.app.agent.evidence_support import assess_evidence_support, assess_final_answer_provenance, event_relation_supports_answer, render_evidence_citations, validate_evidence_citations, validate_evidence_selection
+from backend.app.agent.evidence_support import assess_evidence_support, assess_final_answer_provenance, event_relation_supports_answer, has_unsupported_route_pattern, render_evidence_citations, validate_evidence_citations, validate_evidence_selection
 from backend.app.agent.route_orchestration import (
     PRE_ROUTE_SUPPRESSION_MESSAGE,
     duplicate_attempt_payload,
@@ -14,6 +14,7 @@ from backend.app.agent.route_orchestration import (
     visible_historical_events,
 )
 from backend.app.models import AgentProviderCallTiming, AgentState, AgentToolHistoryEntry
+from backend.app.route_result_status import RouteResultStatus, derive_route_result_status
 
 logger = logging.getLogger(__name__)
 _ROUTE_TERMS = ("route", "路线", "行军", "进军", "绘制", "展示")
@@ -62,6 +63,15 @@ ROUTE_PROSE_GROUNDING_FALLBACK_NO_PRESENTATION = (
 )
 GENERIC_GROUNDING_GUARDRAIL = (
     "The current retrieved historical evidence is insufficient to support a reliable answer."
+)
+NO_ROUTE_TERMINAL_GUARDRAIL = (
+    "The current retrieved historical evidence is insufficient to support a reliable "
+    "HistoricalRoute, so the system will not add unsupported places or route details."
+)
+_KNOWN_GUARDRAIL_PREFIXES = (
+    "the current retrieved historical evidence is insufficient",
+    "the system could not safely validate",
+    "a structured route was built from the current evidence",
 )
 
 
@@ -848,9 +858,32 @@ class BoundedAgentLoop:
 
     def _finish(self, answer: str, state: AgentState, started: float) -> tuple[str, AgentState]:
         state.status = "completed" if state.status == "running" else state.status
-        if state.historical_route is None and "route" in answer.lower() and "no route" not in answer.lower() and "insufficient" not in answer.lower():
+        route_status = derive_route_result_status(state)
+        if route_status is RouteResultStatus.NO_ROUTE and self._final_answer_asserts_unsupported_route(answer):
+            state.warnings.append("Final answer mentioned a route without route state")
+            answer = self._no_route_terminal_guardrail_reply(state)
+        elif state.historical_route is None and self._final_answer_asserts_unsupported_route(answer):
             state.warnings.append("Final answer mentioned a route without route state")
         state.final_answer = answer
         logger.info("agent_finished status=%s elapsed_ms=%s", state.status, int((perf_counter() - started) * 1000))
         state.messages.append({"role": "assistant", "content": answer})
         return answer, state
+
+    @staticmethod
+    def _final_answer_asserts_unsupported_route(answer: str) -> bool:
+        if not (answer or "").strip():
+            return False
+        normalized = answer.casefold().strip()
+        if any(normalized.startswith(prefix) for prefix in _KNOWN_GUARDRAIL_PREFIXES):
+            return False
+        if "no route" in normalized or any(term in normalized for term in _INSUFFICIENT_TERMS):
+            return False
+        if has_unsupported_route_pattern(answer):
+            return True
+        return "route" in normalized
+
+    @staticmethod
+    def _no_route_terminal_guardrail_reply(state: AgentState) -> str:
+        if state.requested_output == "historical_route":
+            return NO_ROUTE_TERMINAL_GUARDRAIL
+        return GENERIC_GROUNDING_GUARDRAIL
