@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from backend.app.models import Evidence
 from backend.app.rag.evidence_ranking import _MOVEMENT_PAIR_STATEMENT, _MOVEMENT_STATEMENT, _explicit_fragment_actor_conflict, rerank_evidence
-from backend.app.rag.query_roles import analyze_query, movement_scoring_terms, normalized_tokens
+from backend.app.rag.query_roles import analyze_query, episode_context_terms, movement_scoring_terms, normalized_tokens
 from backend.app.rag.retrieval_intents import RetrievalIntent
 
 _SENTENCE_SPAN = re.compile(r"[^.!?\n]+(?:[.!?]+|$)", re.MULTILINE)
@@ -183,6 +183,25 @@ def select_qualified_local_proposals(ranked: list[Evidence], observation_k: int)
 def movement_bearing_text(text: str) -> bool:
     normalized = text or ""
     return bool(_MOVEMENT_PAIR_STATEMENT.search(normalized) or _MOVEMENT_STATEMENT.search(normalized))
+
+
+def _coverage_facets(user_query: str, item: Evidence) -> frozenset[str]:
+    text = item.text or item.excerpt or ""
+    ranking = item.metadata.get("retrieval_ranking") or {}
+    roles = analyze_query(user_query)
+    tokens = normalized_tokens(text)
+    facets: set[str] = set()
+    if movement_bearing_text(text):
+        facets.add("PRIMARY_MOVEMENT")
+    if float(ranking.get("route_fragment_relevance", 0.0)) > 0:
+        facets.add("ROUTE_FRAGMENT")
+    if float(ranking.get("location_support", 0.0)) > 0 or roles.location_match_terms & tokens:
+        facets.add("ENDPOINT_OR_LOCATION")
+    if float(ranking.get("primary_subject_support", 0.0)) >= 0.04 or float(ranking.get("person_support", 0.0)) >= 0.04:
+        facets.add("SUBJECT_CONTEXT")
+    if (episode_context_terms(roles) - roles.person_terms - roles.location_match_terms) & tokens:
+        facets.add("EPISODE_CONTEXT")
+    return frozenset(facets)
 
 
 def movement_bearing_evidence(evidence: list[Evidence]) -> list[Evidence]:
@@ -424,16 +443,25 @@ def merge_coverage_results(
         ordered = sorted(unique_ids, key=lambda ident: (global_rank.get(ident, 999), ident))
         channel_ranked.append((intent, [by_id[ident] for ident in ordered]))
 
+    reserved_facets: set[str] = set()
     for intent, items in channel_ranked:
         for rank, item in enumerate(items, start=1):
             if not movement_bearing_text(item.text or item.excerpt or ""):
                 continue
+            facets = _coverage_facets(user_query, item)
+            if not facets or not facets - reserved_facets:
+                continue
             if add(item, intent, rank=rank, reason="intent_movement_coverage"):
+                reserved_facets.update(facets)
                 break
 
     for intent, items in channel_ranked:
         for rank, item in enumerate(items, start=1):
+            facets = _coverage_facets(user_query, item)
+            if not facets or not facets - reserved_facets:
+                continue
             if add(item, intent, rank=rank, reason="intent_coverage_slot"):
+                reserved_facets.update(facets)
                 break
 
     global_fill_families: set[str] = set()

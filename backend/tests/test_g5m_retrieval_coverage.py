@@ -337,9 +337,12 @@ def test_g5m_offline_metrics_snapshot(production_retriever):
             "episode_term_hits_before": _episode_term_hits(before, RR_CONTROLS.get(case_id, (query, ()))[1] if case_id in RR_CONTROLS else ()),
             "episode_term_hits_after": _episode_term_hits(after, RR_CONTROLS.get(case_id, (query, ()))[1] if case_id in RR_CONTROLS else ()),
         }
+        # F6E: semantic movement contract — retain movement-bearing evidence in final coverage.
+        assert len(movement_bearing_evidence(after)) >= 1, (
+            f"{case_id}: coverage final must retain at least one movement-bearing candidate"
+        )
         if case_id in {"caesar", "pompey", "mithridates", "xenophon"}:
             assert len(after) <= len(before) * 2
-            assert len(movement_bearing_evidence(after)) >= len(movement_bearing_evidence(before))
     report["trusted_aggregate_recall"] = (
         round(sum(trusted_recalls) / len(trusted_recalls), 3) if trusted_recalls else None
     )

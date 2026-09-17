@@ -4,7 +4,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from backend.app.models import Evidence
-from backend.app.rag.coverage_retrieval import DEFAULT_PER_INTENT_K, merge_coverage_results
+from backend.app.rag.coverage_retrieval import DEFAULT_PER_INTENT_K, _coverage_facets, merge_coverage_results
 from backend.app.rag.evidence_ranking import rerank_evidence
 from backend.app.rag.retrieval_intents import RetrievalIntent
 from backend.app.rag.retriever import ChromaHistoricalRetriever
@@ -201,27 +201,47 @@ def test_d_duplicate_id_merges_all_channel_provenance():
     assert ("EPISODE", EPISODE_QUERY) in channels
 
 
-def test_e_duplicate_leader_does_not_waste_channel_representative():
-    shared = _evidence("X", "Caesar marched from Italy into Epirus across the Adriatic.")
-    channel_b_next = _evidence("Y", "Caesar marched from Brundisium toward Epirus.")
-    high_other = _evidence(
+def _merge_reason(item: Evidence) -> str:
+    return str((item.metadata.get("retrieval_provenance") or {}).get("final_merge_reason"))
+
+
+def test_distinct_channel_facet_retains_reserved_protection():
+    shared_movement = _evidence("X", "Caesar marched from Italy into Epirus across the Adriatic.")
+    same_facet_channel_next = _evidence("Y", "Caesar marched from Brundisium toward Epirus.")
+    high_rank = _evidence(
         "Z",
         "Julius Caesar crossed from Italy across the Adriatic into Epirus and toward Pharsalus.",
         lexical_score=50.0,
         vector_rank=1,
     )
+    distinct_fragment = _evidence(
+        "U",
+        "During the campaign in 48 BCE the convoy put to sea.",
+        vector_rank=40,
+    )
+    distinct_fragment = distinct_fragment.model_copy(
+        update={"metadata": {**distinct_fragment.metadata, "heading": "CAESAR"}},
+    )
     merged = merge_coverage_results(
         CAESAR_QUERY,
         [
-            (RetrievalIntent("CANONICAL", CAESAR_QUERY), [shared]),
-            (RetrievalIntent("EPISODE", EPISODE_QUERY), [shared, channel_b_next]),
-            (RetrievalIntent("MOVEMENT", "Caesar Italy Epirus march"), [high_other]),
+            (RetrievalIntent("CANONICAL", CAESAR_QUERY), [shared_movement]),
+            (RetrievalIntent("EPISODE", EPISODE_QUERY), [shared_movement, same_facet_channel_next, distinct_fragment]),
+            (RetrievalIntent("MOVEMENT", "Caesar Italy Epirus march"), [high_rank]),
         ],
-        budget=2,
+        budget=4,
     )
-    ids = {item.id for item in merged}
-    assert "X" in ids
-    assert "Y" in ids
+    by_id = {item.id: item for item in merged}
+    shared_facets = _coverage_facets(CAESAR_QUERY, shared_movement)
+    assert shared_facets
+    assert _coverage_facets(CAESAR_QUERY, same_facet_channel_next) == shared_facets
+    assert "ROUTE_FRAGMENT" in _coverage_facets(CAESAR_QUERY, by_id["U"])
+
+    assert _merge_reason(by_id["X"]) == "intent_movement_coverage"
+    assert _merge_reason(by_id["U"]) == "intent_coverage_slot"
+    assert "Y" in by_id
+    assert _merge_reason(by_id["Y"]) == "global_rank_fill"
+    assert _merge_reason(by_id["Y"]) not in {"intent_movement_coverage", "intent_coverage_slot"}
 
 
 def test_i7_final_budget_remains_20():

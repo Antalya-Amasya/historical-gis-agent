@@ -6,6 +6,7 @@ from collections import Counter
 from backend.app.models import Evidence
 from backend.app.rag.coverage_retrieval import (
     DEFAULT_COVERAGE_BUDGET,
+    _coverage_facets,
     _coverage_family_key,
     merge_coverage_results,
     passages_overlap,
@@ -85,15 +86,18 @@ def test_second_pass_allows_repeated_families_when_budget_requires():
     assert _family_counts(merged)["family-a"] > 1
 
 
-def test_channel_reserved_slots_remain_present():
-    subject_items = [
-        _item("family-a", 0, score=0.95, text="Subject marched from Alpha to Beta."),
-        _item("family-b", 0, score=0.90, text="Subject biography without movement."),
-    ]
+def _merge_reason(item: Evidence) -> str:
+    return str((item.metadata.get("retrieval_provenance") or {}).get("final_merge_reason"))
+
+
+def test_distinct_channel_facet_retains_reserved_protection():
     movement_items = [
-        _item("family-c", 0, score=0.85, text="Movement marched from Alpha to Beta."),
-        _item("family-d", 0, score=0.80, text="Movement marched from Gamma to Delta."),
+        _item("family-a", 0, score=0.95, text="Subject marched from Alpha to Beta."),
     ]
+    distinct_fragment = _item("family-b", 0, score=0.90, text="During the campaign the convoy put to sea.")
+    distinct_fragment.metadata["heading"] = "THROUGH"
+    empty_facet = _item("family-empty", 0, score=0.85, text="Annual census rolls listed population totals.")
+    subject_items = [distinct_fragment, empty_facet]
     merged = merge_coverage_results(
         QUERY,
         [
@@ -102,9 +106,16 @@ def test_channel_reserved_slots_remain_present():
         ],
         budget=DEFAULT_COVERAGE_BUDGET,
     )
+    by_family = {item.metadata["parent_id"]: item for item in merged}
     reasons = _merge_reason_counts(merged)
+
+    assert not _coverage_facets(QUERY, empty_facet)
+    assert "ROUTE_FRAGMENT" in _coverage_facets(QUERY, by_family["family-b"])
     assert reasons["intent_movement_coverage"] >= 1
     assert reasons["intent_coverage_slot"] >= 1
+    assert _merge_reason(by_family["family-a"]) == "intent_movement_coverage"
+    assert _merge_reason(by_family["family-b"]) == "intent_coverage_slot"
+    assert "family-empty" not in by_family or _merge_reason(by_family["family-empty"]) != "intent_coverage_slot"
 
 
 def test_overlap_suppression_unchanged():
