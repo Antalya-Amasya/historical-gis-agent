@@ -21,7 +21,11 @@ class RomanRoadPresentationService:
     """Creates role-labelled map data without altering route computation."""
 
     def present(self, historical_route: HistoricalRoute, result: RomanRoadRouteResult) -> RomanRoadPresentation:
-        terrain_fallback_used = any(leg.terrain_candidate is not None for leg in result.legs)
+        terrain_fallback_used = any(
+            leg.terrain_candidate is not None and leg.reconstruction_method != "DIRECT_WATER_EDGE"
+            for leg in result.legs
+        )
+        maritime_used = any(leg.reconstruction_method == "DIRECT_WATER_EDGE" for leg in result.legs)
         barrier_crossing_used = any(leg.crossing_candidate is not None for leg in result.legs)
         route_method = result.generation_method
         interpretation = (
@@ -29,17 +33,31 @@ class RomanRoadPresentationService:
             if barrier_crossing_used
             else "Roman-road-preferred candidate reconstruction with terrain A* fallback only for unavailable adjacent road legs; it is not proof of an exact historical track."
             if terrain_fallback_used
+            else "Direct-water GIS reconstruction between historical sea constraints; not an exact historical sailing track."
+            if maritime_used
             else "Partial Roman-road candidate reconstruction where available; it is not proof of an exact historical track."
         )
         anchor_features = [self._anchor_feature(point) for point in historical_route.ordered_points]
         segment_features = []
+        legs_by_index = {leg.leg_index: leg for leg in result.legs}
         for segment in result.geometry_segments:
             geometry = {"type": "LineString", "coordinates": [list(item) for item in segment.coordinates]} if segment.coordinates else None
-            segment_features.append({"type": "Feature", "geometry": geometry, "properties": {
-                "layer_type": "terrain_reconstruction_segment" if segment.segment_type == "terrain_candidate" else "roman_road_segment", "segment_role": segment.segment_type,
+            if segment.segment_type == "direct_water_edge":
+                layer_type = "direct_water_edge"
+            elif segment.segment_type == "terrain_candidate":
+                layer_type = "terrain_reconstruction_segment"
+            else:
+                layer_type = "roman_road_segment"
+            leg = legs_by_index.get(segment.leg_index)
+            properties = {
+                "layer_type": layer_type, "segment_role": segment.segment_type,
                 "leg_index": segment.leg_index, "source_anchor_id": segment.source_anchor_id,
                 "destination_anchor_id": segment.destination_anchor_id, "failure_status": segment.failure_status,
-            }})
+            }
+            if segment.segment_type == "direct_water_edge" and leg is not None:
+                properties["reconstruction_method"] = leg.reconstruction_method
+                properties["travel_mode"] = leg.travel_mode.value
+            segment_features.append({"type": "Feature", "geometry": geometry, "properties": properties})
         crossing_features = [
             self._crossing_feature(leg.crossing_candidate)
             for leg in result.legs
