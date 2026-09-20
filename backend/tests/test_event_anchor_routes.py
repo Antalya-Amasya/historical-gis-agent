@@ -93,9 +93,11 @@ def test_same_movement_event_orders_origin_before_destination_and_keeps_provenan
         "event_ids": ["march"], "evidence_refs": ["a"],
         "historical_authority": "ATTESTED_MOVEMENT_ORDERING",
         "connection_semantics": "ALGORITHMIC_GIS_RECONSTRUCTION_REQUIRED",
+        "travel_mode": "LAND",
     }]
     claim = outcome.route.claims[0]
     assert (claim.claim_type, claim.source_place, claim.destination_place) == ("ORDERING", "Genava", "Lutetia")
+    assert claim.travel_mode.value == "LAND"
     assert claim.supporting_evidence_ids == ["a"] and outcome.diagnostics["reason_codes"] == []
 
 

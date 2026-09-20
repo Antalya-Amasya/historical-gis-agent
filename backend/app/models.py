@@ -85,6 +85,14 @@ class HistoricalEventType(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
+class HistoricalTravelMode(str, Enum):
+    """Broad travel mode asserted by evidence for one historical route leg."""
+
+    LAND = "LAND"
+    SEA = "SEA"
+    UNKNOWN = "UNKNOWN"
+
+
 class TemporalPrecision(str, Enum):
     DAY = "DAY"
     MONTH = "MONTH"
@@ -263,6 +271,7 @@ class HistoricalClaim(BaseModel):
     movement_relation: str | None = None
     sequence_status: str = "unordered"
     textual_basis: str | None = None
+    travel_mode: HistoricalTravelMode = HistoricalTravelMode.UNKNOWN
 
 
 class TransitionAction(str, Enum):

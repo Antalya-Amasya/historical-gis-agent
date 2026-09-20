@@ -11,7 +11,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-from backend.app.models import GeoJsonLineString, HistoricalRoute, HistoricalRoutePoint
+from backend.app.models import GeoJsonLineString, HistoricalRoute, HistoricalRoutePoint, HistoricalTravelMode
 
 from .barrier_crossings import (
     BarrierCrossingService,
@@ -63,6 +63,7 @@ class RomanRoadRouteLeg(BaseModel):
     reconstruction_method: str = "UNAVAILABLE"
     ordering_provenance: list[dict[str, object]] = Field(default_factory=list)
     limitation: str | None = None
+    travel_mode: HistoricalTravelMode = HistoricalTravelMode.UNKNOWN
 
 
 class RomanRoadRouteAggregate(BaseModel):
@@ -118,6 +119,14 @@ class RomanRoadRouteOrchestrator:
         leg_index = 1
         while point_index < len(points) - 1:
             source, destination = points[point_index], points[point_index + 1]
+            travel_mode = self._travel_mode(source, destination, historical_route)
+            if travel_mode is HistoricalTravelMode.SEA:
+                leg = self._maritime_gap_leg(leg_index, source, destination, historical_route)
+                legs.append(leg)
+                geometry_segments.extend(self._geometry(leg_index, source, destination, leg))
+                point_index += 1
+                leg_index += 1
+                continue
             if is_broad_mountain_constraint(destination):
                 if point_index + 2 >= len(points):
                     leg = self._missing_exit_leg(leg_index, source, destination, historical_route)
@@ -161,6 +170,36 @@ class RomanRoadRouteOrchestrator:
         )
 
     @staticmethod
+    def _travel_mode(
+        source: HistoricalRoutePoint,
+        destination: HistoricalRoutePoint,
+        historical_route: HistoricalRoute,
+    ) -> HistoricalTravelMode:
+        shared_claim_ids = set(source.claim_ids) & set(destination.claim_ids)
+        modes = {
+            claim.travel_mode
+            for claim in historical_route.claims
+            if claim.id in shared_claim_ids
+        }
+        return next(iter(modes)) if len(modes) == 1 else HistoricalTravelMode.UNKNOWN
+
+    @staticmethod
+    def _maritime_gap_leg(index, source, destination, historical_route) -> RomanRoadRouteLeg:
+        return RomanRoadRouteLeg(
+            leg_index=index,
+            source_anchor_id=source.historical_place.id,
+            destination_anchor_id=destination.historical_place.id,
+            source_evidence_refs=list(source.evidence_refs),
+            destination_evidence_refs=list(destination.evidence_refs),
+            status=RomanRoadCandidateStatus.DISCONNECTED,
+            failure_status="MARITIME_PLANNER_UNAVAILABLE",
+            reconstruction_method="MARITIME_PLANNER_UNAVAILABLE",
+            ordering_provenance=RomanRoadRouteOrchestrator._ordering_provenance(source, destination, historical_route),
+            limitation="Explicit sea travel is not eligible for Roman-road or land-terrain planning; no maritime planner is configured.",
+            travel_mode=HistoricalTravelMode.SEA,
+        )
+
+    @staticmethod
     def _barrier_leg(index, source, barrier, exit_point, result, historical_route) -> RomanRoadRouteLeg:
         available = result.status is BarrierCrossingStatus.AVAILABLE
         return RomanRoadRouteLeg(
@@ -189,6 +228,7 @@ class RomanRoadRouteOrchestrator:
                 "Broad mountain-region coordinate is a search reference only; the selected crossing is an algorithmic GIS artifact."
                 if available else "No defensible crossing was generated; the historical mountain constraint remains an explicit gap."
             ),
+            travel_mode=RomanRoadRouteOrchestrator._travel_mode(source, exit_point, historical_route),
         )
 
     @staticmethod
@@ -205,6 +245,7 @@ class RomanRoadRouteOrchestrator:
             barrier_evidence_refs=list(barrier.evidence_refs),
             ordering_provenance=RomanRoadRouteOrchestrator._ordering_provenance(source, barrier, historical_route),
             limitation="Broad mountain constraint has no trusted onward waypoint; its representative coordinate is not used as an exact route destination.",
+            travel_mode=RomanRoadRouteOrchestrator._travel_mode(source, barrier, historical_route),
         )
 
     @staticmethod
@@ -221,6 +262,7 @@ class RomanRoadRouteOrchestrator:
             barrier_evidence_refs=list(barrier.evidence_refs),
             ordering_provenance=RomanRoadRouteOrchestrator._ordering_provenance(barrier, exit_point, historical_route),
             limitation="Broad mountain constraint has no trusted approach waypoint; its representative coordinate is not used as an exact route origin.",
+            travel_mode=RomanRoadRouteOrchestrator._travel_mode(barrier, exit_point, historical_route),
         )
 
     @staticmethod
@@ -240,6 +282,7 @@ class RomanRoadRouteOrchestrator:
             reconstruction_method="ROMAN_ROAD_NETWORK" if result.candidate is not None else "UNAVAILABLE",
             ordering_provenance=RomanRoadRouteOrchestrator._ordering_provenance(source, destination, historical_route),
             limitation=result.limitation,
+            travel_mode=RomanRoadRouteOrchestrator._travel_mode(source, destination, historical_route),
         )
 
     def _terrain_fallback(self, leg: RomanRoadRouteLeg, source: HistoricalRoutePoint, destination: HistoricalRoutePoint) -> RomanRoadRouteLeg:

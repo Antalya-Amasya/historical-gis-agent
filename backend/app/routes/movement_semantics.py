@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from backend.app.models import PlaceMentionValidationClass
+from backend.app.models import HistoricalTravelMode, PlaceMentionValidationClass
 from backend.app.routes.place_aliases import HistoricalPlaceAlias
 from backend.app.routes.place_mention_validation import validate_broad_place_mention
 
@@ -34,6 +34,12 @@ _MOVEMENT_PREDICATE = re.compile(
     re.IGNORECASE,
 )
 _MOVEMENT_CUE = _MOVEMENT_PREDICATE
+_SEA_MODE = re.compile(r"\b(?:sailed|sailing|embarked|embark|set\s+sail|crossed\s+the\s+sea)\b", re.IGNORECASE)
+_LAND_MODE = re.compile(r"\b(?:marched|marching|rode|riding|travelled\s+overland|traveled\s+overland)\b", re.IGNORECASE)
+_UNASSERTED_MODE_PREFIX = re.compile(
+    r"\b(?:did\s+not|didn't|never|planned\s+to|might|intended\s+to|intends\s+to|would)\s+$",
+    re.IGNORECASE,
+)
 _NON_MOVEMENT = re.compile(
     r"\b(?:fought|battle|born|controlled|province|political\s+movement|moved\s+the\s+senate|"
     r"speech\s+about|according\s+to|made\s+equal\s+in\s+command|brought|buried|joined|"
@@ -182,6 +188,17 @@ class SentenceMovementSemantics:
     route_orderings: tuple[IntraEventRouteOrdering, ...] = ()
     should_abstain: bool = False
     abstain_reason: str | None = None
+
+
+def classify_historical_travel_mode(statements: tuple[str, ...]) -> HistoricalTravelMode:
+    """Classify only explicit, asserted mode cues from the event-local statements."""
+    modes: set[HistoricalTravelMode] = set()
+    for statement in statements:
+        for pattern, mode in ((_SEA_MODE, HistoricalTravelMode.SEA), (_LAND_MODE, HistoricalTravelMode.LAND)):
+            for match in pattern.finditer(statement):
+                if not _UNASSERTED_MODE_PREFIX.search(statement[max(0, match.start() - 32):match.start()]):
+                    modes.add(mode)
+    return next(iter(modes)) if len(modes) == 1 else HistoricalTravelMode.UNKNOWN
 
 
 def _alias_map(aliases: list[tuple[int, HistoricalPlaceAlias, str]]) -> dict[int, tuple[HistoricalPlaceAlias, str]]:

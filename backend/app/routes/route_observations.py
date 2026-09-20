@@ -17,6 +17,7 @@ from backend.app.models import (
     HistoricalEventType,
     TransitionConstraint,
     Evidence,
+    HistoricalTravelMode,
 )
 from backend.app.routes.event_anchors import EventAnchor
 from backend.app.routes.event_route_orchestration import (
@@ -31,6 +32,7 @@ from backend.app.routes.event_route_orchestration import (
     _temporal_interval,
 )
 from backend.app.routes.events import EvidenceGroundedHistoricalEventExtractor
+from backend.app.routes.movement_semantics import classify_historical_travel_mode
 
 
 class RouteObservationKind(str, Enum):
@@ -82,6 +84,7 @@ class ObservationOrderingRelation:
     event_ids: tuple[str, ...]
     evidence_refs: tuple[str, ...]
     authority: str
+    travel_mode: HistoricalTravelMode = HistoricalTravelMode.UNKNOWN
 
 
 _PLACE_ROLES = {
@@ -124,8 +127,12 @@ def _relation(
     authority: ObservationOrderingAuthority,
     *,
     provenance: str,
+    mode_statements: tuple[str, ...] | None = None,
 ) -> ObservationOrderingRelation:
     refs = tuple(sorted(set(earlier.evidence_refs) | set(later.evidence_refs) | set(event.evidence_refs)))
+    statements = mode_statements if mode_statements is not None else tuple(
+        item for item in (event.source_statements or [event.summary]) if item and item.strip()
+    )
     return ObservationOrderingRelation(
         earlier_observation_id=earlier.observation_id,
         later_observation_id=later.observation_id,
@@ -133,6 +140,7 @@ def _relation(
         event_ids=(event.id,),
         evidence_refs=refs,
         authority=provenance,
+        travel_mode=classify_historical_travel_mode(statements),
     )
 
 
@@ -219,7 +227,14 @@ def _typed_same_event_relations(
         if key in seen:
             continue
         seen.add(key)
-        found.append(_relation(earlier, later, event, authority, provenance=ordering.authority.value))
+        found.append(_relation(
+            earlier,
+            later,
+            event,
+            authority,
+            provenance=ordering.authority.value,
+            mode_statements=(ordering.source_statement.strip(),) if ordering.source_statement.strip() else (),
+        ))
     if found:
         return found
     origin_obs = None

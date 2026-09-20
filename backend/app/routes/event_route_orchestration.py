@@ -25,6 +25,7 @@ from backend.app.models import (
     HistoricalRouteBranchRelation,
     HistoricalRouteComponent,
     HistoricalRoutePoint,
+    HistoricalTravelMode,
     TemporalGroundingStatus,
     TemporalPrecision,
 )
@@ -138,6 +139,7 @@ class AnchorOrderingRelation:
     rule: OrderingRule
     event_ids: tuple[str, ...]
     evidence_refs: tuple[str, ...]
+    travel_mode: HistoricalTravelMode = HistoricalTravelMode.UNKNOWN
 
     def as_provenance(self) -> dict[str, object]:
         direct_movement = self.rule is OrderingRule.SAME_MOVEMENT_EVENT
@@ -149,6 +151,7 @@ class AnchorOrderingRelation:
             "evidence_refs": list(self.evidence_refs),
             "historical_authority": "ATTESTED_MOVEMENT_ORDERING" if direct_movement else "EVIDENCE_GROUNDED_WAYPOINT_ORDERING",
             "connection_semantics": "ALGORITHMIC_GIS_RECONSTRUCTION_REQUIRED",
+            "travel_mode": self.travel_mode.value,
         }
 
 
@@ -1197,6 +1200,7 @@ class EventAnchorRouteBuilder:
                 for ref in relation.evidence_refs if ref in evidence_by_id
             }),
             confidence=_RULE_CONFIDENCE[relation.rule],
+            travel_mode=relation.travel_mode,
         )
 
     @staticmethod

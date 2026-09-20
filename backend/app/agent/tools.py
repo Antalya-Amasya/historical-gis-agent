@@ -18,6 +18,7 @@ from backend.app.route_orchestrator import (
     BarrierCrossingConstraintError,
     HistoricalCampaignIntentRegistry,
     HistoricalRouteOrchestrator,
+    MaritimePlannerUnavailableError,
     RouteOrchestrationError,
 )
 from backend.app.candidate_routes.roman_road_orchestration import RomanRoadRouteOrchestrator
@@ -268,6 +269,19 @@ class AgentToolRegistry:
         if len(route.ordered_points) >= 2:
             try:
                 presentation = self.route_orchestrator.present(intent, route, state.historical_evidence)
+            except MaritimePlannerUnavailableError:
+                diagnostics["gis_reconstruction"] = {
+                    "attempted": True,
+                    "pipeline": "terrain_candidate_orchestrator",
+                    "status": "PARTIAL",
+                    "reason_code": "MARITIME_PLANNER_UNAVAILABLE",
+                }
+                state.historical_route_diagnostics = diagnostics
+                return {
+                    "presentation": None,
+                    "diagnostics": diagnostics["gis_reconstruction"],
+                    "summary": "maritime_planner_unavailable",
+                }
             except (RouteOrchestrationError, ValueError, KeyError) as exc:
                 if (
                     isinstance(exc, BarrierCrossingConstraintError)

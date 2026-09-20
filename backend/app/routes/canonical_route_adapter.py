@@ -61,6 +61,7 @@ def _anchor_relation_for_observation(
         rule=_ordering_rule_for_relation(relation),
         event_ids=relation.event_ids,
         evidence_refs=relation.evidence_refs,
+        travel_mode=relation.travel_mode,
     )
 
 
@@ -200,6 +201,7 @@ def build_canonical_route_plan(
                 "rule": anchor_relation.rule.value,
                 "event_ids": list(anchor_relation.event_ids),
                 "evidence_refs": list(anchor_relation.evidence_refs),
+                "travel_mode": anchor_relation.travel_mode.value,
             })
     scope = parse_query_route_scope(query_contexts) if query_contexts else None
     completeness = _classify_completeness(

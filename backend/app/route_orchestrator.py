@@ -26,7 +26,7 @@ from backend.app.candidate_routes.waypoint_graph import (
     HistoricalWaypointRole,
     HistoricalWaypointSegment,
 )
-from backend.app.models import Evidence, HistoricalRoute, HistoricalRouteIntent
+from backend.app.models import Evidence, HistoricalRoute, HistoricalRouteIntent, HistoricalTravelMode
 from backend.app.rag.campaign_ontology import HistoricalCampaignOntology
 from backend.app.candidate_routes.grid import GridPoint
 from backend.app.candidate_routes.terrain import TerrainOverride
@@ -45,6 +45,10 @@ class RouteOrchestrationError(ValueError):
 
 class BarrierCrossingConstraintError(RouteOrchestrationError):
     """A broad mountain constraint lacks a defensible algorithmic crossing."""
+
+
+class MaritimePlannerUnavailableError(RouteOrchestrationError):
+    """An explicit sea leg cannot be rendered by the land-only terrain planner."""
 
 
 @dataclass(frozen=True)
@@ -201,6 +205,8 @@ class HistoricalRouteOrchestrator:
     ) -> HistoricalRouteResponse:
         if intent.intent != "historical_route":
             raise RouteOrchestrationError("only historical_route intents can be reconstructed")
+        if self._has_explicit_sea_leg(historical_route):
+            raise MaritimePlannerUnavailableError("MARITIME_PLANNER_UNAVAILABLE")
         reviewed, barrier_context = self._reconstruction_plan(historical_route)
         terrain_graph_provider = self._terrain_graph_provider_for(intent, historical_route)
         effective_cell_size_m = self.cell_size_m if cell_size_m is None else cell_size_m
@@ -284,6 +290,14 @@ class HistoricalRouteOrchestrator:
             knowledge_panels=panels,
             presentation_summary=display_summary,
         )
+
+    @staticmethod
+    def _has_explicit_sea_leg(route: HistoricalRoute) -> bool:
+        for source, destination in zip(route.ordered_points, route.ordered_points[1:]):
+            shared = set(source.claim_ids) & set(destination.claim_ids)
+            if any(claim.id in shared and claim.travel_mode is HistoricalTravelMode.SEA for claim in route.claims):
+                return True
+        return False
 
     def _terrain_graph_provider_for(self, intent: HistoricalRouteIntent, historical_route: HistoricalRoute):
         if self.terrain_graph_provider is not None:
