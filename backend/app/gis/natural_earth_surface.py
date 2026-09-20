@@ -2,21 +2,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 import hashlib
 import json
 from pathlib import Path
 from time import perf_counter
 from typing import Iterable, Mapping
 
-from shapely.geometry import Point, shape
+from shapely.geometry import LineString, Point, shape
 from shapely.strtree import STRtree
 
-from .surface import SurfaceClassification, SurfaceType
+from .surface import SurfaceClassification, SurfaceType, WaterDomain
 
 
-MODERN_GEOGRAPHY_WARNING = (
-    "Modern Natural Earth surface classification; not a reconstructed Roman-period shoreline."
-)
+MODERN_GEOGRAPHY_WARNING = "Modern surface approximation; not a reconstructed historical coastline."
 _LAYER_FILES = {
     "land": "ne_10m_land.geojson",
     "ocean": "ne_10m_ocean.geojson",
@@ -31,6 +30,20 @@ _LAYER_VERSIONS = {
 }
 
 
+class NaturalEarthAvailability(str, Enum):
+    AVAILABLE = "AVAILABLE"
+    MISSING = "MISSING"
+    HASH_MISMATCH = "HASH_MISMATCH"
+    INVALID = "INVALID"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
+@dataclass(frozen=True)
+class LandSegmentValidation:
+    intersects_land: bool | None
+    status: str
+
+
 @dataclass(frozen=True)
 class NaturalEarthDatasetAudit:
     dataset_name: str
@@ -43,6 +56,7 @@ class NaturalEarthDatasetAudit:
     raw_source_hashes: Mapping[str, str] | None
     load_time_ms: float
     availability_error: str | None
+    availability: NaturalEarthAvailability
 
 
 @dataclass(frozen=True)
@@ -69,6 +83,7 @@ class NaturalEarthSurfaceClassifier:
         dataset_dir: str | Path,
         *,
         expected_hashes: Mapping[str, str] | None = None,
+        availability: NaturalEarthAvailability | None = None,
     ) -> None:
         self.dataset_dir = Path(dataset_dir)
         self._expected_hashes = {name: value.lower() for name, value in (expected_hashes or {}).items()}
@@ -79,9 +94,47 @@ class NaturalEarthSurfaceClassifier:
         self._invalid_geometry_counts: dict[str, int] = {}
         self._raw_source_hashes: Mapping[str, str] | None = None
         self._availability_error: str | None = None
+        self._availability = availability or NaturalEarthAvailability.AVAILABLE
         started = perf_counter()
         self._load()
         self._load_time_ms = (perf_counter() - started) * 1_000
+
+    @classmethod
+    def from_manifest(cls, dataset_dir: str | Path, manifest_path: str | Path) -> "NaturalEarthSurfaceClassifier":
+        try:
+            payload = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+            layers = payload["layers"]
+            if (
+                payload.get("schema_version") != 1
+                or payload.get("dataset_family") != "Natural Earth"
+                or not isinstance(payload.get("dataset_version"), str)
+                or set(layers) != set(_LAYER_FILES)
+            ):
+                raise ValueError("invalid Natural Earth surface manifest")
+            hashes = {
+                layer: layers[layer]["sha256"]
+                for layer, filename in _LAYER_FILES.items()
+                if layers[layer].get("path") == filename and isinstance(layers[layer].get("sha256"), str)
+            }
+            if len(hashes) != len(_LAYER_FILES):
+                raise ValueError("manifest layer path or hash invalid")
+            return cls(dataset_dir, expected_hashes=hashes)
+        except FileNotFoundError:
+            subject = cls(dataset_dir, availability=NaturalEarthAvailability.MISSING)
+            subject._availability_error = "Natural Earth surface manifest missing"
+            subject._availability = NaturalEarthAvailability.MISSING
+            return subject
+        except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+            subject = cls(dataset_dir, availability=NaturalEarthAvailability.INVALID)
+            subject._availability_error = f"{type(exc).__name__}: {exc}"
+            return subject
+
+    @classmethod
+    def production(cls, dataset_dir: str | Path | None) -> "NaturalEarthSurfaceClassifier":
+        subject = cls(dataset_dir or "", availability=NaturalEarthAvailability.UNAVAILABLE)
+        subject._availability_error = "no explicit Natural Earth surface manifest configured"
+        subject._availability = NaturalEarthAvailability.UNAVAILABLE
+        return subject
 
     @property
     def audit(self) -> NaturalEarthDatasetAudit:
@@ -96,6 +149,7 @@ class NaturalEarthSurfaceClassifier:
             raw_source_hashes=self._raw_source_hashes,
             load_time_ms=self._load_time_ms,
             availability_error=self._availability_error,
+            availability=self._availability,
         )
 
     def set_raw_source_hashes(self, hashes: Mapping[str, str]) -> None:
@@ -119,9 +173,9 @@ class NaturalEarthSurfaceClassifier:
         if ocean_match and land_match:
             return self._unknown("conflicting_geometry", source_file="")
         if lake_match:
-            return self._classified(SurfaceType.WATER, "lakes", "interior")
+            return self._classified(SurfaceType.WATER, "lakes", "interior", WaterDomain.INLAND_WATER)
         if ocean_match:
-            return self._classified(SurfaceType.WATER, "ocean", "interior")
+            return self._classified(SurfaceType.WATER, "ocean", "interior", WaterDomain.OCEAN)
         if land_match:
             layer = "land" if relations["land"][0] else "minor_islands"
             return self._classified(SurfaceType.LAND, layer, "interior")
@@ -146,6 +200,11 @@ class NaturalEarthSurfaceClassifier:
         except (OSError, UnicodeDecodeError, ValueError, TypeError, json.JSONDecodeError) as exc:
             self._layers.clear()
             self._availability_error = f"{type(exc).__name__}: {exc}"
+            self._availability = (
+                NaturalEarthAvailability.HASH_MISMATCH if "hash mismatch" in str(exc)
+                else NaturalEarthAvailability.MISSING if isinstance(exc, FileNotFoundError)
+                else NaturalEarthAvailability.INVALID
+            )
 
     def _load_geometries(self, features: Iterable[object], layer: str) -> Iterable[object]:
         geometry_count = invalid_count = 0
@@ -177,13 +236,14 @@ class NaturalEarthSurfaceClassifier:
                 boundary = True
         return interior, boundary
 
-    def _classified(self, surface_type: SurfaceType, layer: str, status: str) -> SurfaceClassification:
+    def _classified(self, surface_type: SurfaceType, layer: str, status: str, water_domain: WaterDomain = WaterDomain.UNKNOWN) -> SurfaceClassification:
         return SurfaceClassification(
             surface_type=surface_type,
             source="natural_earth_10m",
             confidence=1.0,
             status=status,
             metadata=self._metadata(_LAYER_FILES[layer], status),
+            water_domain=water_domain,
         )
 
     def _unknown(self, status: str, *, source_file: str) -> SurfaceClassification:
@@ -194,6 +254,20 @@ class NaturalEarthSurfaceClassifier:
             status=status,
             metadata=self._metadata(source_file, status),
         )
+
+    def validate_land_segment(self, coordinates: tuple[tuple[float, float], ...]) -> LandSegmentValidation:
+        if self._availability_error is not None or len(coordinates) < 2:
+            return LandSegmentValidation(None, "dataset_unavailable")
+        line = LineString(coordinates)
+        for layer in ("land", "minor_islands"):
+            index = self._layers[layer]
+            for candidate_index in index.tree.query(line):
+                geometry = index.geometries[int(candidate_index)]
+                if line.touches(geometry.boundary):
+                    return LandSegmentValidation(None, "boundary_ambiguous")
+                if line.intersects(geometry):
+                    return LandSegmentValidation(True, "land_intersection")
+        return LandSegmentValidation(False, "clear_of_land")
 
     def _metadata(self, source_file: str, boundary_status: str) -> dict[str, str]:
         return {

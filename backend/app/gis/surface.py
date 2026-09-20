@@ -21,6 +21,12 @@ class SurfaceType(str, Enum):
     BLOCKED = "blocked"
 
 
+class WaterDomain(str, Enum):
+    OCEAN = "ocean"
+    INLAND_WATER = "inland_water"
+    UNKNOWN = "unknown"
+
+
 @dataclass(frozen=True)
 class SurfaceClassification:
     """An auditable surface result returned by a classifier."""
@@ -30,6 +36,7 @@ class SurfaceClassification:
     confidence: float | None = None
     status: str | None = None
     metadata: Mapping[str, str] = field(default_factory=dict)
+    water_domain: WaterDomain = WaterDomain.UNKNOWN
 
     def __post_init__(self) -> None:
         if not self.source:
