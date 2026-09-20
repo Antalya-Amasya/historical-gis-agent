@@ -168,10 +168,18 @@ class MovementEdgeCandidate:
 
 
 @dataclass(frozen=True)
+class IntraEventRouteOrdering:
+    earlier: MovementEndpoint
+    later: MovementEndpoint
+    authority: str
+
+
+@dataclass(frozen=True)
 class SentenceMovementSemantics:
     is_movement: bool
     edges: tuple[MovementEdgeCandidate, ...]
     endpoints: tuple[MovementEndpoint, ...]
+    route_orderings: tuple[IntraEventRouteOrdering, ...] = ()
     should_abstain: bool = False
     abstain_reason: str | None = None
 
@@ -1139,6 +1147,418 @@ def _thence_maritime(
     return None, []
 
 
+_ORDERING_HYPOTHETICAL = re.compile(r"\b(?:if|would|could|might|should)\b", re.IGNORECASE)
+_ORDERING_NEGATED = re.compile(
+    r"\b(?:did\s+not|never|not)\s+(?:cross|crossed|crossing|leave|left|leaving|arrive|arrived|reach|reached|come|came|march|marched)\b",
+    re.IGNORECASE,
+)
+_ORDERING_AFTER_PHRASE = re.compile(
+    r"\bafter\s+(?:(?:leaving|left|departed(?:\s+from)?)|(?:crossing|crossed)|"
+    r"(?:arriving|arrived|reaching|reached|came\s+(?:to|into)))",
+    re.IGNORECASE,
+)
+_ORDERING_BEFORE_PHRASE = re.compile(
+    r"\bbefore\s+(?:(?:crossing|crossed)|(?:leaving|left|departed(?:\s+from)?)|"
+    r"(?:arriving|arrived|reaching|reached|came\s+(?:to|into)))",
+    re.IGNORECASE,
+)
+_ORDERING_FIRST_THEN = re.compile(
+    r"\b(?:crossed|crossing)\s+(?:the\s+)?(.+?)\s+first\s+and\s+then\s+(?:crossed|crossing)\s+(?:the\s+)?(.+?)(?:[.,]|$)",
+    re.IGNORECASE,
+)
+_ORDERING_FIRST_IN_THEN = re.compile(
+    r"\bfirst\s+in\s+(?:crossing|crossed|passing|passed|traversing|traversed)\s+(?:the\s+)?(.+?)\s*,\s*then\s+"
+    r"(?:(?:crossed|crossing|passed|passing|traversing|traversed)\s+)?(?:the\s+)?(.+?)(?:[.,]|$)",
+    re.IGNORECASE,
+)
+_ORDERING_VERB_FIRST_COMMA_THEN = re.compile(
+    r"\b(?:crossed|crossing|passed|passing|traversing|traversed)\s+(?:the\s+)?(.+?)\s+first\s*,\s*then\s+"
+    r"(?:(?:crossed|crossing|passed|passing|traversing|traversed)\s+)?(?:the\s+)?(.+?)(?:[.,]|$)",
+    re.IGNORECASE,
+)
+_APOSTROPHE = r"['\u2019\u2018]"
+_ORDERING_ELAPSED_MARCH_FROM = re.compile(
+    rf"\bafter\s+(?:(?:\w+(?:{_APOSTROPHE}\s+|\s+)){{0,6}})?march\s+from\s+(?:the\s+)?(?:passage\s+of\s+(?:the\s+)?)?",
+    re.IGNORECASE,
+)
+_ORDERING_ARRIVAL_MAIN = re.compile(
+    r"\b(?:arrived|arriving|reached|reaching|came\s+(?:to|into))\b",
+    re.IGNORECASE,
+)
+_ORDERING_ASSERTED_ARRIVAL = re.compile(
+    r"\b(?:arrived|arriving|reached|reaching|came\s+(?:to|into))\s+(?:at|to|into)?\s*(?:the\s+)?(?:place\s+called\s+(?:the\s+)?)?",
+    re.IGNORECASE,
+)
+_ORDERING_ASSERTED_CROSSING = re.compile(
+    r"\b(?:crossed|crossing)\s+(?:the\s+)?",
+    re.IGNORECASE,
+)
+_ORDERING_THEN_ARRIVAL = re.compile(
+    r"\bthen\s+(?:reached|reaching|arrived|arriving|entered|entering|came\s+(?:to|into))\s+(?:at|to|into)?\s*(?:the\s+)?",
+    re.IGNORECASE,
+)
+_DEPARTURE_COMMA_LEADING = re.compile(
+    r"^\s*(?:left|leaving|departed(?:\s+from)?)\s+",
+    re.IGNORECASE,
+)
+_NOMINAL_ROUTE_CONTEXT = re.compile(
+    rf"(?:,\s*(?:\w+(?:{_APOSTROPHE}\s+|\s+)){{0,4}}?\bmarch\s+(?:to|toward|towards)|"
+    r",\s*(?:the\s+)?route\s+(?:to|toward|towards))\b",
+    re.IGNORECASE,
+)
+_ORDERING_REACHED_THEN_MARCHED = re.compile(
+    r"\b(?:reached|reaching|arrived|arriving|came\s+to)\s+(?:at\s+)?(?:the\s+)?(.+?)\s+and\s+then\s+"
+    r"(?:marched|marches|marching|advanced|advancing|proceeded|proceeding)\s+(?:to|toward|towards|into)\s+(?:the\s+)?(.+?)(?:[.,]|$)",
+    re.IGNORECASE,
+)
+_ORDERING_DISCOURSE_SEQUENCE = re.compile(
+    r"\b(?:mentioned|described|discussed|narrated|appears?|appeared|listed)\s+(?:first|before)\b",
+    re.IGNORECASE,
+)
+
+
+def _ordering_context_unsafe(sentence: str) -> bool:
+    if _ORDERING_HYPOTHETICAL.search(sentence):
+        return True
+    if _ORDERING_NEGATED.search(sentence):
+        return True
+    if _ORDERING_DISCOURSE_SEQUENCE.search(sentence):
+        return True
+    return False
+
+
+def _ordering_pair(
+    earlier: MovementEndpoint | None,
+    later: MovementEndpoint | None,
+    authority: str,
+) -> IntraEventRouteOrdering | None:
+    if earlier is None or later is None:
+        return None
+    if earlier.place_name.casefold() == later.place_name.casefold():
+        return None
+    return IntraEventRouteOrdering(earlier=earlier, later=later, authority=authority)
+
+
+def _endpoint_after_position(endpoints: tuple[MovementEndpoint, ...], position: int) -> MovementEndpoint | None:
+    candidates = [item for item in endpoints if item.position >= position]
+    if not candidates:
+        return None
+    unique = {item.place_name.casefold(): item for item in candidates}
+    if len(unique) == 1:
+        return next(iter(unique.values()))
+    return min(candidates, key=lambda item: item.position)
+
+
+def _endpoint_before_position(endpoints: tuple[MovementEndpoint, ...], position: int) -> MovementEndpoint | None:
+    candidates = [item for item in endpoints if item.position < position]
+    if not candidates:
+        return None
+    unique = {item.place_name.casefold(): item for item in candidates}
+    if len(unique) == 1:
+        return next(iter(unique.values()))
+    return max(candidates, key=lambda item: item.position)
+
+
+def _endpoint_matching_surface(
+    endpoints: tuple[MovementEndpoint, ...],
+    surface: str,
+) -> MovementEndpoint | None:
+    target = surface.casefold().strip()
+    matches = [
+        item for item in endpoints
+        if item.surface.casefold() == target or (item.canonical and item.canonical.casefold() == target)
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    if len({item.place_name.casefold() for item in matches}) == 1 and matches:
+        return matches[0]
+    return None
+
+
+def _nominal_route_context_start(sentence: str, search_start: int = 0) -> int | None:
+    match = _NOMINAL_ROUTE_CONTEXT.search(sentence, search_start)
+    return match.start() if match else None
+
+
+def _asserted_movement_chain(
+    sentence: str,
+    aliases: list[tuple[int, HistoricalPlaceAlias, str]],
+    *,
+    search_start: int = 0,
+    search_end: int | None = None,
+) -> tuple[MovementEndpoint, ...]:
+    """Return predicate-owned movement endpoints in main-clause order."""
+    window_end = len(sentence) if search_end is None else search_end
+    nominal_start = _nominal_route_context_start(sentence, search_start)
+    if nominal_start is not None and nominal_start > search_start:
+        window_end = min(window_end, nominal_start)
+
+    ordered: list[tuple[int, MovementEndpoint]] = []
+    seen: set[tuple[str, int]] = set()
+
+    def append(position: int, endpoint: MovementEndpoint | None) -> None:
+        if endpoint is None:
+            return
+        key = (endpoint.place_name.casefold(), endpoint.position)
+        if key in seen:
+            return
+        seen.add(key)
+        ordered.append((position, endpoint))
+
+    for match in _ORDERING_ASSERTED_CROSSING.finditer(sentence, search_start, window_end):
+        append(
+            match.start(),
+            _endpoint_after(sentence, match.end(), aliases, role="traversal", before=window_end),
+        )
+    for match in _ORDERING_ASSERTED_ARRIVAL.finditer(sentence, search_start, window_end):
+        append(
+            match.start(),
+            _endpoint_after(sentence, match.end(), aliases, role="destination", before=window_end),
+        )
+    for match in _ORDERING_THEN_ARRIVAL.finditer(sentence, search_start, window_end):
+        append(
+            match.start(),
+            _endpoint_after(sentence, match.end(), aliases, role="destination", before=window_end),
+        )
+
+    ordered.sort(key=lambda item: item[0])
+    return tuple(endpoint for _, endpoint in ordered)
+
+
+def _add_predicate_owned_chain(
+    add,
+    origin: MovementEndpoint | None,
+    chain: tuple[MovementEndpoint, ...],
+    *,
+    authority: str,
+) -> None:
+    if origin is None or not chain:
+        return
+    previous = origin
+    for endpoint in chain:
+        add(previous, endpoint, authority)
+        previous = endpoint
+
+
+def _destination_for_asserted_arrival(
+    sentence: str,
+    aliases: list[tuple[int, HistoricalPlaceAlias, str]],
+    *,
+    search_start: int = 0,
+    search_end: int | None = None,
+) -> MovementEndpoint | None:
+    """Return the destination governed by the first completed arrival/reached predicate."""
+    window_end = len(sentence) if search_end is None else search_end
+    nominal_start = _nominal_route_context_start(sentence, search_start)
+    if nominal_start is not None and nominal_start > search_start:
+        window_end = min(window_end, nominal_start)
+    for match in _ORDERING_ASSERTED_ARRIVAL.finditer(sentence, search_start, window_end):
+        endpoint = _endpoint_after(
+            sentence,
+            match.end(),
+            aliases,
+            role="destination",
+            before=window_end,
+        )
+        if endpoint is not None:
+            return endpoint
+    return None
+
+
+def _exclude_nominal_route_destinations(
+    sentence: str,
+    endpoints: tuple[MovementEndpoint, ...],
+) -> tuple[MovementEndpoint, ...]:
+    nominal_start = _nominal_route_context_start(sentence, 0)
+    if nominal_start is None:
+        return endpoints
+    return tuple(
+        item for item in endpoints
+        if not (item.role == "destination" and item.position >= nominal_start)
+    )
+
+
+def _merge_discovered_endpoints(
+    discovered: tuple[MovementEndpoint, ...],
+    endpoints: tuple[MovementEndpoint, ...],
+) -> tuple[MovementEndpoint, ...]:
+    merged: dict[tuple[str, int], MovementEndpoint] = {
+        (item.place_name.casefold(), item.position): item for item in discovered
+    }
+    for item in endpoints:
+        key = (item.place_name.casefold(), item.position)
+        if key not in merged:
+            merged[key] = item
+    return tuple(sorted(merged.values(), key=lambda item: item.position))
+
+
+def _discover_predicate_endpoints(
+    sentence: str,
+    aliases: list[tuple[int, HistoricalPlaceAlias, str]],
+) -> tuple[MovementEndpoint, ...]:
+    found: list[MovementEndpoint] = []
+    seen: set[tuple[str, int]] = set()
+
+    def add(endpoint: MovementEndpoint | None) -> None:
+        if endpoint is None:
+            return
+        key = (endpoint.place_name.casefold(), endpoint.position)
+        if key in seen:
+            return
+        seen.add(key)
+        found.append(endpoint)
+
+    for match in _DEPARTURE_PREDICATE.finditer(sentence):
+        add(_endpoint_after(sentence, match.end(), aliases, role="origin"))
+    for match in re.finditer(r"\b(?:crossed|crossing)\s+(?:the\s+)?", sentence, re.IGNORECASE):
+        add(_endpoint_after(sentence, match.end(), aliases, role="traversal"))
+    for match in re.finditer(
+        rf"\b(?:after\s+(?:(?:\w+(?:{_APOSTROPHE}\s+|\s+)){{0,6}})?)?march\s+from\s+(?:the\s+)?(?:passage\s+of\s+(?:the\s+)?)?",
+        sentence,
+        re.IGNORECASE,
+    ):
+        add(_endpoint_after(sentence, match.end(), aliases, role="origin"))
+    for match in re.finditer(
+        r"\bthen\s+(?:(?:crossed|crossing|passed|passing|traversing|traversed|reached|reaching|entered|entering)\s+(?:the\s+)?)?",
+        sentence,
+        re.IGNORECASE,
+    ):
+        add(_endpoint_after(sentence, match.end(), aliases, role="traversal"))
+    arrival = re.compile(
+        r"\b(?:arrived|arriving|reached|reaching|came\s+(?:to|into))\s+(?:at|to|into)?\s*(?:the\s+)?(?:place\s+called\s+(?:the\s+)?)?",
+        re.IGNORECASE,
+    )
+    for match in arrival.finditer(sentence):
+        add(_endpoint_after(sentence, match.end(), aliases, role="destination"))
+    return tuple(sorted(found, key=lambda item: item.position))
+
+
+def _extract_intra_event_route_orderings(
+    sentence: str,
+    aliases: list[tuple[int, HistoricalPlaceAlias, str]],
+    endpoints: tuple[MovementEndpoint, ...],
+    *,
+    should_abstain: bool,
+) -> tuple[IntraEventRouteOrdering, ...]:
+    if should_abstain or _ordering_context_unsafe(sentence):
+        return ()
+    discovered = _exclude_nominal_route_destinations(
+        sentence,
+        _merge_discovered_endpoints(_discover_predicate_endpoints(sentence, aliases), endpoints),
+    )
+    if not discovered:
+        return ()
+    found: list[IntraEventRouteOrdering] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    def add(earlier: MovementEndpoint | None, later: MovementEndpoint | None, authority: str) -> None:
+        pair = _ordering_pair(earlier, later, authority)
+        if pair is None:
+            return
+        key = (pair.earlier.place_name.casefold(), pair.later.place_name.casefold(), authority)
+        if key in seen:
+            return
+        seen.add(key)
+        found.append(pair)
+
+    leading = re.match(r"^\s*(Before|After)\s+", sentence, re.IGNORECASE)
+    if leading and "," in sentence:
+        comma = sentence.index(",")
+        marker = leading.group(1).casefold()
+        subordinate = tuple(item for item in discovered if item.position < comma)
+        main = tuple(item for item in discovered if item.position > comma)
+        sub = _endpoint_before_position(subordinate, comma) if subordinate else None
+        main_ep = _endpoint_after_position(main, comma + 1) if main else None
+        if sub is None and subordinate:
+            sub = _endpoint_before_position(discovered, comma)
+        if main_ep is None and main:
+            main_ep = _endpoint_after_position(main, comma + 1)
+        if marker == "before":
+            add(main_ep, sub, "before_subordinate")
+        else:
+            chain = _asserted_movement_chain(sentence, aliases, search_start=comma + 1)
+            if chain:
+                _add_predicate_owned_chain(add, sub, chain, authority="after_subordinate")
+            else:
+                add(sub, main_ep, "after_subordinate")
+
+    departure = _DEPARTURE_COMMA_LEADING.search(sentence)
+    if departure and "," in sentence and leading is None:
+        comma = sentence.index(",")
+        origin = _endpoint_after(
+            sentence,
+            departure.end(),
+            aliases,
+            role="origin",
+            before=comma,
+        )
+        if origin is None:
+            origin = _endpoint_before_position(discovered, comma)
+        chain = _asserted_movement_chain(sentence, aliases, search_start=comma + 1)
+        _add_predicate_owned_chain(add, origin, chain, authority="after_subordinate")
+
+    for match in _ORDERING_AFTER_PHRASE.finditer(sentence):
+        if leading and match.start() < 8:
+            continue
+        earlier = _endpoint_after_position(discovered, match.end())
+        later = _endpoint_before_position(discovered, match.start())
+        add(earlier, later, "after_postposed")
+
+    for match in _ORDERING_BEFORE_PHRASE.finditer(sentence):
+        if leading and match.start() < 8:
+            continue
+        later = _endpoint_after_position(discovered, match.end())
+        earlier = _endpoint_before_position(discovered, match.start())
+        add(earlier, later, "before_postposed")
+
+    first_then = _ORDERING_FIRST_THEN.search(sentence)
+    if first_then:
+        first = _endpoint_matching_surface(discovered, first_then.group(1).strip())
+        second = _endpoint_matching_surface(discovered, first_then.group(2).strip())
+        add(first, second, "first_then")
+
+    for pattern in (_ORDERING_FIRST_IN_THEN, _ORDERING_VERB_FIRST_COMMA_THEN):
+        match = pattern.search(sentence)
+        if match is None:
+            continue
+        first = _endpoint_matching_surface(discovered, match.group(1).strip())
+        second = _endpoint_matching_surface(discovered, match.group(2).strip())
+        add(first, second, "first_then")
+
+    reached_then = _ORDERING_REACHED_THEN_MARCHED.search(sentence)
+    if reached_then:
+        first = _endpoint_matching_surface(discovered, reached_then.group(1).strip())
+        second = _endpoint_matching_surface(discovered, reached_then.group(2).strip())
+        add(first, second, "first_then")
+
+    for match in _ORDERING_ELAPSED_MARCH_FROM.finditer(sentence):
+        comma = sentence.find(",", match.end())
+        if comma < 0:
+            continue
+        if not _ORDERING_ARRIVAL_MAIN.search(sentence[comma:]):
+            continue
+        subordinate = [item for item in discovered if match.start() <= item.position < comma]
+        main = [item for item in discovered if item.position > comma]
+        from_ep = _endpoint_before_position(subordinate, comma) if subordinate else None
+        if from_ep is None:
+            from_ep = _endpoint_after_position(discovered, match.end())
+            if from_ep is not None and from_ep.position >= comma:
+                from_ep = None
+        chain = _asserted_movement_chain(sentence, aliases, search_start=comma + 1)
+        if chain:
+            _add_predicate_owned_chain(add, from_ep, chain, authority="after_subordinate")
+        else:
+            later_ep = _destination_for_asserted_arrival(sentence, aliases, search_start=comma + 1)
+            if later_ep is None:
+                filtered_main = [item for item in main if item.role == "destination"]
+                later_ep = next(iter(filtered_main), None)
+            if later_ep is None:
+                later_ep = _endpoint_after_position(main, comma + 1) if main else None
+            add(from_ep, later_ep, "after_subordinate")
+
+    return tuple(found)
+
+
 def analyze_sentence(
     sentence: str,
     aliases: list[tuple[int, HistoricalPlaceAlias, str]],
@@ -1149,12 +1569,23 @@ def analyze_sentence(
     edges: list[MovementEdgeCandidate] = []
 
     if not _has_movement_cue(sentence):
-        return SentenceMovementSemantics(is_movement=False, edges=(), endpoints=())
+        return SentenceMovementSemantics(is_movement=False, edges=(), endpoints=(), route_orderings=())
 
     gen_edges, gen_endpoints, should_abstain, abstain_reason = _generalized_parse(sentence, aliases)
     if should_abstain:
+        route_orderings = _extract_intra_event_route_orderings(
+            sentence,
+            aliases,
+            (),
+            should_abstain=False,
+        )
         return SentenceMovementSemantics(
-            is_movement=True, edges=(), endpoints=(), should_abstain=True, abstain_reason=abstain_reason,
+            is_movement=True,
+            edges=(),
+            endpoints=(),
+            route_orderings=route_orderings,
+            should_abstain=True,
+            abstain_reason=abstain_reason,
         )
     if gen_edges:
         edges.extend(gen_edges)
@@ -1173,16 +1604,34 @@ def analyze_sentence(
             sentence, aliases, prior_endpoints, endpoints,
         )
         if disc_abstain:
+            route_orderings = _extract_intra_event_route_orderings(
+                sentence,
+                aliases,
+                tuple(endpoints),
+                should_abstain=False,
+            )
             return SentenceMovementSemantics(
-                is_movement=True, edges=(), endpoints=tuple(endpoints),
-                should_abstain=True, abstain_reason=disc_reason,
+                is_movement=True,
+                edges=(),
+                endpoints=tuple(endpoints),
+                route_orderings=route_orderings,
+                should_abstain=True,
+                abstain_reason=disc_reason,
             )
         if disc_edges:
             edges.extend(disc_edges)
             endpoints = disc_endpoints
 
+    endpoint_tuple = tuple(endpoints)
+    route_orderings = _extract_intra_event_route_orderings(
+        sentence,
+        aliases,
+        endpoint_tuple,
+        should_abstain=False,
+    )
     return SentenceMovementSemantics(
-        is_movement=bool(edges or endpoints) or bool(_has_movement_cue(sentence) and not should_abstain),
+        is_movement=bool(edges or endpoint_tuple) or bool(_has_movement_cue(sentence) and not should_abstain),
         edges=tuple(edges),
-        endpoints=tuple(endpoints),
+        endpoints=endpoint_tuple,
+        route_orderings=route_orderings,
     )

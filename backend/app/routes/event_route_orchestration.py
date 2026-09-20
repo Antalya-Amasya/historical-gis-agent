@@ -29,6 +29,7 @@ from backend.app.models import (
     TemporalPrecision,
 )
 from backend.app.routes.event_anchors import EventAnchor, project_event_anchors
+from backend.app.routes.event_constraints import project_transition_constraints
 from backend.app.routes.episode_relevance import classify_event_anchor_episode
 from backend.app.routes.evidence_relevance import EvidenceRelevance, classify_relation_relevance, relation_admission_allowed
 from backend.app.routes.extractor import evidence_structural_key
@@ -167,6 +168,9 @@ class EventRouteOutcome:
     route: HistoricalRoute | None
     relations: tuple[AnchorOrderingRelation, ...]
     diagnostics: dict[str, object]
+    observations: tuple = ()
+    observation_relations: tuple = ()
+    observation_components: tuple = ()
 
 
 def _sole(anchors: list[EventAnchor], role: EventPlaceRole) -> EventAnchor | None:
@@ -728,9 +732,65 @@ class EventAnchorRouteBuilder:
         anchors, projection = project_event_anchors(
             events, evidence, allow_contextual_related_places=allow_contextual_related_places,
         )
+        transition_constraints, transition_projection = project_transition_constraints(events, evidence)
+        from backend.app.routes.route_observations import project_observation_ordering
+        from backend.app.routes.observation_components import (
+            assemble_observation_components,
+            serialize_observation_component,
+        )
+
+        observations, observation_relations, observation_projection = project_observation_ordering(
+            events, anchors, transition_constraints, evidence,
+        )
+        observation_assembly = assemble_observation_components(
+            list(observations),
+            list(observation_relations),
+            events,
+            evidence,
+            query_contexts=query_contexts,
+        )
         diagnostics: dict[str, object] = {
             "route_source": "event_anchor",
             "anchor_count": len(anchors),
+            "transition_constraint_count": len(transition_constraints),
+            "transition_constraints": [item.model_dump() for item in transition_constraints],
+            "transition_projection_diagnostics": list(transition_projection),
+            "observation_count": len(observations),
+            "observations": [
+                {
+                    "observation_id": item.observation_id,
+                    "kind": item.kind.value,
+                    "event_id": item.event_id,
+                    "label": item.label,
+                    "actor_status": item.actor_status.value,
+                    "actor_text": item.actor_text,
+                    "place_role": item.place_role.value if item.place_role is not None else None,
+                    "constraint_id": item.constraint_id,
+                    "feature_kind": item.feature_kind.value if item.feature_kind is not None else None,
+                }
+                for item in observations
+            ],
+            "observation_relation_count": len(observation_relations),
+            "observation_relations": [
+                {
+                    "earlier_observation_id": relation.earlier_observation_id,
+                    "later_observation_id": relation.later_observation_id,
+                    "ordering_rule": relation.ordering_rule.value,
+                    "authority": relation.authority,
+                    "event_ids": list(relation.event_ids),
+                    "evidence_refs": list(relation.evidence_refs),
+                }
+                for relation in observation_relations
+            ],
+            "observation_projection_diagnostics": list(observation_projection),
+            "observation_component_count": len(observation_assembly.components),
+            "observation_components": [
+                serialize_observation_component(item) for item in observation_assembly.components
+            ],
+            "observation_component_diagnostics": list(observation_assembly.diagnostics),
+            "rejected_observation_component_edges": list(observation_assembly.rejected_edges),
+            "observation_branch_edges": [list(edge) for edge in observation_assembly.branch_edges],
+            "observation_contradictory_edges": [list(edge) for edge in observation_assembly.contradictory_edges],
             "distinct_place_count": 0,
             "ordering_relation_count": 0,
             "ordered_place_count": 0,
@@ -749,35 +809,82 @@ class EventAnchorRouteBuilder:
         if not anchors:
             unresolved = any(code.split(":")[0] in _RESOLUTION_FAILURES for code in projection)
             diagnostics["reason_codes"] = ["PLACE_RESOLUTION_FAILED"] if unresolved else ["NO_MOVEMENT_EVENTS"]
-            return EventRouteOutcome(None, (), diagnostics)
+            return EventRouteOutcome(
+                None, (), diagnostics, tuple(observations), tuple(observation_relations),
+                observation_assembly.components,
+            )
         places: dict[str, list[EventAnchor]] = {}
         for anchor in anchors:
             places.setdefault(anchor.canonical_name, []).append(anchor)
+        events_by_id = {event.id: event for event in events}
+        evidence_by_id = {item.id: item for item in evidence}
+        from backend.app.routes.canonical_route_adapter import (
+            CanonicalRouteCompleteness,
+            _places_with_resolved_observation_bindings,
+            build_canonical_route_plan,
+            historical_route_from_canonical_plan,
+        )
+
+        places = _places_with_resolved_observation_bindings(places, list(observations), events_by_id)
         diagnostics["distinct_place_count"] = len(places)
         if len(places) < 2:
             diagnostics["reason_codes"] = ["INSUFFICIENT_PLACES"]
-            return EventRouteOutcome(None, (), diagnostics)
-        relations = self._relations(events, anchors, {item.id: item for item in evidence})
-        events_by_id = {event.id: event for event in events}
-        evidence_by_id = {item.id: item for item in evidence}
-        relations, rejected_relations = _filter_relations_for_query(
-            relations, events_by_id, evidence_by_id, query_contexts,
+            return EventRouteOutcome(
+                None, (), diagnostics, tuple(observations), tuple(observation_relations),
+                observation_assembly.components,
+            )
+        canonical_plan = build_canonical_route_plan(
+            observation_assembly,
+            list(observations),
+            list(observation_relations),
+            query_contexts=query_contexts,
         )
-        diagnostics["rejected_relation_count"] = len(rejected_relations)
-        diagnostics["rejected_relations"] = rejected_relations
-        diagnostics["ordering_relation_count"] = len(relations)
-        if not relations:
-            diagnostics["reason_codes"] = ["INSUFFICIENT_ORDERING"]
-            return EventRouteOutcome(None, (), diagnostics)
-        assembly = self._assemble(relations)
-        route, retained, main_chain = self._route_from_assembly(
-            assembly, places, events_by_id, evidence_by_id,
-            event_id=event_id, name=name, period=period,
+        diagnostics["canonical_completeness"] = canonical_plan.completeness.value
+        diagnostics["canonical_observation_provenance"] = list(canonical_plan.observation_provenance)
+        shadow_relations = self._relations(events, anchors, evidence_by_id)
+        shadow_relations, shadow_rejected = _filter_relations_for_query(
+            shadow_relations, events_by_id, evidence_by_id, query_contexts,
         )
+        diagnostics["legacy_shadow_relation_count"] = len(shadow_relations)
+        diagnostics["legacy_shadow_rejected_relations"] = shadow_rejected
+        diagnostics["rejected_relations"] = shadow_rejected
+        diagnostics["route_source"] = "canonical_observation"
+        if canonical_plan.completeness is CanonicalRouteCompleteness.ABSENT:
+            diagnostics["reason_codes"] = ["CANONICAL_ROUTE_ABSENT"]
+            return EventRouteOutcome(
+                None,
+                (),
+                diagnostics,
+                tuple(observations),
+                tuple(observation_relations),
+                observation_assembly.components,
+            )
+        route, retained, main_chain, adapter_diagnostics = historical_route_from_canonical_plan(
+            canonical_plan,
+            list(observations),
+            list(observation_relations),
+            places,
+            events_by_id,
+            evidence_by_id,
+            builder=self,
+            event_id=event_id,
+            name=name,
+            period=period,
+        )
+        diagnostics.update(adapter_diagnostics)
+        diagnostics["ordering_relation_count"] = len(retained)
+        if route is None:
+            diagnostics["reason_codes"] = ["CANONICAL_ROUTE_ABSENT"]
+            return EventRouteOutcome(
+                None,
+                tuple(retained),
+                diagnostics,
+                tuple(observations),
+                tuple(observation_relations),
+                observation_assembly.components,
+            )
         diagnostics["retained_relation_count"] = len(retained)
-        diagnostics["contradictory_relation_count"] = len(assembly.contradictory)
-        diagnostics["suppressed_relation_count"] = len(assembly.suppressed)
-        diagnostics["suppressed_relations"] = list(assembly.suppressed)
+        diagnostics["contradictory_relation_count"] = len(observation_assembly.contradictory_edges)
         diagnostics["component_count"] = len(route.route_components)
         diagnostics["branch_relation_count"] = len(route.branch_relations)
         diagnostics["ordering_provenance"] = [relation.as_provenance() for relation in retained]
@@ -795,9 +902,17 @@ class EventAnchorRouteBuilder:
             or route.branch_relations
             or len(represented_places) < len(places)
             or not route.ordered_points
+            or canonical_plan.completeness is CanonicalRouteCompleteness.PARTIAL
         ):
             diagnostics["reason_codes"] = ["PARTIAL_ROUTE"]
-        return EventRouteOutcome(route, tuple(retained), diagnostics)
+        return EventRouteOutcome(
+            route,
+            tuple(retained),
+            diagnostics,
+            tuple(observations),
+            tuple(observation_relations),
+            observation_assembly.components,
+        )
 
     def _relations(self, events: list[HistoricalEvent], anchors: list[EventAnchor], evidence_by_id: dict[str, Evidence]) -> list[AnchorOrderingRelation]:
         events_by_id = {event.id: event for event in events}

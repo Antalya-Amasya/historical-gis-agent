@@ -180,6 +180,34 @@ class HistoricalEventPlaceBinding(BaseModel):
     limitations: list[str] = Field(default_factory=list)
 
 
+class EventRouteOrderingEndpointKind(str, Enum):
+    ORIGIN = "ORIGIN"
+    DESTINATION = "DESTINATION"
+    TRAVERSAL = "TRAVERSAL"
+
+
+class EventRouteOrderingAuthority(str, Enum):
+    BEFORE_SUBORDINATE = "BEFORE_SUBORDINATE"
+    AFTER_SUBORDINATE = "AFTER_SUBORDINATE"
+    BEFORE_POSTPOSED = "BEFORE_POSTPOSED"
+    AFTER_POSTPOSED = "AFTER_POSTPOSED"
+    FIRST_THEN = "FIRST_THEN"
+
+
+class EventRouteOrderingRef(BaseModel):
+    endpoint_kind: EventRouteOrderingEndpointKind
+    surface: str
+    canonical: str | None = None
+
+
+class EventRouteOrdering(BaseModel):
+    earlier: EventRouteOrderingRef
+    later: EventRouteOrderingRef
+    authority: EventRouteOrderingAuthority
+    source_statement: str
+    evidence_refs: list[str] = Field(default_factory=list)
+
+
 class HistoricalEvent(BaseModel):
     id: str
     name: str
@@ -200,6 +228,7 @@ class HistoricalEvent(BaseModel):
     source_statements: list[str] = Field(default_factory=list)
     temporal_groundings: list[HistoricalEventTemporalGrounding] = Field(default_factory=list)
     actor: HistoricalEventActorGrounding = Field(default_factory=HistoricalEventActorGrounding)
+    route_orderings: list[EventRouteOrdering] = Field(default_factory=list)
 
 
 class GeoJsonLineString(BaseModel):
@@ -234,6 +263,39 @@ class HistoricalClaim(BaseModel):
     movement_relation: str | None = None
     sequence_status: str = "unordered"
     textual_basis: str | None = None
+
+
+class TransitionAction(str, Enum):
+    CROSS = "CROSS"
+
+
+class GeographicFeatureKind(str, Enum):
+    RIVER = "RIVER"
+    MOUNTAIN_REGION = "MOUNTAIN_REGION"
+    SEA = "SEA"
+    STRAIT = "STRAIT"
+    PASS = "PASS"
+    UNKNOWN = "UNKNOWN"
+
+
+class TransitionConstraint(BaseModel):
+    """Evidence-grounded traversal of a named feature without an exact crossing coordinate."""
+
+    id: str
+    event_id: str
+    action: TransitionAction = TransitionAction.CROSS
+    feature_surface: str
+    feature_canonical: str | None = None
+    feature_kind: GeographicFeatureKind = GeographicFeatureKind.UNKNOWN
+    actor_text: str | None = None
+    actor_status: EventActorStatus = EventActorStatus.UNKNOWN
+    evidence_refs: list[str] = Field(default_factory=list)
+    source_statement: str | None = None
+    period: str | None = None
+    feature_coordinate_role: str | None = None
+    resolver_provenance: str | None = None
+    limitations: list[str] = Field(default_factory=list)
+    exact_transition_coordinate: None = None
 
 
 class HistoricalRoutePoint(BaseModel):

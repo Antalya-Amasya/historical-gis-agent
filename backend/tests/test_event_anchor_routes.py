@@ -49,7 +49,21 @@ def event(identifier, bindings, refs, *, years=None, precision=TemporalPrecision
     if years is not None:
         start, end = years
         grounding = HistoricalEventTemporalGrounding(raw_expression=f"{start}", normalized_start=str(start), normalized_end=str(end), precision=precision, evidence_refs=list(refs), status=TemporalGroundingStatus.EVIDENCE_GROUNDED)
-    return HistoricalEvent(id=identifier, name=identifier, summary=f"{identifier} summary", event_type=HistoricalEventType.MOVEMENT, evidence_refs=list(refs), place_bindings=bindings, temporal_grounding=grounding)
+    return HistoricalEvent(
+        id=identifier,
+        name=identifier,
+        summary=f"{identifier} summary",
+        event_type=HistoricalEventType.MOVEMENT,
+        evidence_refs=list(refs),
+        source_statements=[f"{identifier} summary"],
+        place_bindings=bindings,
+        temporal_grounding=grounding,
+        actor=HistoricalEventActorGrounding(
+            actor_text="Caesar",
+            actor_status=EventActorStatus.EXPLICIT,
+            actor_tokens=("Caesar",),
+        ),
+    )
 
 
 def build(events, items):
@@ -61,7 +75,9 @@ def names(outcome):
 
 
 def movement(identifier, origin, destination, refs, **kwargs):
-    return event(identifier, [binding(origin, EventPlaceRole.ORIGIN, refs), binding(destination, EventPlaceRole.DESTINATION, refs)], refs, **kwargs)
+    statement = f"Caesar marched from {origin} to {destination}."
+    bindings = [binding(origin, EventPlaceRole.ORIGIN, refs), binding(destination, EventPlaceRole.DESTINATION, refs)]
+    return event(identifier, bindings, refs, **kwargs).model_copy(update={"summary": statement, "source_statements": [statement]})
 
 
 def site(identifier, name, refs, **kwargs):
@@ -91,7 +107,7 @@ def test_reverse_direction_of_a_movement_event_is_never_inferred():
 def test_two_unrelated_anchors_without_ordering_authority_fail_closed():
     events = [site("first", "Genava", ["a"]), site("second", "Lutetia", ["b"])]
     outcome = build(events, [evidence("a"), evidence("b", document="one"), ])
-    assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["INSUFFICIENT_ORDERING"]
+    assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["CANONICAL_ROUTE_ABSENT"]
 
 
 def test_single_event_site_is_not_a_route():
@@ -103,7 +119,7 @@ def test_single_event_site_is_not_a_route():
 def test_multiple_event_sites_are_not_chained_by_their_existence():
     events = [site("one", "Genava", ["a"]), site("two", "Lutetia", ["b"]), site("three", "Alesia", ["c"])]
     outcome = build(events, [evidence("a", document="x"), evidence("b", document="y"), evidence("c", document="z")])
-    assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["INSUFFICIENT_ORDERING"]
+    assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["CANONICAL_ROUTE_ABSENT"]
 
 
 def test_comparable_evidence_grounded_temporal_values_order_separate_events():
@@ -125,19 +141,19 @@ def test_comparable_evidence_grounded_temporal_values_order_separate_events():
 def test_overlapping_temporal_values_do_not_force_an_order():
     events = [site("one", "Genava", ["a"], years=(-58, -50)), site("two", "Lutetia", ["b"], years=(-55, -52))]
     outcome = build(events, [evidence("a", spine=1, offset=100), evidence("b", spine=1, offset=200)])
-    assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["INSUFFICIENT_ORDERING"]
+    assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["CANONICAL_ROUTE_ABSENT"]
 
 
 def test_same_source_structural_positions_without_connector_fail_closed():
     events = [site("later", "Lutetia", ["b"]), site("earlier", "Genava", ["a"])]
     outcome = build(events, [evidence("b", spine=1, offset=200), evidence("a", spine=1, offset=100)])
-    assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["INSUFFICIENT_ORDERING"]
+    assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["CANONICAL_ROUTE_ABSENT"]
 
 
 def test_structural_positions_from_different_documents_are_not_compared():
     events = [site("one", "Genava", ["a"]), site("two", "Lutetia", ["b"])]
     outcome = build(events, [evidence("a", document="caesar_gallic_war", spine=1, offset=100), evidence("b", document="livy_history", spine=1, offset=200)])
-    assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["INSUFFICIENT_ORDERING"]
+    assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["CANONICAL_ROUTE_ABSENT"]
 
 
 def test_list_order_alone_never_establishes_a_route():
@@ -150,7 +166,7 @@ def test_list_order_alone_never_establishes_a_route():
 def test_geographic_proximity_never_establishes_a_route():
     near = [site("one", "Alesia", ["a"]), site("two", "Bibracte", ["b"])]
     outcome = build(near, [evidence("a", document="x"), evidence("b", document="y")])
-    assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["INSUFFICIENT_ORDERING"]
+    assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["CANONICAL_ROUTE_ABSENT"]
 
 
 def test_roman_road_metadata_never_establishes_waypoints_or_chronology():
@@ -158,7 +174,7 @@ def test_roman_road_metadata_never_establishes_waypoints_or_chronology():
     first.metadata["roman_road"] = "audited-road-a"
     second.metadata["roman_road"] = "audited-road-a"
     outcome = build([site("one", "Genava", ["a"]), site("two", "Lutetia", ["b"])], [first, second])
-    assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["INSUFFICIENT_ORDERING"]
+    assert outcome.route is None and outcome.diagnostics["reason_codes"] == ["CANONICAL_ROUTE_ABSENT"]
 
 
 def test_unproven_gap_yields_partial_route_instead_of_a_bridged_itinerary():
@@ -181,7 +197,7 @@ def test_contextual_waypoints_are_counted_but_never_invent_ordering():
     assert outcome.route is None
     assert outcome.diagnostics["strong_anchor_count"] == 0
     assert outcome.diagnostics["contextual_anchor_count"] == 2
-    assert outcome.diagnostics["reason_codes"] == ["INSUFFICIENT_ORDERING"]
+    assert outcome.diagnostics["reason_codes"] == ["CANONICAL_ROUTE_ABSENT"]
 
 
 def test_accepted_ordering_relation_keeps_event_and_evidence_provenance():
@@ -223,18 +239,19 @@ def test_event_first_path_is_preferred_when_it_can_build_a_route():
     state.historical_evidence = [evidence("a")]
     state.historical_events = [movement("march", "Genava", "Lutetia", ["a"])]
     result, _ = AgentToolRegistry(Retriever([]), Geography()).execute("build_historical_route", {"event_id": "caesar", "name": "Caesar", "period": "58 BCE"}, state)
-    assert result["result"]["route"]["id"] == "caesar-event-anchor-route"
-    assert state.historical_route_diagnostics["route_source"] == "event_anchor"
+    assert result["result"]["route"]["id"] == "caesar-canonical-route"
+    assert state.historical_route_diagnostics["route_source"] == "canonical_observation"
 
 
-def test_legacy_strict_movement_fallback_remains_usable_without_event_anchors():
+def test_legacy_strict_movement_fallback_is_disabled_without_canonical_route():
     item = Evidence(id="caesar-lutetia", author="Julius Caesar", work="Gallic War", locator="Book I", excerpt="The army marched from Melodunum to Lutetia.", text="The army marched from Melodunum to Lutetia.", metadata={"document_id": "caesar_gallic_war", "spine_index": 2, "start_offset": 100})
     state = AgentState(session_id="legacy")
     tools = AgentToolRegistry(Retriever([item]), Geography())
     tools.execute("search_historical_evidence", {"query": "Caesar", "top_k": 5}, state)
     result, _ = tools.execute("build_historical_route", {"event_id": "caesar", "name": "Caesar", "period": "52 BCE"}, state)
-    assert [point["historical_place"]["canonical_name"] for point in result["result"]["route"]["ordered_points"]] == ["Melodunum", "Lutetia"]
-    assert state.historical_route_diagnostics["route_source"] == "legacy_movement_claims"
+    assert result["result"]["route"] is None
+    assert state.historical_route_diagnostics["route_source"] == "none"
+    assert state.historical_route_diagnostics["legacy_fallback"] == "disabled"
 
 
 def test_event_anchors_and_legacy_claims_are_never_merged_to_close_a_gap():
@@ -243,7 +260,7 @@ def test_event_anchors_and_legacy_claims_are_never_merged_to_close_a_gap():
     state.historical_evidence = [item, evidence("a")]
     state.historical_events = [site("isolated", "Alesia", ["a"])]
     result, _ = AgentToolRegistry(Retriever([]), Geography()).execute("build_historical_route", {"event_id": "caesar", "name": "Caesar", "period": "52 BCE"}, state)
-    ordered = [point["historical_place"]["canonical_name"] for point in result["result"]["route"]["ordered_points"]]
-    assert ordered == ["Melodunum", "Lutetia"] and "Alesia" not in ordered
-    assert state.historical_route_diagnostics["route_source"] == "legacy_movement_claims"
+    assert result["result"]["route"] is None
+    assert state.historical_route_diagnostics["route_source"] == "none"
+    assert state.historical_route_diagnostics["legacy_fallback"] == "disabled"
     assert state.historical_route_diagnostics["event_anchor_diagnostics"]["reason_codes"] == ["INSUFFICIENT_PLACES"]
