@@ -21,6 +21,7 @@ from backend.app.candidate_routes.roman_roads import RomanRoadCandidateService
 from backend.app.candidate_routes.geographic import GeographicCandidateRouteService
 from backend.app.candidate_routes.terrain import MosaicDEMProvider
 from backend.app.roads.itiner_e import RomanRoadGraph
+from backend.app.gis.natural_earth_surface import NaturalEarthAvailability, NaturalEarthSurfaceClassifier
 from pathlib import Path
 from backend.app.historical_route_presentation_service import (
     HistoricalRoutePresentationReadService, PresentationContractError, PresentationNotFoundError,
@@ -101,6 +102,18 @@ agent = build_agent()
 historical_route_presentation_service = HistoricalRoutePresentationReadService()
 
 
+def maritime_surface_from_settings(data_root: str | None = None):
+    """Load a manifest-backed Natural Earth classifier once; never bypass R3-B1 audit."""
+    root = settings.maritime_surface_data_root if data_root is None else data_root
+    if not root:
+        return None
+    dataset = Path(root)
+    provider = NaturalEarthSurfaceClassifier.from_manifest(dataset, dataset / "surface-manifest.json")
+    if provider.audit.availability is not NaturalEarthAvailability.AVAILABLE:
+        return None
+    return provider
+
+
 @app.on_event("startup")
 def compose_roman_road_capability() -> None:
     """Load the optional deployment dataset once per FastAPI application lifecycle."""
@@ -118,6 +131,7 @@ def compose_roman_road_capability() -> None:
     orchestrator = RomanRoadRouteOrchestrator(
         RomanRoadCandidateService(RomanRoadGraph.load(path)),
         terrain_route_service=terrain_service,
+        maritime_surface=maritime_surface_from_settings(),
     )
     agent = build_agent(roman_road_orchestrator=orchestrator)
 
