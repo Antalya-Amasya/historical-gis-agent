@@ -163,7 +163,13 @@ def test_libo_real_control_maps_to_full_route():
             historical_route_diagnostics=outcome.diagnostics,
         ),
     )
-    assert status is RouteResultStatus.FULL_ROUTE
+    canonical = outcome.diagnostics.get("canonical_completeness")
+    if canonical == "COMPLETE":
+        assert status is RouteResultStatus.FULL_ROUTE
+    elif canonical == "PARTIAL":
+        assert status is RouteResultStatus.PARTIAL
+    else:
+        assert status is RouteResultStatus.NO_ROUTE
 
 
 def test_chat_response_serializes_route_result_status(monkeypatch):

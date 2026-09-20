@@ -15,6 +15,19 @@ class RouteResultStatus(str, Enum):
 
 _RUNTIME_ERROR_STATUSES = frozenset({"provider_error", "tool_failure"})
 
+_CANONICAL_STATUS = {
+    "COMPLETE": RouteResultStatus.FULL_ROUTE,
+    "PARTIAL": RouteResultStatus.PARTIAL,
+    "ABSENT": RouteResultStatus.NO_ROUTE,
+}
+
+
+def _status_from_canonical_completeness(diagnostics: dict) -> RouteResultStatus | None:
+    value = diagnostics.get("canonical_completeness")
+    if value is None:
+        return None
+    return _CANONICAL_STATUS.get(str(value))
+
 
 def _route_is_structurally_incomplete(route: HistoricalRoute, diagnostics: dict) -> bool:
     """True when the produced HistoricalRoute itself is incomplete."""
@@ -43,6 +56,10 @@ def derive_route_result_status(state: AgentState) -> RouteResultStatus | None:
 
     diagnostics = state.historical_route_diagnostics or {}
     route = state.historical_route
+
+    canonical_status = _status_from_canonical_completeness(diagnostics)
+    if canonical_status is not None:
+        return canonical_status
 
     if route is not None:
         if _is_full_route(route, diagnostics):

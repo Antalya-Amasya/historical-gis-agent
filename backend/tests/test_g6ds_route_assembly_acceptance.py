@@ -90,8 +90,8 @@ def test_rejected_episode_structural_order_does_not_leak_into_route():
     assert "Brundisium" not in {point.historical_place.canonical_name for point in outcome.route.ordered_points}
 
 
-def test_non_exact_bridge_endpoint_fails_closed_before_route():
-    """Strong non-exact guard also covered by test_g6cx_strong_route_point_eligibility_guard."""
+def test_non_exact_bridge_endpoint_preserves_approximate_coordinate_role():
+    """Approximate bridge endpoints remain historical waypoints without exact upgrade."""
     e1, e2, evidence_by_id = _pair(POSITIVE_FIRST, POSITIVE_SECOND)
     origin_binding, destination_binding = e2.place_bindings
     e2 = e2.model_copy(update={
@@ -105,9 +105,13 @@ def test_non_exact_bridge_endpoint_fails_closed_before_route():
     outcome = EventAnchorRouteBuilder().build_with_diagnostics(
         [e1, e2], list(evidence_by_id.values()), event_id="g6ds", name="Ariston", period="200 BCE", query_contexts=QUERY,
     )
-    assert _structural(outcome.relations) == []
     assert outcome.route is not None
-    assert [point.historical_place.canonical_name for point in outcome.route.ordered_points] == ["Roma", "Capua"]
+    brundisium = next(
+        point for point in outcome.route.ordered_points
+        if point.historical_place.canonical_name == "Brundisium"
+    )
+    assert brundisium.coordinate_role == "feature_centroid"
+    assert brundisium.historical_place.coordinate_role != "exact_site"
     assert any(code.startswith("NON_EXACT_FEATURE_ANCHOR:") for code in outcome.diagnostics["projection_diagnostics"])
 
 
