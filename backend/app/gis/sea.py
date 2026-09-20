@@ -4,8 +4,15 @@ from dataclasses import dataclass
 from enum import Enum
 from math import acos, asin, atan2, ceil, cos, isfinite, radians, sin, sqrt
 from typing import Protocol
-from .surface import SurfaceClassifier, SurfaceType
+from .natural_earth_surface import MODERN_GEOGRAPHY_WARNING, NaturalEarthAvailability
+from .surface import SurfaceClassifier, SurfaceType, WaterDomain
 from .transport import SearchState, TransportMode
+
+DIRECT_WATER_SAMPLING_INTERVAL_M = 5000.0
+GIS_RECONSTRUCTION_LIMITATION = (
+    "Plausible GIS reconstruction between historical constraints; not an exact historical sailing track."
+)
+_DIRECT_WATER_LIMITATIONS = (MODERN_GEOGRAPHY_WARNING, GIS_RECONSTRUCTION_LIMITATION)
 
 class SeaEdgeStatus(str, Enum): AVAILABLE = "AVAILABLE"; UNAVAILABLE = "UNAVAILABLE"
 class CostComponentStatus(str, Enum): ACTIVE="ACTIVE"; NOT_MODELED="NOT_MODELED"
@@ -41,6 +48,79 @@ def build_sea_edge(source, target, classifier: SurfaceClassifier, *, max_samplin
         surface=classifier.classify(lat,lon); counts[surface.surface_type]+=1
         if surface.surface_type is not SurfaceType.WATER: return SeaEdge(status=SeaEdgeStatus.UNAVAILABLE,reason=f"surface sample {n} is {surface.surface_type.value}",sample_count=n+1,cost_breakdown=None,surface_counts=tuple(counts[x] for x in (SurfaceType.WATER,SurfaceType.LAND,SurfaceType.UNKNOWN,SurfaceType.BLOCKED)),metadata=meta,**common)
     return SeaEdge(status=SeaEdgeStatus.AVAILABLE,reason="all direct samples WATER; heuristic only, wind/current not modeled",sample_count=count,cost_breakdown=(cost_model or BaselineMaritimeCostModel()).cost_for(distance),surface_counts=tuple(counts[x] for x in (SurfaceType.WATER,SurfaceType.LAND,SurfaceType.UNKNOWN,SurfaceType.BLOCKED)),metadata=meta,**common)
+
+@dataclass(frozen=True)
+class DirectWaterEdgePlan:
+    available: bool
+    reason: str
+    coordinates: tuple[tuple[float, float], ...] = ()
+    physical_distance_m: float = 0.0
+    sample_count: int = 0
+    sampling_interval_m: float = DIRECT_WATER_SAMPLING_INTERVAL_M
+    planner: str = "DIRECT_WATER_EDGE"
+    direct_water_validated: bool = False
+    detour_used: bool = False
+    provenance: tuple[tuple[str, str], ...] = ()
+    limitations: tuple[str, ...] = _DIRECT_WATER_LIMITATIONS
+
+
+def _gap(reason: str, **kwargs) -> DirectWaterEdgePlan:
+    kwargs.setdefault("limitations", _DIRECT_WATER_LIMITATIONS)
+    return DirectWaterEdgePlan(available=False, reason=reason, **kwargs)
+
+
+def _ocean_interior(surface) -> bool:
+    return (
+        surface.surface_type is SurfaceType.WATER
+        and getattr(surface, "water_domain", None) is WaterDomain.OCEAN
+        and surface.status == "interior"
+    )
+
+
+def plan_direct_water_edge(lat1, lon1, lat2, lon2, classifier, *, max_sampling_interval_m=DIRECT_WATER_SAMPLING_INTERVAL_M):
+    """Validate a densified geodesic as ocean-only GIS geometry. Not historical authority."""
+    if getattr(getattr(classifier, "audit", None), "availability", None) is not NaturalEarthAvailability.AVAILABLE:
+        return _gap("maritime_surface_unavailable")
+    values = (lat1, lon1, lat2, lon2)
+    if any(not isfinite(value) for value in values):
+        return _gap("invalid_coordinate")
+    if not -90 <= lat1 <= 90 or not -90 <= lat2 <= 90 or not -180 <= lon1 <= 180 or not -180 <= lon2 <= 180:
+        return _gap("invalid_coordinate")
+    if not _ocean_interior(classifier.classify(lat1, lon1)) or not _ocean_interior(classifier.classify(lat2, lon2)):
+        return _gap("endpoint_not_ocean_interior")
+    source = type("P", (), {"latitude": lat1, "longitude": lon1})()
+    target = type("P", (), {"latitude": lat2, "longitude": lon2})()
+    distance = _distance(source, target)
+    if distance < 1.0:
+        return _gap("zero_length_leg")
+    count = max(2, ceil(distance / max_sampling_interval_m) + 1)
+    samples: list[tuple[float, float]] = []
+    try:
+        for n in range(count):
+            lat, lon = _slerp(lat1, lon1, lat2, lon2, n / (count - 1))
+            if not _ocean_interior(classifier.classify(lat, lon)):
+                return _gap("sample_not_ocean_interior", physical_distance_m=distance, sample_count=n + 1)
+            samples.append((lon, lat))
+    except ValueError as exc:
+        return _gap(str(exc), physical_distance_m=distance)
+    samples[0], samples[-1] = (lon1, lat1), (lon2, lat2)
+    land = classifier.validate_land_segment(tuple(samples))
+    if getattr(land, "intersects_land", None) is not False:
+        return _gap(getattr(land, "status", "land_intersection"), physical_distance_m=distance, sample_count=count)
+    metadata = dict(getattr(classifier.classify(lat1, lon1), "metadata", {}) or {})
+    provenance = tuple((key, metadata[key]) for key in ("dataset_name", "dataset_version", "source_sha256") if key in metadata)
+    return DirectWaterEdgePlan(
+        available=True,
+        reason="direct_water_validated",
+        coordinates=tuple(samples),
+        physical_distance_m=distance,
+        sample_count=count,
+        sampling_interval_m=max_sampling_interval_m,
+        direct_water_validated=True,
+        provenance=provenance,
+        limitations=_DIRECT_WATER_LIMITATIONS,
+    )
+
 
 def _slerp(lat1,lon1,lat2,lon2,f):
     a,b,c,d=map(radians,(lat1,lon1,lat2,lon2)); dot=sin(a)*sin(c)+cos(a)*cos(c)*cos(d-b); omega=acos(max(-1,min(1,dot)))

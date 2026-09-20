@@ -20,7 +20,8 @@ from .barrier_crossings import (
     is_broad_mountain_constraint,
 )
 from .geographic import GeographicCandidateRouteService
-from .models import ArmyProfile, CandidateRoute
+from .models import ArmyProfile, CandidateRoute, CandidateRouteAnchor, RouteCostBreakdown, RouteMetrics
+from backend.app.gis.sea import plan_direct_water_edge
 from .roman_roads import (
     RoadAccessStatus,
     RomanRoadCandidateResult,
@@ -95,10 +96,12 @@ class RomanRoadRouteOrchestrator:
         *,
         terrain_route_service: GeographicCandidateRouteService | None = None,
         terrain_profile: ArmyProfile | None = None,
+        maritime_surface=None,
     ) -> None:
         self.candidate_service = candidate_service
         self.terrain_route_service = terrain_route_service
         self.terrain_profile = terrain_profile or ArmyProfile(name="terrain_fallback")
+        self.maritime_surface = maritime_surface
         self.barrier_crossing_service = BarrierCrossingService(
             candidate_service,
             terrain_route_service=terrain_route_service,
@@ -121,7 +124,7 @@ class RomanRoadRouteOrchestrator:
             source, destination = points[point_index], points[point_index + 1]
             travel_mode = self._travel_mode(source, destination, historical_route)
             if travel_mode is HistoricalTravelMode.SEA:
-                leg = self._maritime_gap_leg(leg_index, source, destination, historical_route)
+                leg = self._maritime_leg(leg_index, source, destination, historical_route)
                 legs.append(leg)
                 geometry_segments.extend(self._geometry(leg_index, source, destination, leg))
                 point_index += 1
@@ -182,6 +185,78 @@ class RomanRoadRouteOrchestrator:
             if claim.id in shared_claim_ids
         }
         return next(iter(modes)) if len(modes) == 1 else HistoricalTravelMode.UNKNOWN
+
+    def _maritime_leg(self, index, source, destination, historical_route) -> RomanRoadRouteLeg:
+        if self.maritime_surface is None:
+            return self._maritime_gap_leg(index, source, destination, historical_route)
+        plan = plan_direct_water_edge(
+            source.historical_place.latitude,
+            source.historical_place.longitude,
+            destination.historical_place.latitude,
+            destination.historical_place.longitude,
+            self.maritime_surface,
+        )
+        if not plan.available:
+            status = (
+                "MARITIME_PLANNER_UNAVAILABLE"
+                if plan.reason == "maritime_surface_unavailable"
+                else "MARITIME_GEOMETRY_UNAVAILABLE"
+            )
+            return RomanRoadRouteLeg(
+                leg_index=index,
+                source_anchor_id=source.historical_place.id,
+                destination_anchor_id=destination.historical_place.id,
+                source_evidence_refs=list(source.evidence_refs),
+                destination_evidence_refs=list(destination.evidence_refs),
+                status=RomanRoadCandidateStatus.DISCONNECTED,
+                failure_status=status,
+                reconstruction_method=status,
+                ordering_provenance=self._ordering_provenance(source, destination, historical_route),
+                limitation="; ".join(plan.limitations),
+                travel_mode=HistoricalTravelMode.SEA,
+            )
+        distance_km = plan.physical_distance_m / 1000
+        candidate = CandidateRoute(
+            id=f"{source.historical_place.id}-{destination.historical_place.id}-direct-water",
+            from_anchor=CandidateRouteAnchor.from_historical_point(source),
+            to_anchor=CandidateRouteAnchor.from_historical_point(destination),
+            geometry=GeoJsonLineString(coordinates=list(plan.coordinates)),
+            metrics=RouteMetrics(
+                distance_km=distance_km, elevation_gain_m=0, elevation_loss_m=0,
+                estimated_cost=plan.physical_distance_m, cell_count=max(1, len(plan.coordinates)),
+                segment_count=max(0, len(plan.coordinates) - 1),
+            ),
+            cost_breakdown=RouteCostBreakdown(
+                distance_cost=plan.physical_distance_m, slope_cost=0, terrain_cost=0, barrier_cost=0,
+                total_cost=plan.physical_distance_m,
+            ),
+            confidence=1.0,
+            assumptions=[
+                *plan.limitations,
+                "direct_water_validated=true",
+                "detour_used=false",
+                "algorithmic_transitions=",
+                *[f"{key}={value}" for key, value in plan.provenance],
+            ],
+            evidence_refs=[],
+            provenance="gis_reconstruction",
+            coordinate_system="WGS84",
+            terrain_source="natural_earth_10m",
+            generation_method="DIRECT_WATER_EDGE",
+        )
+        return RomanRoadRouteLeg(
+            leg_index=index,
+            source_anchor_id=source.historical_place.id,
+            destination_anchor_id=destination.historical_place.id,
+            source_evidence_refs=list(source.evidence_refs),
+            destination_evidence_refs=list(destination.evidence_refs),
+            status=RomanRoadCandidateStatus.AVAILABLE,
+            terrain_candidate=candidate,
+            reconstruction_method="DIRECT_WATER_EDGE",
+            ordering_provenance=self._ordering_provenance(source, destination, historical_route),
+            limitation="; ".join(plan.limitations),
+            travel_mode=HistoricalTravelMode.SEA,
+        )
 
     @staticmethod
     def _maritime_gap_leg(index, source, destination, historical_route) -> RomanRoadRouteLeg:
@@ -314,7 +389,8 @@ class RomanRoadRouteOrchestrator:
             )]
         if leg.terrain_candidate is not None:
             return [RomanRoadRouteGeometrySegment(
-                segment_type="terrain_candidate", leg_index=index, coordinates=list(leg.terrain_candidate.geometry.coordinates),
+                segment_type="direct_water_edge" if leg.reconstruction_method == "DIRECT_WATER_EDGE" else "terrain_candidate",
+                leg_index=index, coordinates=list(leg.terrain_candidate.geometry.coordinates),
                 source_anchor_id=source.historical_place.id, destination_anchor_id=destination.historical_place.id,
             )]
         return [RomanRoadRouteGeometrySegment(
