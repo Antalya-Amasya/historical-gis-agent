@@ -155,10 +155,6 @@ def test_invariant_c_primary_plus_opponent_must_not_auto_beat_primary_only():
     assert primary_plus_opponent <= primary_only + _BOUNDED_OPPONENT_UPLIFT
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="B2 RED_EXPECTED: opponent mover + primary context must not tie or beat explicit primary mover",
-)
 def test_invariant_d_primary_mover_beats_opponent_mover_with_primary_context():
     primary_mover, opponent_mover_context = _compare_pair(
         ALPHA_QUERY,
@@ -175,10 +171,6 @@ def test_invariant_e_opponent_only_remains_retrieval_eligible():
     assert ranking["final_score"] > 0.0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="B2 RED_EXPECTED: opponent-only must not receive primary-subject equivalence",
-)
 def test_invariant_e_opponent_only_must_not_receive_primary_equivalence():
     primary_mover, opponent_only = _compare_pair(
         ALPHA_QUERY,
@@ -190,10 +182,6 @@ def test_invariant_e_opponent_only_must_not_receive_primary_equivalence():
     assert opponent_only < primary_mover
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="B2 RED_EXPECTED: metadata-only primary presence should rank below passage-local primary support",
-)
 def test_invariant_f_passage_local_primary_beats_metadata_only():
     passage_local, metadata_only = _compare_pair(
         ALPHA_QUERY,
@@ -247,10 +235,6 @@ def test_invariant_f_passage_local_primary_beats_metadata_only():
             "primary-mover",
             PRIMARY_MOVER,
             {},
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="B2 RED_EXPECTED: opponent mover + primary context must stay below explicit primary mover",
-            ),
             id="opponent-mover-primary-context",
         ),
         pytest.param(
@@ -271,10 +255,6 @@ def test_invariant_f_passage_local_primary_beats_metadata_only():
             "primary-mover",
             PRIMARY_MOVER,
             {},
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="B2 RED_EXPECTED: person-absent movement must stay below explicit primary mover",
-            ),
             id="neither-person",
         ),
         pytest.param(
@@ -285,10 +265,6 @@ def test_invariant_f_passage_local_primary_beats_metadata_only():
             "primary-mover",
             PRIMARY_MOVER,
             {},
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="B2 RED_EXPECTED: metadata-only primary presence must stay below passage-local primary support",
-            ),
             id="metadata-only",
         ),
         pytest.param(
@@ -299,10 +275,6 @@ def test_invariant_f_passage_local_primary_beats_metadata_only():
             "primary-mover",
             PRIMARY_MOVER,
             {},
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="B2 RED_EXPECTED: pronoun movement must stay below explicit primary mover",
-            ),
             id="pronoun-movement",
         ),
         pytest.param(
@@ -403,10 +375,6 @@ def test_mithridates_trusted_evidence_proposal_retrieval_safety(production_retri
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="B2 RED_EXPECTED: Lucullus mover should outscore Mithridates mover + Lucullus context",
-)
 def test_historical_lucullus_mover_beats_mithridates_mover_with_lucullus_context():
     lucullus_mover, mithridates_mover_context = _compare_pair(
         LUCULLUS_QUERY,
@@ -418,10 +386,6 @@ def test_historical_lucullus_mover_beats_mithridates_mover_with_lucullus_context
     assert lucullus_mover > mithridates_mover_context
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="B2 RED_EXPECTED: Alexander mover should outscore Porus mover + Alexander context",
-)
 def test_historical_alexander_mover_beats_porus_mover_with_alexander_context():
     alexander_mover, porus_mover_context = _compare_pair(
         ALEXANDER_QUERY,
@@ -433,10 +397,6 @@ def test_historical_alexander_mover_beats_porus_mover_with_alexander_context():
     assert alexander_mover > porus_mover_context
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="B2 RED_EXPECTED: Sulla mover should outscore Mithridates mover + Sulla context",
-)
 def test_historical_sulla_mover_beats_mithridates_mover_with_sulla_context():
     sulla_mover, mithridates_mover_context = _compare_pair(
         SULLA_QUERY,
@@ -484,10 +444,6 @@ def test_duplication_opponent_mention_does_not_auto_uplift():
     assert primary_with_opponent <= primary_only + _BOUNDED_OPPONENT_UPLIFT
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="B2 RED_EXPECTED: parallel person/entity/joint paths must stay bounded for one primary match",
-)
 def test_duplication_parallel_person_path_mass_is_capped():
     ranking = _ranking(ALPHA_QUERY, "primary-mover", PRIMARY_MOVER)
     duplicate_mass = ranking["entity_support"] + ranking["joint_support"]

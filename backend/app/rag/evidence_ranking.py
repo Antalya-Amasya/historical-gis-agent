@@ -133,7 +133,7 @@ def _passage_person_signals(query: str, roles, text: str, text_tokens: frozenset
             break
         if not (actor & core) and actor & opponents:
             secondary = 0.02
-    if primary == 0.0 and present:
+    if primary == 0.0 and present and secondary == 0.0 and not _explicit_fragment_actor_conflict(roles, text):
         primary = 0.04
     return primary, secondary
 
@@ -289,12 +289,10 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
                 person_local = (primary_subject / 0.08) * 0.40
             elif primary_subject == 0.04:
                 person_local = (primary_subject / 0.08) * 0.40
-            elif person:
-                person_local = (min(person, 0.04) / 0.08) * 0.40
             else:
                 person_local = 0.0
             entity_support = 0.0 if primary_subject >= 0.08 else (
-                0.04 if primary_subject >= 0.04 else (min(person, 0.04) if person else 0.0)
+                0.04 if primary_subject >= 0.04 else 0.0
             )
             joint = 0.0
         else:
@@ -324,12 +322,7 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
             person=frag_person, location=location, action=frag_action,
         )
         if signals:
-            joint = 0.04 if location > 0 and (
-                primary_subject >= 0.08
-                or primary_subject == 0.04
-                or (primary_subject == 0.0 and 0.0 < person < 0.08)
-                or (primary_subject == 0.0 and secondary_context > 0 and fragment > 0)
-            ) else 0.0
+            joint = 0.04 if location > 0 and primary_subject >= 0.08 else 0.0
         fragment_local = (fragment / _ROUTE_FRAGMENT_MAX) * 0.20 if fragment else 0.0
         local_support = min(1.0, person_local + (action / 0.12) * 0.40 + (location / 0.06) * 0.10 + (statement_bonus / 0.04) * 0.10 + fragment_local) if (primary_subject or person or action or location or statement_bonus or fragment) else 0.0
         semantic_relevance = local_support if item.metadata.get("semantic_candidate") else 0.0
@@ -350,7 +343,7 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
         passage_relevance = min(1.0, max(semantic_relevance, lexical_support) + (fragment if fragment and (semantic_relevance == 0 and lexical_support > 0 or fragment < _ROUTE_FRAGMENT_MAX) else 0.0))
         channel_confidence = 0.02 if item.metadata.get("semantic_candidate") and item.metadata.get("lexical_candidate") else 0.0
         navigation_penalty = 0.32 if is_navigation_or_heading(item) else 0.0
-        final_score = passage_relevance + channel_confidence + entity_support + location + action + generic + joint + statement_bonus - navigation_penalty
+        final_score = passage_relevance + channel_confidence + location + action + generic + statement_bonus - navigation_penalty
         metadata = dict(item.metadata)
         metadata["retrieval_ranking"] = {
             "base_vector_score": round(parent_semantic_prior, 6),
