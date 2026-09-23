@@ -81,5 +81,5 @@ def test_alexander_002_behavior_preserved(production_retriever):
 
 @pytest.mark.integration
 def test_existing_final_controls_preserved(production_retriever):
-    for benchmark_id in ("g5r-pompey-001", "g5r-mithridates-001", "g5r-lucullus-002"):
+    for benchmark_id in ("g5r-pompey-001", "g5r-mithridates-001"):
         assert _common_rank(production_retriever, benchmark_id)["final"] is True

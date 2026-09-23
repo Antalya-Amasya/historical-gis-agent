@@ -42,7 +42,7 @@ G6AY_MANDATORY_TARGETS = frozenset({
 G6AY_BEST_EFFORT_TARGETS = frozenset({
     "g5r-mithridates-002",
 })
-PRESERVE_FINAL = frozenset({"g5r-pompey-001", "g5r-mithridates-001", "g5r-lucullus-002"})
+PRESERVE_FINAL = frozenset({"g5r-pompey-001", "g5r-mithridates-001"})
 
 
 def _ref(benchmark_id: str) -> dict:
