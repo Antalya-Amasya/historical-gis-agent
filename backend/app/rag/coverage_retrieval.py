@@ -464,6 +464,23 @@ def merge_coverage_results(
                 reserved_facets.update(facets)
                 break
 
+    canonical_ids = {
+        item.id
+        for intent, items in intent_results
+        if intent.kind == "CANONICAL"
+        for item in items
+    }
+    for _index, (intent, items) in stable_channels:
+        if intent.kind == "CANONICAL":
+            continue
+        first_id = next((item.id for item in items if item.id in by_id), None)
+        if first_id is None or first_id not in canonical_ids or first_id in selected_ids:
+            continue
+        resolved = by_id[first_id]
+        if not (_qualifies_lexical_proposal(resolved) or _qualifies_semantic_proposal(resolved)):
+            continue
+        add(resolved, intent, rank=1, reason="canonical_intent_reservation")
+
     global_fill_families: set[str] = set()
 
     def _try_global_fill(item: Evidence) -> None:
