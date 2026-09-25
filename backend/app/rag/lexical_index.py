@@ -105,6 +105,12 @@ class LexicalEvidenceIndex:
             for ident in person_postings.get(term, {}):
                 scores[ident]+=weight
                 body_subject_scores[ident]+=weight
+            for ident in self._body_postings.get(term, {}):
+                scores[ident]+=weight
+        for term in roles.location_match_terms:
+            weight=idf(term)
+            for ident in self._body_postings.get(term, {}):
+                scores[ident]+=weight
         for term in roles.generic_terms:
             weight=_GENERIC_TERM_WEIGHT * idf(term)
             for ident in self._postings.get(term, {}): scores[ident]+=weight
@@ -112,11 +118,12 @@ class LexicalEvidenceIndex:
             person_ids=set().union(*(set(person_postings.get(term, {})) for term in roles.person_terms))
             if is_route: person_ids=self._provenance_person_ids(roles, person_ids)
             for term in roles.expanded_action_terms:
-                weight=idf(term)
+                raw=idf(term)
+                weight=_GENERIC_TERM_WEIGHT * raw
                 for ident in self._postings.get(term, {}):
                     if ident in person_ids:
                         scores[ident]+=weight
-                        movement_scores[ident]+=weight
+                        movement_scores[ident]+=raw
         if is_route:
             episode_terms = episode_context_terms(roles)
             if episode_terms:
