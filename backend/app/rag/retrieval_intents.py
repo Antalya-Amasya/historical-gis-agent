@@ -12,6 +12,8 @@ _SUBJECT_SCAFFOLD = frozenset({
     "trace", "reconstruct", "show", "map", "follow", "route", "routes", "movements", "movement",
     "major", "during", "after", "through", "into", "ending", "near", "back", "bce", "bc",
     "defeat", "arrival", "campaign", "campaigns", "world", "greek", "ten", "first", "until",
+    "to", "of", "for", "by", "with", "about", "from",
+    "attributed", "associated", "assigned", "credited",
 })
 _ROUTE_QUERY_HINTS = frozenset({"route", "trace", "reconstruct", "journey", "march", "movements", "movement"})
 _MOVEMENT_HINTS = frozenset({
@@ -67,8 +69,13 @@ class RetrievalIntent:
             raise ValueError(f"unsupported retrieval intent: {self.kind}")
 
 
+_POSSESSIVE_OWNER = re.compile(
+    r"\b((?:[A-Z][A-Za-z]+(?:\s+the|\s+of)?\s+){0,2}[A-Z][A-Za-z]+)['’]s\b"
+)
+
+
 def _possessive_subject(query: str) -> str | None:
-    for match in re.finditer(r"\b([A-Za-z]+(?:\s+[A-Za-z]+){0,2})'s\b", query):
+    for match in _POSSESSIVE_OWNER.finditer(query or ""):
         tokens = [token for token in match.group(1).split() if token.casefold() not in _SUBJECT_SCAFFOLD]
         if tokens:
             return " ".join(tokens)
@@ -224,9 +231,10 @@ def _compose(*parts: str) -> str:
     seen: set[str] = set()
     tokens: list[str] = []
     for part in parts:
-        for token in re.findall(r"[A-Za-z0-9]+", part or ""):
+        cleaned = re.sub(r"['’]s\b", " ", part or "", flags=re.IGNORECASE)
+        for token in re.findall(r"[A-Za-z0-9]+", cleaned):
             folded = token.casefold()
-            if folded in seen:
+            if folded in seen or folded == "s":
                 continue
             seen.add(folded)
             tokens.append(token)

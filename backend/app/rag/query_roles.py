@@ -12,6 +12,10 @@ import unicodedata
 from dataclasses import dataclass
 
 _WORD = re.compile(r"[A-Za-z0-9]+")
+_POSSESSIVE_TAIL = re.compile(r"['’]s\b")
+_CAPITAL_POSSESSIVE = re.compile(
+    r"\b((?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ]+\s+){0,2}[A-Z][A-Za-zÀ-ÖØ-öø-ÿ]+)['’]s\b"
+)
 _STOP_WORDS = frozenset({"a", "an", "and", "at", "battle", "by", "for", "in", "of", "on", "the", "to", "with"})
 _QUERY_SCAFFOLD = frozenset({
     "what", "who", "where", "when", "why", "how",
@@ -256,7 +260,15 @@ def _and_starts_person_clause(norms: list[str], start: int) -> bool:
     return False
 
 
-def _extract_route_location_terms(norms: list[str]) -> frozenset[str]:
+def _possessive_owner_tokens(query: str) -> frozenset[str]:
+    """Surface tokens of capitalized NAME's possessors; not passage NER."""
+    owners: set[str] = set()
+    for match in _CAPITAL_POSSESSIVE.finditer(query or ""):
+        owners.update(token.casefold() for token in match.group(1).split())
+    return frozenset(owners)
+
+
+def _extract_route_location_terms(norms: list[str], skip_tokens: frozenset[str] = frozenset()) -> frozenset[str]:
     locations: set[str] = set()
     route_clause_active = False
     index = 0
@@ -302,7 +314,7 @@ def _extract_route_location_terms(norms: list[str]) -> frozenset[str]:
                 route_clause_active = True
                 index = cursor + 3
                 continue
-            if cursor < len(norms) and _route_token_allowed(norms[cursor]):
+            if cursor < len(norms) and _route_token_allowed(norms[cursor]) and norms[cursor] not in skip_tokens:
                 cursor = _add_compound_location(locations, norms, cursor)
             route_clause_active = True
             index = cursor + 1
@@ -335,6 +347,8 @@ def _extract_route_location_terms(norms: list[str]) -> frozenset[str]:
 def analyze_query(query: str) -> QueryRoleAnalysis:
     """Assign PERSON / LOCATION / ACTION / GENERIC roles from the raw query."""
     normalized = unicodedata.normalize("NFKD", query or "").replace("æ", "ae").replace("Æ", "AE")
+    possessive_owners = _possessive_owner_tokens(query or "")
+    normalized = _POSSESSIVE_TAIL.sub(" ", normalized)
     pairs = tuple((match.group(), match.group().casefold()) for match in _WORD.finditer(normalized))
     norms = [norm for _, norm in pairs]
     action_terms = frozenset(token for token in norms if token in _ACTION_UNION)
@@ -343,7 +357,7 @@ def analyze_query(query: str) -> QueryRoleAnalysis:
         frozenset().union(*(group for group in _ACTION_GROUPS if action_terms & group))
     ) - action_terms
     stop_in_query = frozenset(token for token in norms if token in _STOP_WORDS)
-    location = set(_extract_route_location_terms(norms))
+    location = set(_extract_route_location_terms(norms, possessive_owners))
     generic = frozenset(token for token in norms if token in _GENERIC_TERMS)
     war_adjectives = (
         frozenset(token for token in norms if token.endswith("atic"))
