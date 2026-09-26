@@ -106,6 +106,12 @@ def _rescue_qualified_over_unqualified(
     for item in missing:
         if item.id in selected_ids:
             continue
+        family = _coverage_family_key(item)
+        if any(
+            _coverage_family_key(seated) == family and passages_overlap(item, seated)
+            for seated in selected
+        ):
+            continue
         if len(selected) < observation_k:
             selected_ids.add(item.id)
             selected.append(item)
@@ -127,7 +133,7 @@ def _rescue_qualified_over_unqualified(
 
 
 def select_qualified_local_proposals(ranked: list[Evidence], observation_k: int) -> list[Evidence]:
-    """Preserve bounded lexical reserve, qualified-family diversity, and rescue over unqualified fill."""
+    """Preserve bounded lexical reserve, then fill remaining seats by rerank rank."""
     if observation_k < 1 or not ranked:
         return []
     if len(ranked) <= observation_k:
@@ -151,23 +157,32 @@ def select_qualified_local_proposals(ranked: list[Evidence], observation_k: int)
         add(item)
         lexical_reserve_ids.add(item.id)
 
-    qualified_by_family: dict[str, list[Evidence]] = defaultdict(list)
-    for item in ranked:
-        if item.id in selected_ids or not _qualifies_proposal(item):
-            continue
-        qualified_by_family[_coverage_family_key(item)].append(item)
+    seated_by_family: dict[str, list[Evidence]] = defaultdict(list)
+    for item in selected:
+        seated_by_family[_coverage_family_key(item)].append(item)
 
-    for item in sorted(
-        (min(items, key=_canonical_proposal_rank_key) for items in qualified_by_family.values()),
-        key=_canonical_proposal_rank_key,
-    ):
+    def overlaps_seated(item: Evidence) -> bool:
+        family = _coverage_family_key(item)
+        return any(passages_overlap(item, seated) for seated in seated_by_family[family])
+
+    def seat(item: Evidence) -> None:
         add(item)
+        if item.id in selected_ids:
+            seated_by_family[_coverage_family_key(item)].append(item)
 
     for item in sorted(ranked, key=_canonical_proposal_rank_key):
         if len(selected) >= observation_k:
             break
-        if item.id not in selected_ids:
-            add(item)
+        if item.id in selected_ids or not _qualifies_proposal(item) or overlaps_seated(item):
+            continue
+        seat(item)
+
+    for item in sorted(ranked, key=_canonical_proposal_rank_key):
+        if len(selected) >= observation_k:
+            break
+        if item.id in selected_ids or overlaps_seated(item):
+            continue
+        seat(item)
 
     _rescue_qualified_over_unqualified(
         ranked,
