@@ -57,7 +57,7 @@ _MOVEMENT_FAMILIES: tuple[frozenset[str], ...] = (
     frozenset({"proceed", "proceeded", "proceeding"}),
     frozenset({"pass", "passed", "passing"}),
     frozenset({"cross", "crossed", "crossing"}),
-    frozenset({"sail", "sailed", "sailing"}),
+    frozenset({"sail", "sailed", "sailing", "voyage"}),
     frozenset({"depart", "departed", "departing", "departure"}),
     frozenset({"leave", "left", "leaving"}),
     frozenset({"arrive", "arrived", "arriving"}),
