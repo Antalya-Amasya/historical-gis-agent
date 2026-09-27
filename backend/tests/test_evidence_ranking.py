@@ -397,3 +397,44 @@ def test_route_diversification_isolated_from_ordinary_qa_and_navigation_is_fallb
     assert diversify_route_evidence("senate treaty", ranked) == ranked
     route_ranked = rerank_evidence("army route", [navigation, prose])
     assert diversify_route_evidence("army route", route_ranked)[0].id == "prose"
+
+
+def test_ordinary_qa_with_movement_noun_keeps_rerank_order():
+    query = "Did Augustus complete a movement from Gaul into Britain in this episode?"
+    ranked = [
+        evidence("a1", "The army marched through Gaul that summer.", .9, source_chunk_id="family-a"),
+        evidence("b1", "Another legion marched into Spain.", .8, source_chunk_id="family-b"),
+        evidence(
+            "sibling",
+            "Augustus apparently set out for Britain, but on reaching Gaul he lingered there.",
+            .7,
+            source_chunk_id="family-a",
+        ),
+        evidence("c1", "The consul marched along the coast.", .6, source_chunk_id="family-c"),
+        evidence("d1", "The garrison marched toward Rome.", .5, source_chunk_id="family-d"),
+        evidence("e1", "The cohort marched out of camp.", .4, source_chunk_id="family-e"),
+    ]
+    assert is_route_or_movement_query(query)
+    assert [item.id for item in diversify_route_evidence(query, ranked)] == [item.id for item in ranked]
+
+
+def test_trace_movement_query_still_applies_route_diversity():
+    query = "Trace his movement from Gaul into Britain."
+    ranked = [
+        evidence("a1", "The army marched through Gaul that summer.", .9, source_chunk_id="family-a"),
+        evidence("b1", "Another legion marched into Spain.", .8, source_chunk_id="family-b"),
+        evidence(
+            "sibling",
+            "Augustus apparently set out for Britain, but on reaching Gaul he lingered there.",
+            .7,
+            source_chunk_id="family-a",
+        ),
+        evidence("c1", "The consul marched along the coast.", .6, source_chunk_id="family-c"),
+        evidence("d1", "The garrison marched toward Rome.", .5, source_chunk_id="family-d"),
+        evidence("e1", "The cohort marched out of camp.", .4, source_chunk_id="family-e"),
+    ]
+    diversified = diversify_route_evidence(query, ranked)
+    assert is_route_or_movement_query(query)
+    assert [item.id for item in diversified] != [item.id for item in ranked]
+    assert "sibling" not in {item.id for item in diversified[:5]}
+    assert diversified[5].id == "sibling"

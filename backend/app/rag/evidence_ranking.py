@@ -103,6 +103,30 @@ def is_route_or_movement_query(query: str) -> bool:
     return bool(_ROUTE_OR_MOVEMENT_QUERY.search(query or ""))
 
 
+_ORDINARY_POLAR_QA = re.compile(
+    r"^\s*(?:did|does|do|was|were|is|are|has|have|had)\b",
+    re.IGNORECASE,
+)
+_ROUTE_STYLE_DIVERSITY_CUE = re.compile(
+    r"\b(?:trace|reconstruct|map|follow|show|route|routes|journey|expedition)\b|路线|军队",
+    re.IGNORECASE,
+)
+
+
+def _applies_route_source_diversity(query: str) -> bool:
+    """Flat-pool source-family diversity is for route-style retrieval, not polar QA.
+
+    Coverage branch selection still uses `is_route_or_movement_query` unchanged.
+    A yes/no question may contain a movement noun without asking for route
+    reconstruction, and in that case the rerank order must be preserved.
+    """
+    if not is_route_or_movement_query(query):
+        return False
+    if _ORDINARY_POLAR_QA.search(query or "") and not _ROUTE_STYLE_DIVERSITY_CUE.search(query or ""):
+        return False
+    return True
+
+
 def _explicit_fragment_actor_conflict(roles, text: str) -> bool:
     for match in _EXPLICIT_ACTOR_MOVEMENT.finditer(text or ""):
         actor_tokens = normalized_tokens(match.group("actor"))
@@ -187,7 +211,7 @@ def diversify_route_evidence(query: str, ranked: list[Evidence]) -> list[Evidenc
     evidence-local movement statement signal.  It never creates evidence or
     assigns chronology.
     """
-    if not is_route_or_movement_query(query):
+    if not _applies_route_source_diversity(query):
         return ranked
 
     def family(item: Evidence) -> str:
