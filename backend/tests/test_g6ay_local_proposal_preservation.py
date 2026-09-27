@@ -9,6 +9,7 @@ from backend.app.models import Evidence
 from backend.app.rag.coverage_retrieval import (
     DEFAULT_COVERAGE_BUDGET,
     DEFAULT_RAW_OBSERVATION_K,
+    _qualifies_proposal,
     merge_coverage_results,
     select_qualified_local_proposals,
 )
@@ -52,6 +53,41 @@ def _ref(benchmark_id: str) -> dict:
 def _query_for_ref(ref: dict) -> str:
     query_id = ref["query_id"]
     return next(q["query"] for q in hard_benchmark_queries() if q["query_id"] == query_id)
+
+
+def _passage_evidence(
+    identifier: str,
+    text: str,
+    *,
+    score: float = 0.5,
+    lexical_score: float | None = None,
+    semantic: bool = True,
+    vector_rank: int = 10,
+    source: str | None = None,
+) -> Evidence:
+    """Synthetic evidence with passage bounds for overlap-aware proposal selection."""
+    parts = identifier.split(":")
+    start = int(parts[1]) if len(parts) > 2 else 0
+    end = int(parts[2]) if len(parts) > 2 else 10
+    parent = source or parts[0]
+    item = _evidence(
+        identifier,
+        text,
+        score=score,
+        lexical_score=lexical_score,
+        semantic=semantic,
+        vector_rank=vector_rank,
+        source=parent,
+    )
+    metadata = dict(item.metadata)
+    metadata.update(
+        {
+            "parent_id": parent,
+            "passage_start": start,
+            "passage_end": end,
+        }
+    )
+    return item.model_copy(update={"metadata": metadata})
 
 
 def _evidence(
@@ -247,29 +283,63 @@ def test_a_synthetic_lexical_direct_preservation():
 
 def test_b_synthetic_semantic_derived_preservation():
     query = CAESAR_QUERY
-    parent_source = "caesar-parent"
-    derived = _evidence(
-        f"{parent_source}:1391:1640",
-        "Caesar crossed the Adriatic from Brundisium in the winter and opened his campaign.",
+    target = _passage_evidence(
+        "family-target:1391:1640",
+        "He crossed the Adriatic from Brundisium toward Epirus during the campaign.",
         score=0.08,
-        vector_rank=8,
-        source=parent_source,
+        vector_rank=58,
+        source="family-target",
     )
-    semantic_flood = [
-        _evidence(
-            f"parent-{index}:{index * 10}:{index * 10 + 80}",
-            f"Julius Caesar marched from Italy toward Epirus in passage {index}.",
-            score=0.9 - index * 0.0005,
+    overlapping_family = [
+        _passage_evidence(
+            f"family-a:{start}:{start + 120}",
+            f"Julius Caesar marched from Italy toward Epirus in overlapping window {index}.",
+            score=0.91 - index * 0.0001,
             vector_rank=index,
-            source=f"parent-{index}",
+            source="family-a",
         )
-        for index in range(1, 40)
+        for index, start in enumerate(range(0, 800, 12), start=1)
     ]
-    ranked = rerank_evidence(query, [derived, *semantic_flood])
-    assert derived.id not in {item.id for item in ranked[:10]}
+    independent_flood = [
+        _passage_evidence(
+            f"family-{index}:{index * 10}:{index * 10 + 80}",
+            f"Julius Caesar marched from Italy toward Epirus in passage {index}.",
+            score=0.88 - index * 0.0005,
+            vector_rank=40 + index,
+            source=f"family-{index}",
+        )
+        for index in range(1, 70)
+    ]
+    unqualified_tail = [
+        _passage_evidence(
+            f"tail-{index}:0:10",
+            "Generic winter camp notes without a crossing.",
+            score=0.001,
+            semantic=False,
+            vector_rank=300 + index,
+            source=f"tail-{index}",
+        )
+        for index in range(1, 100)
+    ]
+    candidates = [target, *overlapping_family, *independent_flood, *unqualified_tail]
+    assert len(candidates) > DEFAULT_RAW_OBSERVATION_K
+
+    ranked = rerank_evidence(query, candidates)
+    target_ranked = next(item for item in ranked if item.id == target.id)
+    target_rank = int(target_ranked.metadata.get("rank") or 0)
+    naive_top = ranked[:DEFAULT_RAW_OBSERVATION_K]
+
+    assert _qualifies_proposal(target_ranked)
+    assert target_rank > DEFAULT_RAW_OBSERVATION_K
+    assert target.id not in {item.id for item in naive_top}
 
     preserved = select_qualified_local_proposals(ranked, DEFAULT_RAW_OBSERVATION_K)
-    assert derived.id in {item.id for item in preserved}
+    assert len(preserved) == DEFAULT_RAW_OBSERVATION_K
+    assert target.id in {item.id for item in preserved}
+
+    overlap_selected = [item for item in preserved if item.metadata.get("source_chunk_id") == "family-a"]
+    assert len(overlapping_family) > 1
+    assert len(overlap_selected) < len(overlapping_family)
 
 
 def test_c_duplicate_evidence_id_uses_one_slot():
