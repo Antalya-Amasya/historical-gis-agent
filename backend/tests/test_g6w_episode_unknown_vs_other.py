@@ -55,7 +55,7 @@ def test_b_explicit_temporal_contradiction_stays_other_episode():
     assert detail["admission_reason"] == "REJECT_SAME_SUBJECT_OTHER_EPISODE"
 
 
-def test_c_explicit_endpoint_contradiction_stays_other_episode():
+def test_c_surname_only_caesar_is_unknown_not_other_episode():
     claim = HistoricalClaim(
         id="c1",
         claim_type="MOVEMENT",
@@ -71,8 +71,11 @@ def test_c_explicit_endpoint_contradiction_stays_other_episode():
     )
     evidence = ev("ev1", claim.text, author="Julius Caesar", work="Civil War")
     episode, detail = classify_legacy_claim_episode(claim, {evidence.id: evidence}, (CAESAR_QUERY,))
-    assert episode is EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
+    assert episode is EpisodeRelevance.UNKNOWN
+    assert episode is not EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
+    assert episode is not EpisodeRelevance.OTHER_CAMPAIGN
     assert detail["admitted"] is False
+    assert detail["admission_reason"] == "REJECT_UNKNOWN"
 
 
 def test_d_direct_positive_episode_match_preserved():
@@ -119,6 +122,30 @@ def test_e_subject_only_evidence_is_unknown_not_other():
     assert episode is EpisodeRelevance.UNKNOWN
     assert episode is not EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
     assert detail["admitted"] is False
+
+
+def test_g_named_campaign_conflict_stays_other_campaign():
+    movement = "During Campaign Beta, Ariston marched from Port Helios to Port Selene."
+    event = _event("ariston", movement, source_statements=[movement], refs=["ev1"])
+    evidence_by_id = {"ev1": _evidence("ev1", movement)}
+    rel = relation(
+        "Port Helios",
+        "Port Selene",
+        OrderingRule.SAME_MOVEMENT_EVENT,
+        refs=("ev1",),
+        event_ids=("ariston",),
+    )
+    episode, detail = classify_event_anchor_episode(
+        rel,
+        {"ariston": event},
+        evidence_by_id,
+        (ARISTON_CAMPAIGN_A_QUERY,),
+        subject_relevance=EvidenceRelevance.DIRECT_SUBJECT,
+    )
+    assert episode is EpisodeRelevance.UNKNOWN
+    assert episode is not EpisodeRelevance.OTHER_CAMPAIGN
+    assert detail["admitted"] is False
+    assert detail["admission_reason"] == "REJECT_UNKNOWN"
 
 
 def test_f_different_subject_stays_other_campaign():

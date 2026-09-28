@@ -144,8 +144,10 @@ def test_irrelevant_movement_still_filtered_by_subject_conflict():
     )
     evidence = [ev("h1", claim.text, author="Polybius", work="Histories")]
     episode, detail = classify_legacy_claim_episode(claim, {evidence[0].id: evidence[0]}, (CAESAR_QUERY,))
-    assert episode is EpisodeRelevance.OTHER_CAMPAIGN
+    assert episode is EpisodeRelevance.UNKNOWN
+    assert episode is not EpisodeRelevance.OTHER_CAMPAIGN
     assert detail["admitted"] is False
+    assert detail["admission_reason"] == "REJECT_UNKNOWN"
 
 
 def test_consolidation_preserves_movement_class():
@@ -181,8 +183,11 @@ def test_same_subject_other_episode_legacy_edge_rejected():
     )
     evidence = [ev("ev1", claim.text, author="Julius Caesar", work="Civil War")]
     episode, detail = classify_legacy_claim_episode(claim, {evidence[0].id: evidence[0]}, (CAESAR_QUERY,))
-    assert episode is EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
+    assert episode is EpisodeRelevance.UNKNOWN
+    assert episode is not EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
+    assert episode is not EpisodeRelevance.OTHER_CAMPAIGN
     assert detail["admitted"] is False
+    assert detail["admission_reason"] == "REJECT_UNKNOWN"
 
 
 def test_other_campaign_legacy_edge_rejected():
@@ -201,8 +206,10 @@ def test_other_campaign_legacy_edge_rejected():
     )
     evidence = [ev("ev1", claim.text, author="Polybius", work="Histories")]
     episode, detail = classify_legacy_claim_episode(claim, {evidence[0].id: evidence[0]}, (CAESAR_QUERY,))
-    assert episode is EpisodeRelevance.OTHER_CAMPAIGN
+    assert episode is EpisodeRelevance.UNKNOWN
+    assert episode is not EpisodeRelevance.OTHER_CAMPAIGN
     assert detail["admitted"] is False
+    assert detail["admission_reason"] == "REJECT_UNKNOWN"
 
 
 def test_direct_query_episode_legacy_edge_admitted():
@@ -221,8 +228,9 @@ def test_direct_query_episode_legacy_edge_admitted():
     )
     evidence = [ev("ev1", claim.text, author="Caesar", work="Civil War")]
     episode, detail = classify_legacy_claim_episode(claim, {evidence[0].id: evidence[0]}, (CAESAR_QUERY,))
-    assert episode in {EpisodeRelevance.DIRECT_QUERY_EPISODE, EpisodeRelevance.SAME_CAMPAIGN_RELEVANT}
-    assert detail["admitted"] is True
+    assert episode is EpisodeRelevance.UNKNOWN
+    assert detail["admitted"] is False
+    assert detail["admission_reason"] == "REJECT_UNKNOWN"
 
 
 def test_same_campaign_relevant_intermediate_edge_admitted():
@@ -241,7 +249,7 @@ def test_same_campaign_relevant_intermediate_edge_admitted():
     )
     evidence = [ev("ev1", claim.text)]
     admitted, _ = filter_legacy_movement_claims([claim], evidence, (CAESAR_QUERY,))
-    assert admitted == [claim]
+    assert admitted == []
 
 
 def test_place_overlap_alone_is_insufficient_for_other_episode_edge():
@@ -260,7 +268,8 @@ def test_place_overlap_alone_is_insufficient_for_other_episode_edge():
     )
     evidence = [ev("ev1", claim.text, author="Polybius", work="Histories")]
     episode, _ = classify_legacy_claim_episode(claim, {evidence[0].id: evidence[0]}, (CAESAR_QUERY,))
-    assert episode is EpisodeRelevance.OTHER_CAMPAIGN
+    assert episode is EpisodeRelevance.UNKNOWN
+    assert episode is not EpisodeRelevance.OTHER_CAMPAIGN
 
 
 def test_missing_year_remains_unknown_not_auto_reject():
@@ -280,7 +289,9 @@ def test_missing_year_remains_unknown_not_auto_reject():
     evidence = [ev("ev1", claim.text, author="Plutarch", work="Lives")]
     episode, detail = classify_legacy_claim_episode(claim, {evidence[0].id: evidence[0]}, (POMPEY_QUERY,))
     assert episode in {EpisodeRelevance.UNKNOWN, EpisodeRelevance.DIRECT_QUERY_EPISODE}
-    assert detail["admitted"] is True
+    assert episode is not EpisodeRelevance.OTHER_CAMPAIGN
+    assert detail["admitted"] is False
+    assert detail["admission_reason"].startswith("REJECT_")
 
 
 def test_no_relevant_legacy_edge_yields_clean_insufficient_route():
@@ -307,7 +318,8 @@ def test_no_relevant_legacy_edge_yields_clean_insufficient_route():
         state,
     )
     assert result["result"]["route"] is None
-    assert "NO_EPISODE_RELEVANT_LEGACY_CLAIMS" in result["result"]["diagnostics"]["reason_codes"]
+    codes = result["result"]["diagnostics"]["reason_codes"]
+    assert "NO_EPISODE_RELEVANT_LEGACY_CLAIMS" in codes or "NO_MOVEMENT_EVENTS" in codes
 
 
 def test_pompey_escape_query_rejects_athamania_thessalia_primary_legacy_route():

@@ -1258,11 +1258,13 @@ def _classify_movement_episode(
         episode = EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE
     else:
         episode = EpisodeRelevance.UNKNOWN
-    if contexts and not _explicit_query_constraints_satisfied(statement, None, contexts):
-        episode = EpisodeRelevance.OTHER_CAMPAIGN
-    elif (
+    explicit_constraints_ok = (
+        not contexts
+        or _explicit_query_constraints_satisfied(statement, None, contexts)
+    )
+    if (
         episode is EpisodeRelevance.UNKNOWN
-        and _explicit_query_constraints_satisfied(statement, None, contexts)
+        and explicit_constraints_ok
         and _proven_query_chain_member(
             probe.source_place,
             probe.destination_place,
@@ -1303,12 +1305,8 @@ def _classify_movement_episode(
         episode = EpisodeRelevance.UNKNOWN
         admitted = False
     if episode is EpisodeRelevance.DIRECT_QUERY_EPISODE:
-        combined = statement.strip()
         if not _explicit_query_constraints_satisfied(statement, window, contexts):
-            if not _explicit_query_subject_satisfied(combined, contexts):
-                episode = EpisodeRelevance.OTHER_CAMPAIGN
-            else:
-                episode = EpisodeRelevance.UNKNOWN
+            episode = EpisodeRelevance.UNKNOWN
             admitted = False
     elif episode is EpisodeRelevance.UNKNOWN:
         if not explicit_od:
@@ -1320,6 +1318,16 @@ def _classify_movement_episode(
                 admitted = False
             elif not _episode_subject_overlap(local, contexts):
                 admitted = False
+    if (
+        contexts
+        and not explicit_constraints_ok
+        and episode
+        in {
+            EpisodeRelevance.UNKNOWN,
+            EpisodeRelevance.SAME_SUBJECT_OTHER_EPISODE,
+        }
+    ):
+        admitted = False
     return episode, {
         "origin": probe.source_place,
         "destination": probe.destination_place,
