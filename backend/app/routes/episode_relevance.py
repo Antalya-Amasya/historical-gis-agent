@@ -613,6 +613,10 @@ _NAMED_CAMPAIGN_EPISODE_PHRASE = re.compile(
     _EPISODE_SCOPE + r"Campaign\s+([A-Z][A-Za-z'’\u2019-]+(?:\s+[A-Z][A-Za-z'’\u2019-]+)?)\b",
     re.IGNORECASE,
 )
+_NAMED_OPERATION_EPISODE_PHRASE = re.compile(
+    r"\bOperation\s+([A-Z][A-Za-z'’\u2019-]+(?:\s+[A-Z][A-Za-z'’\u2019-]+)?)\b",
+    re.IGNORECASE,
+)
 _WAR_EPISODE_PHRASE = re.compile(_EPISODE_SCOPE + _EPISODE_MODIFIER + r"\s+war\b", re.IGNORECASE)
 _EXPEDITION_EPISODE_PHRASE = re.compile(
     _EPISODE_SCOPE + _EPISODE_MODIFIER + r"\s+expedition\b",
@@ -621,6 +625,7 @@ _EXPEDITION_EPISODE_PHRASE = re.compile(
 _QUERY_EPISODE_CONSTRAINT_PATTERNS = (
     _CAMPAIGN_EPISODE_PHRASE,
     _NAMED_CAMPAIGN_EPISODE_PHRASE,
+    _NAMED_OPERATION_EPISODE_PHRASE,
     _WAR_EPISODE_PHRASE,
     _EXPEDITION_EPISODE_PHRASE,
 )
@@ -637,7 +642,9 @@ _EVIDENCE_NAMED_CAMPAIGN_PHRASE = re.compile(
     r"\bCampaign\s+([A-Z][A-Za-z'’\u2019-]+(?:\s+[A-Z][A-Za-z'’\u2019-]+)?)\b",
     re.IGNORECASE,
 )
-_EVIDENCE_EPISODE_PATTERNS = (_EVIDENCE_CAMPAIGN_PHRASE, _EVIDENCE_NAMED_CAMPAIGN_PHRASE)
+_EVIDENCE_EPISODE_PATTERNS = (
+    _EVIDENCE_CAMPAIGN_PHRASE, _EVIDENCE_NAMED_CAMPAIGN_PHRASE, _NAMED_OPERATION_EPISODE_PHRASE,
+)
 _GEO_PREP = re.compile(
     r"\b(?:in|into|from|to|toward|towards|near|across|through|via|around)\s+"
     r"([A-Z][A-Za-z'’]+(?:\s+[A-Z][A-Za-z'’]+)?)",

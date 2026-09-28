@@ -112,15 +112,20 @@ def test_weak_one_anchor_overlap_not_direct():
         + " Later he campaigned near Beta Province during Operation Summit."
     )
     event = _event("alpha", movement, source_statements=[movement], refs=["ev1"])
-    evidence_by_id = {"ev1": _evidence("ev1", chunk)}
     rel = relation("Gamma Coast", "Beta Province", OrderingRule.SAME_MOVEMENT_EVENT, event_ids=("alpha",))
     contexts = ("Trace Commander Alpha route through Beta Province during Operation Summit",)
-    episode, detail = classify_event_anchor_episode(
-        rel, {"alpha": event}, evidence_by_id, contexts,
-        subject_relevance=EvidenceRelevance.DIRECT_SUBJECT,
-    )
-    assert episode is not EpisodeRelevance.DIRECT_QUERY_EPISODE
-    assert detail["admitted"] is False
+    for evidence_text in (movement, chunk):
+        evidence_by_id = {"ev1": _evidence("ev1", evidence_text)}
+        episode, detail = classify_event_anchor_episode(
+            rel, {"alpha": event}, evidence_by_id, contexts,
+            subject_relevance=EvidenceRelevance.DIRECT_SUBJECT,
+        )
+        assert episode is EpisodeRelevance.UNKNOWN
+        assert detail["admitted"] is False
+        assert detail["admission_reason"] == "REJECT_UNKNOWN"
+        assert not relation_admission_allowed(
+            rel, {"alpha": event}, evidence_by_id, contexts, rule=rel.rule,
+        )
 
 
 def test_strong_episode_alignment_is_direct():
@@ -128,13 +133,18 @@ def test_strong_episode_alignment_is_direct():
     event = _event("alpha", movement, source_statements=[movement], refs=["ev1"])
     evidence_by_id = {"ev1": _evidence("ev1", movement)}
     rel = relation("Gamma Coast", "Beta Province", OrderingRule.SAME_MOVEMENT_EVENT, event_ids=("alpha",))
-    contexts = ("Trace Commander Alpha route through Beta Province and Operation Summit",)
-    episode, detail = classify_event_anchor_episode(
-        rel, {"alpha": event}, evidence_by_id, contexts,
-        subject_relevance=EvidenceRelevance.DIRECT_SUBJECT,
-    )
-    assert episode is EpisodeRelevance.DIRECT_QUERY_EPISODE
-    assert detail["admitted"] is True
+    for query in (
+        "Trace Commander Alpha route through Beta Province and Operation Summit",
+        "Trace Commander Alpha route through Beta Province during Operation Summit",
+    ):
+        contexts = (query,)
+        episode, detail = classify_event_anchor_episode(
+            rel, {"alpha": event}, evidence_by_id, contexts,
+            subject_relevance=EvidenceRelevance.DIRECT_SUBJECT,
+        )
+        assert episode is EpisodeRelevance.DIRECT_QUERY_EPISODE
+        assert detail["admitted"] is True
+        assert relation_admission_allowed(rel, {"alpha": event}, evidence_by_id, contexts, rule=rel.rule)
 
 
 def test_unknown_stays_unknown():
