@@ -13,7 +13,7 @@ export type RomanRoadNetwork = { source: string; route_status: "COMPLETE" | "PAR
 export type HistoricalRoutePresentationPayload = { route: { route_id: string; route_name?: string | null; period?: string | null; confidence: number; generation_method?: string; route_status?: string; score?: CandidateRouteScore; explanations?: { distance_reason?: string; terrain_reason?: string; historical_reason?: string }; }; waypoints?: HistoricalWaypoint[]; geojson: { type: "FeatureCollection"; features: GeoJsonFeature[] }; route_geojson?: GeoJsonFeature | null; knowledge_panels?: HistoricalKnowledgePanel[]; presentation_summary?: PresentationSummary | null; road_network?: RomanRoadNetwork; location_warnings?: string[]; fragments?: RoutePresentationFragment[]; };
 export type RoutePresentationFragment = { component_id: string; status: "COMPLETE" | "FAILED" | "SKIPPED"; evidence_refs?: string[]; waypoints?: HistoricalWaypoint[]; route_geojson?: GeoJsonFeature | null; reason_code?: string | null; };
 export type WaypointPopupMetadata = { waypointId: string; name: string; eventType: string | null; period: string | null; description: string | null; confidence: string | null; evidenceCount: number; sourceBook: string | null; sourceChapter: string | null; externalReferenceCount: number; knowledgePanelId: string | null; };
-export type HistoricalRouteSegmentPresentation = { id: string; kind: "roman_road" | "terrain" | "connector" | "failed_gap"; feature?: GeoJsonFeature; from?: string; to?: string; distanceKm?: number; cost?: number; terrainSource?: string; limitation?: string | null; failureStatus?: string | null; };
+export type HistoricalRouteSegmentPresentation = { id: string; kind: "roman_road" | "terrain" | "connector" | "direct_water_edge" | "failed_gap"; feature?: GeoJsonFeature; from?: string; to?: string; distanceKm?: number; cost?: number; terrainSource?: string; limitation?: string | null; failureStatus?: string | null; };
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
 const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_BASE_URL ?? "http://127.0.0.1:8000";
@@ -62,7 +62,7 @@ export function routeDirectionArrows(payload: HistoricalRoutePresentationPayload
 }
 
 export function markerFeatures(payload: HistoricalRoutePresentationPayload): GeoJsonFeature[] { return payload.geojson.features.filter((feature) => feature.geometry?.type === "Point"); }
-export function romanRoadSegmentFeatures(payload: HistoricalRoutePresentationPayload): GeoJsonFeature[] { return payload.geojson.features.filter((feature) => feature.properties.layer_type === "roman_road_segment" || feature.properties.layer_type === "terrain_reconstruction_segment"); }
+export function romanRoadSegmentFeatures(payload: HistoricalRoutePresentationPayload): GeoJsonFeature[] { return payload.geojson.features.filter((feature) => feature.properties.layer_type === "roman_road_segment" || feature.properties.layer_type === "terrain_reconstruction_segment" || feature.properties.layer_type === "direct_water_edge"); }
 
 export function routeSegments(payload: HistoricalRoutePresentationPayload): HistoricalRouteSegmentPresentation[] {
   if (payload.road_network) {
@@ -70,8 +70,8 @@ export function routeSegments(payload: HistoricalRoutePresentationPayload): Hist
       const role = String(feature.properties.segment_role ?? "");
       const legIndex = Number(feature.properties.leg_index ?? index + 1);
       const leg = payload.road_network?.legs.find((item) => item.leg_index === legIndex);
-      const kind = role === "failed_gap" ? "failed_gap" : role === "terrain_candidate" ? "terrain" : role === "roman_road" ? "roman_road" : "connector";
-      const distanceM = kind === "terrain" ? leg?.terrain_candidate?.metrics?.distance_m : leg?.candidate?.network_distance_m;
+      const kind = role === "failed_gap" ? "failed_gap" : role === "direct_water_edge" ? "direct_water_edge" : role === "terrain_candidate" ? "terrain" : role === "roman_road" ? "roman_road" : "connector";
+      const distanceM = kind === "terrain" || kind === "direct_water_edge" ? leg?.terrain_candidate?.metrics?.distance_m : leg?.candidate?.network_distance_m;
       const featureFailure = String(feature.properties.failure_status ?? "") || null;
       return { id: `${legIndex}-${role || kind}-${index}`, kind, feature, from: leg?.source_anchor_id, to: leg?.destination_anchor_id, distanceKm: typeof distanceM === "number" ? distanceM / 1000 : undefined, cost: leg?.terrain_candidate?.cost_breakdown?.total_cost, limitation: leg?.limitation, failureStatus: leg?.failure_status ?? featureFailure };
     });
