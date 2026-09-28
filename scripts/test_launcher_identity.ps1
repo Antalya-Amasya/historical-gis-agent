@@ -21,10 +21,11 @@ function Assert-Equals {
     }
 }
 
-$sameBackendCommand = 'python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --env-file "C:\D\python\202608231533\.env" --app-dir "C:\D\python\historical-gis-cursor"'
+$sameBackendCommand = "python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --env-file `"C:\D\python\202608231533\.env`" --app-dir `"$cursorRoot`""
 $staleBackendCommand = 'python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --env-file "C:\D\python\202608231533\.env" --app-dir "C:\D\python\historical-gis-codex"'
 $unknownBackendCommand = 'python -m http.server 8000'
-$sameFrontendCommand = '"node" "C:\D\python\historical-gis-cursor\frontend\node_modules\.bin\\..\vite\bin\vite.js" --host 127.0.0.1 "--port" "5173" "--strictPort"'
+$sameFrontendVite = Join-Path $cursorFrontend "node_modules\vite\bin\vite.js"
+$sameFrontendCommand = "`"node`" `"$sameFrontendVite`" --host 127.0.0.1 `"--port`" `"5173`" `"--strictPort`""
 $staleFrontendCommand = '"node" "C:\D\python\historical-gis-codex\frontend\node_modules\.bin\\..\vite\bin\vite.js" --host 127.0.0.1 "--port" "5173" "--strictPort"'
 
 # TEST A: same-worktree backend identity (command-line parsing)
