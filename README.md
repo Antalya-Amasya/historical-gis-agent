@@ -114,7 +114,23 @@ This project assumes the current canonical Windows layout:
 
 Prerequisites: Python 3.11+, Node.js 20+, pnpm, packages in `backend/requirements.txt`.
 
-Copy `.env.example` to the shared runtime `.env` and configure provider keys there. The launcher reads `C:\D\python\202608231533\.env`; it does not copy secrets into the worktree.
+Copy `.env.example` to a private runtime `.env` (the original machine uses `C:\D\python\202608231533\.env`) and configure provider keys there. The launcher never copies secrets into the worktree.
+
+Launcher path overrides (explicit environment → existing original-machine layout → error). See [data provenance](docs/v1_data_provenance.md). A fresh clone still cannot rebuild the 7,230-record collection.
+
+| Variable | Purpose |
+|---|---|
+| `HISTORICAL_GIS_RUNTIME_ROOT` | Shared runtime directory containing `.venv`, `.env`, and Chroma persistence |
+| `HISTORICAL_GIS_PYTHON` | Python executable |
+| `HISTORICAL_GIS_CHROMA_EXE` | Chroma executable |
+| `HISTORICAL_GIS_ENV_FILE` | Private environment file (may live outside the repo) |
+| `HISTORICAL_GIS_CHROMA_DATA` | Chroma persistence directory for `roman_republic_primary_sources_v2` |
+| `HISTORICAL_GIS_LOG_ROOT` | Optional launcher log directory (default `%LOCALAPPDATA%\HistoricalGISAgent\runtime`) |
+| `PLEIADES_GAZETTEER_PATH` | Optional explicit Pleiades sqlite (application setting) |
+| `ROMAN_ROAD_ENABLED` / `ROMAN_ROAD_GEOJSON_PATH` | Optional Roman-road mode; both required when enabled |
+| `MARITIME_SURFACE_DATA_ROOT` | Optional maritime surface root; validated only when set |
+
+The launcher does not enable Roman-road or maritime GIS merely because files exist. Explicit path overrides never fall back to `C:\D\python\202608231533`.
 
 Optional Roman-road capability before backend startup:
 

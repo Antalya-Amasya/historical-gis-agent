@@ -6,7 +6,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$sharedRuntime = "C:\D\python\202608231533"
+$DefaultSharedRuntime = "C:\D\python\202608231533"
+$sharedRuntime = $DefaultSharedRuntime
 $pythonExe = Join-Path $sharedRuntime ".venv\Scripts\python.exe"
 $chromaExe = Join-Path $sharedRuntime ".venv\Scripts\chroma.exe"
 $externalEnv = Join-Path $sharedRuntime ".env"
@@ -304,6 +305,218 @@ function Quote-ProcessArgument {
     return '"' + $Value.Replace('"', '\"') + '"'
 }
 
+function Get-LauncherEnvValue {
+    param([string]$Name)
+
+    $value = [Environment]::GetEnvironmentVariable($Name)
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return $null
+    }
+    return $value.Trim()
+}
+
+function Convert-ToFullPath {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $null
+    }
+    return [System.IO.Path]::GetFullPath($Path)
+}
+
+function Test-EnvFlagEnabled {
+    param([string]$Name)
+
+    $value = Get-LauncherEnvValue $Name
+    if ($null -eq $value) {
+        return $false
+    }
+    return $value -match '^(1|true|yes|on)$'
+}
+
+function Resolve-RequiredConfiguredPath {
+    param(
+        [string]$EnvName,
+        [string]$DerivedPath,
+        [string]$Description,
+        [ValidateSet("Leaf", "Container")][string]$PathType
+    )
+
+    $explicit = Get-LauncherEnvValue $EnvName
+    if ($null -ne $explicit) {
+        $full = Convert-ToFullPath $explicit
+        if (-not (Test-Path -LiteralPath $full -PathType $PathType)) {
+            throw "$Description is missing (explicit $EnvName). The original-machine fallback was not used: $full"
+        }
+        return $full
+    }
+    if (-not (Test-Path -LiteralPath $DerivedPath -PathType $PathType)) {
+        throw "$Description is missing: $DerivedPath. Set $EnvName or HISTORICAL_GIS_RUNTIME_ROOT to a complete runtime."
+    }
+    return (Convert-ToFullPath $DerivedPath)
+}
+
+function Resolve-HistoricalGisLauncherConfig {
+    param([switch]$SkipEmbeddingCache)
+
+    $explicitRuntime = Get-LauncherEnvValue "HISTORICAL_GIS_RUNTIME_ROOT"
+    if ($null -ne $explicitRuntime) {
+        $script:sharedRuntime = Convert-ToFullPath $explicitRuntime
+        if (-not (Test-Path -LiteralPath $script:sharedRuntime -PathType Container)) {
+            throw "HISTORICAL_GIS_RUNTIME_ROOT is missing: $($script:sharedRuntime)"
+        }
+        $script:usedLegacyRuntimeFallback = $false
+    }
+    elseif (Test-Path -LiteralPath $DefaultSharedRuntime -PathType Container) {
+        $script:sharedRuntime = Convert-ToFullPath $DefaultSharedRuntime
+        $script:usedLegacyRuntimeFallback = $true
+    }
+    else {
+        throw "HISTORICAL_GIS_RUNTIME_ROOT is unset and the original-machine runtime is absent: $DefaultSharedRuntime"
+    }
+
+    $script:pythonExe = Resolve-RequiredConfiguredPath "HISTORICAL_GIS_PYTHON" (Join-Path $script:sharedRuntime ".venv\Scripts\python.exe") "Python executable" Leaf
+    $script:chromaExe = Resolve-RequiredConfiguredPath "HISTORICAL_GIS_CHROMA_EXE" (Join-Path $script:sharedRuntime ".venv\Scripts\chroma.exe") "Chroma executable" Leaf
+    $script:externalEnv = Resolve-RequiredConfiguredPath "HISTORICAL_GIS_ENV_FILE" (Join-Path $script:sharedRuntime ".env") "Environment file" Leaf
+    $script:chromaData = Resolve-RequiredConfiguredPath "HISTORICAL_GIS_CHROMA_DATA" (Join-Path $script:sharedRuntime "data\chroma_server_roman_republic_v2") "Chroma persistence directory" Container
+
+    $logRoot = Get-LauncherEnvValue "HISTORICAL_GIS_LOG_ROOT"
+    if ($null -ne $logRoot) {
+        $script:runtimeRoot = Convert-ToFullPath $logRoot
+    }
+
+    $pleiades = Get-LauncherEnvValue "PLEIADES_GAZETTEER_PATH"
+    if ($null -ne $pleiades) {
+        $pleiadesFull = Convert-ToFullPath $pleiades
+        if (-not (Test-Path -LiteralPath $pleiadesFull -PathType Leaf)) {
+            throw "PLEIADES_GAZETTEER_PATH is missing: $pleiadesFull"
+        }
+        $env:PLEIADES_GAZETTEER_PATH = $pleiadesFull
+    }
+
+    $script:forceOfflineModels = $false
+    if ($null -eq (Get-LauncherEnvValue "HF_HUB_OFFLINE") -and $script:usedLegacyRuntimeFallback) {
+        $script:forceOfflineModels = $true
+    }
+
+    if (-not $SkipEmbeddingCache -and $script:forceOfflineModels) {
+        $cacheHint = Join-Path $env:USERPROFILE ".cache\huggingface\hub\models--intfloat--multilingual-e5-small"
+        if (-not (Test-Path -LiteralPath $cacheHint -PathType Container)) {
+            throw "Offline embedding cache is unavailable at $cacheHint. Place intfloat/multilingual-e5-small in the local Hugging Face hub cache, or set HF_HUB_OFFLINE before launch. The launcher will not download weights."
+        }
+    }
+}
+
+function Assert-OptionalGisDependencies {
+    if (Test-EnvFlagEnabled "ROMAN_ROAD_ENABLED") {
+        $geojson = Get-LauncherEnvValue "ROMAN_ROAD_GEOJSON_PATH"
+        if ($null -eq $geojson) {
+            throw "ROMAN_ROAD_ENABLED is true, but ROMAN_ROAD_GEOJSON_PATH is not set."
+        }
+        $geojsonFull = Convert-ToFullPath $geojson
+        if (-not (Test-Path -LiteralPath $geojsonFull -PathType Leaf)) {
+            throw "ROMAN_ROAD_GEOJSON_PATH is missing: $geojsonFull"
+        }
+        $env:ROMAN_ROAD_GEOJSON_PATH = $geojsonFull
+    }
+
+    $maritime = Get-LauncherEnvValue "MARITIME_SURFACE_DATA_ROOT"
+    if ($null -ne $maritime) {
+        $maritimeFull = Convert-ToFullPath $maritime
+        if (-not (Test-Path -LiteralPath $maritimeFull -PathType Container)) {
+            throw "MARITIME_SURFACE_DATA_ROOT is missing: $maritimeFull"
+        }
+        $env:MARITIME_SURFACE_DATA_ROOT = $maritimeFull
+    }
+}
+
+function Get-ChromaPathFromCommandLine {
+    param([string]$CommandLine)
+
+    if ($CommandLine -match '--path\s+"([^"]+)"') {
+        return $Matches[1]
+    }
+    if ($CommandLine -match "--path\s+([^\s]+)") {
+        return $Matches[1]
+    }
+    return $null
+}
+
+function Resolve-HistoricalGisChromaPort {
+    param(
+        [int]$Port,
+        [string]$ExpectedChromaData
+    )
+
+    $listener = Get-PortListenerProcess $Port
+    if (-not $listener) {
+        return [pscustomobject]@{ Status = "Free" }
+    }
+    if ($listener.CommandLine -notmatch "chroma") {
+        return [pscustomobject]@{
+            Status = "UnknownOccupant"
+            ProcessId = $listener.ProcessId
+            CommandLine = $listener.CommandLine
+        }
+    }
+    $actualPath = Get-ChromaPathFromCommandLine $listener.CommandLine
+    if (-not $actualPath) {
+        return [pscustomobject]@{
+            Status = "UnverifiedChroma"
+            ProcessId = $listener.ProcessId
+            CommandLine = $listener.CommandLine
+        }
+    }
+    if ((Normalize-ProjectPath $actualPath) -eq (Normalize-ProjectPath $ExpectedChromaData)) {
+        return [pscustomobject]@{
+            Status = "SameConfig"
+            ProcessId = $listener.ProcessId
+            ChromaData = $actualPath
+        }
+    }
+    return [pscustomobject]@{
+        Status = "IncompatibleRuntime"
+        ProcessId = $listener.ProcessId
+        ExpectedChromaData = $ExpectedChromaData
+        ActualChromaData = $actualPath
+        CommandLine = $listener.CommandLine
+    }
+}
+
+function Ensure-HistoricalGisChroma {
+    param([string]$ExpectedChromaData)
+
+    $occupancy = Resolve-HistoricalGisChromaPort 8002 $ExpectedChromaData
+    switch ($occupancy.Status) {
+        "Free" {
+            Write-Host "      Starting the configured Roman Republic Chroma store..."
+            Start-HiddenService "chroma" $chromaExe @(
+                "run", "--path", (Quote-ProcessArgument $ExpectedChromaData), "--host", "127.0.0.1", "--port", "8002"
+            ) $projectRoot | Out-Null
+            Wait-Service ${function:Test-Chroma} "Chroma"
+            Write-Host "      Chroma ready."
+        }
+        "SameConfig" {
+            if (-not (Test-Chroma)) {
+                throw "Port 8002 belongs to Chroma with the expected persistence path, but the heartbeat probe failed."
+            }
+            Write-Host "      Already running on 8002 (same Chroma persistence)."
+        }
+        "IncompatibleRuntime" {
+            throw "Port 8002 is Chroma using a different persistence path ($($occupancy.ActualChromaData)). It was not stopped. Use a free port or matching HISTORICAL_GIS_CHROMA_DATA."
+        }
+        "UnknownOccupant" {
+            throw "Port 8002 is occupied by an unrelated process (PID $($occupancy.ProcessId))."
+        }
+        "UnverifiedChroma" {
+            throw "Port 8002 has a Chroma process, but --path could not be verified from the command line."
+        }
+        default {
+            throw "Unexpected Chroma port occupancy state: $($occupancy.Status)"
+        }
+    }
+}
+
 function Stop-ProcessesStartedThisRun {
     foreach ($process in $startedProcesses) {
         if (-not $process.HasExited) {
@@ -404,10 +617,8 @@ if ($MyInvocation.InvocationName -eq '.') {
 }
 
 try {
-    Assert-Path $pythonExe "Shared Python interpreter" Leaf
-    Assert-Path $chromaExe "Chroma executable" Leaf
-    Assert-Path $externalEnv "Canonical external .env" Leaf
-    Assert-Path $chromaData "Canonical Chroma persistence" Container
+    Resolve-HistoricalGisLauncherConfig
+    Assert-OptionalGisDependencies
     Assert-Path (Join-Path $frontendRoot "package.json") "Frontend package.json" Leaf
     Assert-Path $frontendModules "Frontend dependencies (run 'pnpm install --frozen-lockfile' in frontend)" Container
 
@@ -418,17 +629,7 @@ try {
     New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
 
     Write-Host "[1/4] Checking Chroma..."
-    if (Assert-PortIdentity 8002 ${function:Test-Chroma} "Chroma") {
-        Write-Host "      Already running on 8002."
-    }
-    else {
-        Write-Host "      Starting the existing Roman Republic Chroma store..."
-        Start-HiddenService "chroma" $chromaExe @(
-            "run", "--path", (Quote-ProcessArgument $chromaData), "--host", "127.0.0.1", "--port", "8002"
-        ) $projectRoot | Out-Null
-        Wait-Service ${function:Test-Chroma} "Chroma"
-        Write-Host "      Chroma ready."
-    }
+    Ensure-HistoricalGisChroma $chromaData
     if (-not (Test-ChromaCollection)) {
         throw "Chroma is running, but expected collection '$collectionName' is unavailable."
     }
@@ -436,8 +637,10 @@ try {
     $env:RAG_CHROMA_HOST = "127.0.0.1"
     $env:RAG_CHROMA_PORT = "8002"
     $env:RAG_COLLECTION = $collectionName
-    $env:HF_HUB_OFFLINE = "1"
-    $env:TRANSFORMERS_OFFLINE = "1"
+    if ($script:forceOfflineModels) {
+        $env:HF_HUB_OFFLINE = "1"
+        $env:TRANSFORMERS_OFFLINE = "1"
+    }
     $env:PYTHONIOENCODING = "utf-8"
     $env:PYTHONPATH = $projectRoot
 

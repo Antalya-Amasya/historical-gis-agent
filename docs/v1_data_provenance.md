@@ -23,7 +23,7 @@ Labels:
 | Itiner-e roads | Optional Roman-road graph | `ROMAN_ROAD_GEOJSON_PATH` | Metadata only | GeoJSON **OBSERVED LOCALLY** and gitignored. `data/raw/itiner_e/metadata.json` is tracked |
 | Caesar corpus JSON | One tracked source extract | `data/historical_sources/raw/caesar/corpus.json` | Yes | Not the full collection |
 
-The launcher in `scripts/start_historical_gis.ps1` requires the shared tree at `C:\D\python\202608231533` for Python, Chroma, and `.env`. That layout is a local development machine, not a portable default.
+The launcher in `scripts/start_historical_gis.ps1` still uses `C:\D\python\202608231533` as a compatibility fallback for Python, Chroma, and `.env` when no overrides are set. Independent developers can point at another complete runtime with `HISTORICAL_GIS_RUNTIME_ROOT` and related variables (see README). That fallback is a local development machine, not a portable default, and it does not make a fresh clone able to rebuild the 7,230-record collection.
 
 ## Corpus and Chroma
 
