@@ -14,7 +14,10 @@ redistribution.
 | Size | 40,968,192 bytes (~41 MB) |
 | SHA-256 | `401be897990dd1f7bb1f94af5b1f789b48a4c28bfc4986ffe609015c2ff97190` |
 
-The file is a **derived SQLite gazetteer index**, not the upstream zip.
+The file is a **selected and indexed SQLite representation** derived from
+Pleiades Datasets 4.1, not an unmodified copy of the upstream ZIP. The
+recorded schema and importer versions are both 2. The exact selection rules,
+build options, and original v2 command are not available in this repository.
 
 ## Upstream record
 
@@ -24,13 +27,29 @@ Identified release: **Pleiades Datasets 4.1** (Zenodo version `v4.1`).
 - DOI: [10.5281/zenodo.15540082](https://doi.org/10.5281/zenodo.15540082)
 - Zenodo publication / release date: **2025-05-28**
 
-V1-D6 and this notice used that record. A fetch of the same page lists
-editors including Elliott, Tom; Talbert, Richard; Bagnall, Roger; Becker,
-Jeffrey; Bond, Sarah; Gillies, Sean; Holman, Lindsay; Horne, Ryan; Moss,
-Gabe; Rabinowitz, Adam; and others (the page reports 13 authors/editors
-total). Content contributors are described on the record as listed in
-upstream `data/rdf/authors.ttl`; that file is not stored in this
-repository.
+The Zenodo record lists these 13 creator/editor and institution entries for
+this release:
+
+- Elliott, Tom (Editor)
+- Talbert, Richard (Editor)
+- Bagnall, Roger (Editor)
+- Becker, Jeffrey (Editor)
+- Bond, Sarah (Editor)
+- Gillies, Sean (Editor)
+- Holman, Lindsay (Editor)
+- Horne, Ryan (Editor)
+- Moss, Gabe (Editor)
+- Rabinowitz, Adam (Editor)
+- Robinson, Elizabeth (Editor)
+- Turner, Brian (Editor)
+- Institute for the Study of the Ancient World (NYU) (Hosting institution)
+
+Copyright in the upstream content belongs to the individual contributors
+responsible for its creation. These 13 record entries are not the complete
+list of content contributors. The release's `data/rdf/authors.ttl` contains
+the complete contributor list and associated identifiers or data; that file
+is present in the upstream ZIP but is not stored in this repository. This
+fixture and repository are not endorsed by the upstream creators.
 
 Zenodo recommended citation badge target: `https://doi.org/10.5281/zenodo.15540082`.
 
@@ -44,6 +63,8 @@ https://zenodo.org/api/records/15540082:
 - `metadata.license.id` = **`cc-by-3.0`**
 - record description links to the CC BY 3.0 deed:
   https://creativecommons.org/licenses/by/3.0/
+- CC BY 3.0 Unported legal code:
+  https://creativecommons.org/licenses/by/3.0/legalcode.en
 
 The HTML landing page still shows the short phrase “Creative Commons
 Attribution license (cc-by)”; the **versioned identifier** is the API
@@ -106,7 +127,7 @@ them.
 - **DERIVED SQLITE REDISTRIBUTION REVIEW** remains open: whether Git may
   keep or publish this derived 41 MB index is **not** decided by this
   notice.
-- Completeness of author/editor lists beyond the Zenodo record summary is
-  not established from files in this repo. Contributor attribution has not
-  been independently audited against upstream `authors.ttl`.
+- The complete upstream contributor list is not reproduced in this
+  repository; individual contributor attribution has not been independently
+  audited against upstream `authors.ttl`.
 - The exact importer-v2 build command remains missing.
