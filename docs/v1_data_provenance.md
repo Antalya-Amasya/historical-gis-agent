@@ -96,7 +96,7 @@ Roman-road mode is off unless `ROMAN_ROAD_ENABLED=true` and the GeoJSON path exi
 
 ## Tracked derived artifacts
 
-`backend/tests/fixtures/pleiades_index_v2_baseline.sqlite3` is tracked and about 41 MB. `test_g6da_pleiades_v3_location_source_preservation.py` and `test_pleiades_index_g3.py` open it as a v2 baseline. The file contains embedded source metadata (Pleiades 4.1 / Zenodo 15540082, schema and importer 2). The exact v2 build command is not in this repository; `build_pleiades_index.py` currently emits schema v3. Available attribution is recorded in `backend/tests/fixtures/PLEIADES_BASELINE_NOTICE.md`. That notice does **not** independently declare redistribution requirements resolved. Do not delete the sqlite as cleanup.
+`backend/tests/fixtures/pleiades_index_v2_baseline.sqlite3` is tracked and about 41 MB. `test_g6da_pleiades_v3_location_source_preservation.py` and `test_pleiades_index_g3.py` open it as a v2 baseline. The file contains embedded source metadata (Pleiades 4.1 / Zenodo 15540082, schema and importer 2, `license=CC BY 3.0`). The exact v2 build command is not in this repository; `build_pleiades_index.py` currently emits schema v3. Attribution, including the 2026-09-29 Zenodo API identifier `cc-by-3.0`, is recorded in `backend/tests/fixtures/PLEIADES_BASELINE_NOTICE.md`. That notice does **not** independently declare redistribution requirements resolved. Do not delete the sqlite as cleanup.
 
 `.gitignore` ignores `.env`, most of `data/`, road and surface GeoJSON, `outputs/`, and logs. It does not ignore `docs/eval/`. Those evaluation notes are untracked and are not part of this document.
 
@@ -105,7 +105,7 @@ Roman-road mode is off unless `ROMAN_ROAD_ENABLED=true` and the GeoJSON path exi
 | Asset | Acquisition recorded in Git | License recorded in Git | Redistribute the local artifact? |
 | --- | --- | --- | --- |
 | Itiner-e GeoJSON | Yes, metadata URL, size, sha256 | `CC BY 4.0` in metadata | File is not in Git. Whether to commit the GeoJSON is a separate choice; this note does not add it |
-| Pleiades 4.1 zip / index | Zenodo URL and sha256 in the build script | Script constant `CC BY 3.0` (**UNVERIFIED** against Zenodo) | Derived sqlite redistribution **UNKNOWN** |
+| Pleiades 4.1 zip / index | Zenodo URL and sha256 in the build script | Upstream API `cc-by-3.0` (see fixture notice); script/sqlite `CC BY 3.0` | Derived sqlite redistribution **UNKNOWN** |
 | Natural Earth layers | Not recorded | **UNKNOWN** | Do not commit the layers on the basis of this note |
 | Chroma collection | No complete source list | **UNKNOWN** | Do not publish the 7,230-record store as a rebuildable release artifact |
 | Embedding weights | Model name only | **UNKNOWN** | Use the upstream model cache; do not commit weights |

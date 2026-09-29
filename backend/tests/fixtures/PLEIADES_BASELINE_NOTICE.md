@@ -34,14 +34,20 @@ repository.
 
 Zenodo recommended citation badge target: `https://doi.org/10.5281/zenodo.15540082`.
 
-### UPSTREAM RECORD (license wording)
+### UPSTREAM LICENSE IDENTIFICATION
 
-The fetched Zenodo summary states that content is distributed under a
-**Creative Commons Attribution license (cc-by)**. That page text does
-**not** state an explicit CC version number.
+Verified on **2026-09-29** from the official API
+https://zenodo.org/api/records/15540082:
 
-This notice does **not** treat that wording as an independent verification
-of CC BY 3.0.
+- dataset title: **Pleiades Datasets 4.1**
+- publication date: **2025-05-28**
+- `metadata.license.id` = **`cc-by-3.0`**
+- record description links to the CC BY 3.0 deed:
+  https://creativecommons.org/licenses/by/3.0/
+
+The HTML landing page still shows the short phrase “Creative Commons
+Attribution license (cc-by)”; the **versioned identifier** is the API
+`license.id` value, not that unversioned phrase.
 
 ## Embedded fixture metadata
 
@@ -64,12 +70,12 @@ Read-only `metadata` table in this SQLite file (not inferred from Zenodo):
 
 Table row counts match those metadata values.
 
-### EMBEDDED FIXTURE METADATA (license string)
+### DERIVED SQLITE REDISTRIBUTION REVIEW
 
 The derived index stores `license=CC BY 3.0`. That string was written into
-the file at index-build time. It is **not** the same as the unversioned
-cc-by wording on the fetched Zenodo summary. The two are recorded
-separately and are not reconciled here.
+the file at index-build time. It agrees with the upstream API identifier
+`cc-by-3.0`. Agreement on the **license version** is **not** an independent
+publication clearance for this derived SQLite file.
 
 ## Test purpose
 
@@ -97,9 +103,10 @@ them.
 
 ## Remaining uncertainty
 
-- License version on the upstream landing page vs `CC BY 3.0` in SQLite
-  metadata is unresolved.
-- Whether Git may redistribute this derived 41 MB index (as distinct from
-  citing the Zenodo dataset) is **not** decided by this notice.
+- **DERIVED SQLITE REDISTRIBUTION REVIEW** remains open: whether Git may
+  keep or publish this derived 41 MB index is **not** decided by this
+  notice.
 - Completeness of author/editor lists beyond the Zenodo record summary is
-  not established from files in this repo.
+  not established from files in this repo. Contributor attribution has not
+  been independently audited against upstream `authors.ttl`.
+- The exact importer-v2 build command remains missing.
