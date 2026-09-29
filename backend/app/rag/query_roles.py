@@ -158,7 +158,6 @@ def movement_scoring_terms(roles: QueryRoleAnalysis) -> frozenset[str]:
 
 
 _SUBJECT_CONTEXT_SKIP = frozenset({"book", "chapter", "contents", "part", "preserved", "section", "volume"})
-_KNOWN_NARRATIVE_PERSONS = frozenset({"alexander", "brutus", "caesar", "cato", "cicero", "hercules", "lucullus", "mithridates", "pompey", "theseus", "xenophon"})
 
 def _biography_subject_label(label: str) -> bool:
     label = label.strip()
@@ -178,10 +177,6 @@ def extract_subject_context_terms(metadata: dict) -> frozenset[str]:
     heading = str(metadata.get("heading") or "").strip()
     if heading and _biography_subject_label(heading): terms.update(normalized_tokens(heading))
     return frozenset(terms)
-
-def body_conflicting_person(query_person: frozenset[str], body_tokens: frozenset[str]) -> bool:
-    return bool((body_tokens & _KNOWN_NARRATIVE_PERSONS) - query_person)
-
 
 def _route_token_allowed(token: str) -> bool:
     return (

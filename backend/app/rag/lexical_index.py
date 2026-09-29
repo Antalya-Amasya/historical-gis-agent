@@ -4,15 +4,16 @@ from collections import defaultdict
 from dataclasses import dataclass
 import math, re
 from typing import Any
+from backend.app.models import EventActorStatus
 from backend.app.rag.query_roles import (
     analyze_query,
-    body_conflicting_person,
     episode_context_terms,
     extract_subject_context_terms,
     movement_scoring_terms,
     normalized_tokens,
     route_movement_query,
 )
+from backend.app.routes.events import EvidenceGroundedHistoricalEventExtractor
 
 _SENTENCE = re.compile(r"[^.!?\n]+(?:[.!?]+|$)", re.MULTILINE)
 _GENERIC_TERM_WEIGHT = 0.25
@@ -47,6 +48,7 @@ class LexicalEvidenceIndex:
         self.collection=collection
         self._sources=self._passages=self._postings=self._body_postings=None
         self._provenance_subjects=self._body_tokens=None
+        self._explicit_body_actors={}
         self.passage_count=0
 
     def _build(self):
@@ -76,10 +78,30 @@ class LexicalEvidenceIndex:
         gated=set(person_ids)
         for ident, (source_id, *_rest) in ((i, self._passages[i]) for i in self._passages):
             if ident in gated: continue
-            body=self._body_tokens.get(ident, frozenset())
-            if (self._provenance_subjects.get(source_id, frozenset()) & roles.person_terms) and not body_conflicting_person(roles.person_terms, body):
+            supported=self._provenance_subjects.get(source_id, frozenset()) & roles.person_terms
+            if supported and not self._body_actor_conflicts(ident, roles, supported):
                 gated.add(ident)
         return gated
+
+    def _body_actor_conflicts(self, ident, roles, supported: frozenset[str]) -> bool:
+        """Only a clause-local explicit movement actor can veto heading support."""
+        if ident not in self._explicit_body_actors:
+            source_id, start, end, _index = self._passages[ident]
+            source_text, _meta = self._sources[source_id]
+            actors=[]
+            for sentence in _SENTENCE.finditer(source_text[start:end]):
+                grounding=EvidenceGroundedHistoricalEventExtractor._ground_movement_actor(sentence.group())
+                if grounding.actor_status is EventActorStatus.EXPLICIT and grounding.actor_text:
+                    actors.append(normalized_tokens(grounding.actor_text))
+            self._explicit_body_actors[ident]=tuple(actors)
+        query_name=frozenset(roles.person_sequence)
+        single_person_phrase=not roles.multiple_person_phrases_detected
+        for actor in self._explicit_body_actors[ident]:
+            if not (actor & supported):
+                return True
+            if single_person_phrase and len(query_name)>1 and len(actor)>1 and actor-query_name:
+                return True
+        return False
 
     def query(self, query: str, top_k: int, filters: dict[str,str]|None=None)->list[LexicalCandidate]:
         self.ensure_built()
@@ -140,8 +162,8 @@ class LexicalEvidenceIndex:
                     if mov <= 0 or body_subject_scores[ident] > 0: continue
                     source_id, *_=self._passages[ident]
                     prov=self._provenance_subjects.get(source_id, frozenset())
-                    if not (prov & roles.person_terms): continue
-                    if body_conflicting_person(roles.person_terms, self._body_tokens.get(ident, frozenset())): continue
+                    supported=prov & roles.person_terms
+                    if not supported or self._body_actor_conflicts(ident, roles, supported): continue
                     scores[ident]+=person_idf
                     provenance_subject_scores[ident]+=person_idf
         out=[]
