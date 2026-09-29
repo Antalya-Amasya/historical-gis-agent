@@ -33,7 +33,7 @@ The launcher in `scripts/start_historical_gis.ps1` still uses `C:\D\python\20260
 
 **OBSERVED LOCALLY:** the running collection count is 7,230. The ingestion registry `data/historical_sources/corpus.json` and the incoming source set are not tracked. `git ls-files` shows only `data/historical_sources/raw/caesar/corpus.json` under historical sources.
 
-**UNKNOWN:** whether those 7,230 records can be rebuilt. This note does not claim that they can. A full ingest was not run.
+**MEASURED in V1-D4 (2026-09-29):** Project Gutenberg eBook 10657 no-images EPUB was downloaded from the catalog href `/ebooks/10657.epub.noimages` (resolved `https://www.gutenberg.org/cache/epub/10657/pg10657.epub`). OPF identifier `http://www.gutenberg.org/10657`. SHA-256 `3a038af60bdba9bd66e89127628af65c64c625fd70b2c64c41b430473bd837f2` (422,797 bytes). This is **not** byte-identical to the previously observed local hash `4840578daed0627bffcaad09feedd6322e22f41f3e7465040854f7f88ef97e77`. Isolated parse/chunk with `generic-epub-navigation-v2` / `section-window-v1` (4000/600) produced 35 sections and 306 chunks twice with identical IDs. Isolated PersistentClient collection `v1_d4_caesar_10657_smoke` ingested 306 records twice with matching IDs/text/metadata. Production `roman_republic_primary_sources_v2` remained 7,230. Catalog copyright line: Public domain in the USA. See `scripts/v1_d4_isolated_caesar_rebuild.py`. This does not rebuild the 16-document collection.
 
 ## Pleiades
 
