@@ -1,8 +1,9 @@
-"""Isolated one-document rebuild smoke for Gutenberg 10657.
+"""Isolated one-document rebuild smoke.
 
-This script never writes roman_republic_primary_sources_v2 and never
-connects to Chroma on port 8002 for ingestion. Download and persistence
-stay under an explicit work directory (default: a temp folder).
+Defaults preserve the V1-D4 Caesar / Gutenberg 10657 experiment. Optional
+CLI flags select a second Gutenberg edition without changing production
+ingestion. This script never writes roman_republic_primary_sources_v2 and
+never connects to Chroma on port 8002 for ingestion.
 """
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ import sys
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urljoin
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
@@ -32,12 +34,31 @@ from backend.app.rag.ingestion.corpus_dry_run import (
 from backend.app.rag.ingestion.corpus_registry import CorpusDocument
 from backend.app.rag.ingestion.generic_epub import load_epub_sections
 
-EDITION_PAGE = "https://www.gutenberg.org/ebooks/10657"
-CATALOG_NOIMAGES = "/ebooks/10657.epub.noimages"
-DOCUMENT_ID = "caesar_gallic_civil_wars"
-COLLECTION = "v1_d4_caesar_10657_smoke"
-OLD_LOCAL_SHA256 = "4840578daed0627bffcaad09feedd6322e22f41f3e7465040854f7f88ef97e77"
+DEFAULT_EDITION_PAGE = "https://www.gutenberg.org/ebooks/10657"
+DEFAULT_DOCUMENT_ID = "caesar_gallic_civil_wars"
+DEFAULT_COLLECTION = "v1_d4_caesar_10657_smoke"
+DEFAULT_OLD_LOCAL_SHA256 = "4840578daed0627bffcaad09feedd6322e22f41f3e7465040854f7f88ef97e77"
+DEFAULT_AUTHOR = "Julius Caesar"
+DEFAULT_WORK = "Gallic War + Civil War"
+DEFAULT_QUERY = "All Gaul is divided into three parts"
 MODEL = "intfloat/multilingual-e5-small"
+
+
+def gutenberg_ebook_id(edition_page: str) -> str:
+    return edition_page.rstrip("/").rsplit("/", 1)[-1]
+
+
+def catalog_noimages_href(ebook_id: str) -> str:
+    return f"/ebooks/{ebook_id}.epub.noimages"
+
+
+def expected_opf_identifier(ebook_id: str) -> str:
+    return f"http://www.gutenberg.org/{ebook_id}"
+
+
+def opf_matches_edition(identity: dict[str, object], ebook_id: str) -> bool:
+    joined = " ".join(identity.get("identifier") or [])
+    return expected_opf_identifier(ebook_id) in joined or ebook_id in joined
 
 
 def _tag(name: str) -> str:
@@ -51,10 +72,10 @@ def fetch_catalog_html(edition_page: str) -> tuple[str, str]:
 
 
 def catalog_noimages_url(html: str, edition_page: str) -> str:
-    if CATALOG_NOIMAGES not in html:
-        raise SystemExit("catalog page does not advertise the no-images EPUB href /ebooks/10657.epub.noimages")
-    from urllib.parse import urljoin
-    return urljoin(edition_page, CATALOG_NOIMAGES)
+    href = catalog_noimages_href(gutenberg_ebook_id(edition_page))
+    if href not in html:
+        raise SystemExit(f"catalog page does not advertise the no-images EPUB href {href}")
+    return urljoin(edition_page, href)
 
 
 def download_epub(url: str, dest: Path) -> tuple[bytes, str]:
@@ -79,18 +100,35 @@ def opf_identity(path: Path) -> dict[str, object]:
     return {"opf": opf, **fields}
 
 
-def caesar_document(filename: str) -> CorpusDocument:
+def source_document(
+    filename: str,
+    *,
+    document_id: str,
+    author: str,
+    work: str,
+    source_url: str,
+) -> CorpusDocument:
     return CorpusDocument(
-        document_id=DOCUMENT_ID,
-        author="Julius Caesar",
-        work="Gallic War + Civil War",
+        document_id=document_id,
+        author=author,
+        work=work,
         language="en",
         source_type="primary_source",
         filename=filename,
-        source_url=EDITION_PAGE,
+        source_url=source_url,
         license="Public domain in the USA.",
         enabled=True,
         parser_hints={},
+    )
+
+
+def caesar_document(filename: str) -> CorpusDocument:
+    return source_document(
+        filename,
+        document_id=DEFAULT_DOCUMENT_ID,
+        author=DEFAULT_AUTHOR,
+        work=DEFAULT_WORK,
+        source_url=DEFAULT_EDITION_PAGE,
     )
 
 
@@ -121,7 +159,15 @@ def parse_twice(epub: Path, document: CorpusDocument) -> dict[str, object]:
     }
 
 
-def ingest_isolated(work: Path, incoming: Path, document: CorpusDocument, chunks, provider) -> dict[str, object]:
+def ingest_isolated(
+    work: Path,
+    incoming: Path,
+    document: CorpusDocument,
+    chunks,
+    provider,
+    *,
+    collection_name: str,
+) -> dict[str, object]:
     import chromadb
     from backend.app.rag.ingestion.lifecycle import RuntimeIdentity
     from backend.app.rag.ingestion.production_lifecycle import (
@@ -138,19 +184,30 @@ def ingest_isolated(work: Path, incoming: Path, document: CorpusDocument, chunks
     state_dir.mkdir(parents=True, exist_ok=True)
     client = chromadb.PersistentClient(path=str(chroma_dir))
     names = [item.name for item in client.list_collections()]
-    if COLLECTION in names:
-        raise SystemExit(f"refusing to reuse existing collection {COLLECTION} in {chroma_dir}")
-    collection = client.create_collection(COLLECTION, metadata={"experiment": "v1-d4", "hnsw:space": "cosine"})
+    if collection_name in names:
+        raise SystemExit(f"refusing to reuse existing collection {collection_name} in {chroma_dir}")
+    collection = client.create_collection(
+        collection_name,
+        metadata={"experiment": "isolated-rebuild", "hnsw:space": "cosine"},
+    )
     store = ChromaHttpVectorStoreAdapter(collection)
     source = CorpusDocumentSource([document], lambda _: chunks)
-    config = CorpusIngestionConfig("127.0.0.1", 18002, COLLECTION, state_dir, "v1d4", (DOCUMENT_ID,), batch_size=32)
+    config = CorpusIngestionConfig(
+        "127.0.0.1",
+        18002,
+        collection_name,
+        state_dir,
+        "smoke",
+        (document.document_id,),
+        batch_size=32,
+    )
     embedding = SentenceTransformerEmbeddingAdapter(provider)
     handler, selected = build_production_handler(
         config,
         source,
         store,
         embedding,
-        identity=RuntimeIdentity(os.getpid(), True, "v1-d4-isolated", datetime.now(timezone.utc).isoformat()),
+        identity=RuntimeIdentity(os.getpid(), True, "isolated-rebuild", datetime.now(timezone.utc).isoformat()),
     )
     handler.resume(selected, batch_size=32)
     records = collection.get(include=["documents", "metadatas"])
@@ -167,28 +224,49 @@ def ingest_isolated(work: Path, incoming: Path, document: CorpusDocument, chunks
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Isolated Gutenberg 10657 rebuild smoke")
+    parser = argparse.ArgumentParser(description="Isolated Gutenberg one-document rebuild smoke")
     parser.add_argument("--work-dir", type=Path, default=Path(os.environ.get("TEMP", ".")) / "v1-d4-caesar-10657")
     parser.add_argument("--epub", type=Path)
     parser.add_argument("--ingest", action="store_true", help="Embed into an isolated PersistentClient collection")
+    parser.add_argument("--edition-page", default=DEFAULT_EDITION_PAGE)
+    parser.add_argument("--document-id", default=DEFAULT_DOCUMENT_ID)
+    parser.add_argument("--author", default=DEFAULT_AUTHOR)
+    parser.add_argument("--work", default=DEFAULT_WORK)
+    parser.add_argument("--collection", default=DEFAULT_COLLECTION)
+    parser.add_argument("--old-sha256", default=DEFAULT_OLD_LOCAL_SHA256)
+    parser.add_argument("--expected-sha256", help="Reject the downloaded file if SHA-256 does not match")
+    parser.add_argument("--query", default=DEFAULT_QUERY)
     args = parser.parse_args(argv)
     work = args.work_dir
     work.mkdir(parents=True, exist_ok=True)
+    ebook_id = gutenberg_ebook_id(args.edition_page)
+    href = catalog_noimages_href(ebook_id)
+    edition_url = args.edition_page
+    download_url = None
+    resolved = None
 
-    edition_url, html = fetch_catalog_html(EDITION_PAGE)
-    download_url = catalog_noimages_url(html, edition_url)
-    epub = args.epub or (work / "pg10657.epub.noimages")
+    epub = args.epub or (work / f"pg{ebook_id}.epub.noimages")
     if args.epub:
         data = epub.read_bytes()
         resolved = str(epub)
     else:
+        edition_url, html = fetch_catalog_html(args.edition_page)
+        download_url = catalog_noimages_url(html, edition_url)
         data, resolved = download_epub(download_url, epub)
     digest = hashlib.sha256(data).hexdigest()
+    if args.expected_sha256 and digest != args.expected_sha256:
+        raise SystemExit(f"input SHA-256 mismatch: got {digest}, expected {args.expected_sha256}")
     identity = opf_identity(epub)
-    if "http://www.gutenberg.org/10657" not in identity["identifier"] and "10657" not in " ".join(identity["identifier"]):
-        raise SystemExit(f"OPF identifier is not Gutenberg 10657: {identity['identifier']}")
+    if not opf_matches_edition(identity, ebook_id):
+        raise SystemExit(f"OPF identifier is not Gutenberg {ebook_id}: {identity['identifier']}")
 
-    document = caesar_document(epub.name)
+    document = source_document(
+        epub.name,
+        document_id=args.document_id,
+        author=args.author,
+        work=args.work,
+        source_url=args.edition_page,
+    )
     incoming = work / "incoming"
     incoming.mkdir(exist_ok=True)
     incoming_epub = incoming / epub.name
@@ -201,14 +279,15 @@ def main(argv: list[str] | None = None) -> int:
     chunks = parsed.pop("chunks")
     report = {
         "edition_page": edition_url,
-        "catalog_download_href": CATALOG_NOIMAGES,
+        "catalog_download_href": href,
         "download_url": download_url,
         "resolved_download_url": resolved,
         "bytes": len(data),
         "sha256": digest,
-        "old_local_sha256": OLD_LOCAL_SHA256,
-        "byte_equal_to_old_local": digest == OLD_LOCAL_SHA256,
+        "old_local_sha256": args.old_sha256,
+        "byte_equal_to_old_local": digest == args.old_sha256,
         "opf": identity,
+        "document_id": document.document_id,
         "parse": parsed,
     }
     print(json.dumps({k: report[k] for k in report if k != "parse"}, indent=2))
@@ -223,18 +302,23 @@ def main(argv: list[str] | None = None) -> int:
     from backend.app.rag.http_store import canonical_e5_query
 
     provider = SentenceTransformerEmbeddingProvider(MODEL, "cpu", 16)
-    first = ingest_isolated(work / "run_a", incoming, document, chunks, provider)
-    second = ingest_isolated(work / "run_b", incoming, document, chunks, provider)
-    query = "All Gaul is divided into three parts"
-    hits = first["collection"].query(query_embeddings=provider.embed([canonical_e5_query(query)]), n_results=5, include=["documents", "metadatas"])
+    first = ingest_isolated(work / "run_a", incoming, document, chunks, provider, collection_name=args.collection)
+    second = ingest_isolated(work / "run_b", incoming, document, chunks, provider, collection_name=args.collection)
+    hits = first["collection"].query(
+        query_embeddings=provider.embed([canonical_e5_query(args.query)]),
+        n_results=5,
+        include=["documents", "metadatas"],
+    )
     report["ingest"] = {
-        "collection": COLLECTION,
+        "collection": args.collection,
         "model": MODEL,
         "dimension": provider.dimensions,
         "run_a_count": first["count"],
         "run_b_count": second["count"],
         "ids_equal": sorted(first["ids"]) == sorted(second["ids"]),
+        "text_equal": dict(zip(first["ids"], first["texts"])) == dict(zip(second["ids"], second["texts"])),
         "document_ids": first["document_ids"],
+        "retrieval_query": args.query,
         "retrieval_ids": hits["ids"][0],
         "retrieval_document_ids": [item.get("document_id") for item in hits["metadatas"][0]],
         "retrieval_source_urls": [item.get("source_url") for item in hits["metadatas"][0]],
