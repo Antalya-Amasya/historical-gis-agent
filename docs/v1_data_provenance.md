@@ -96,7 +96,7 @@ Roman-road mode is off unless `ROMAN_ROAD_ENABLED=true` and the GeoJSON path exi
 
 ## Tracked derived artifacts
 
-`backend/tests/fixtures/pleiades_index_v2_baseline.sqlite3` is tracked and about 41 MB. `test_g6da_pleiades_v3_location_source_preservation.py` and `test_pleiades_index_g3.py` open it as a v2 baseline. `build_pleiades_index.py` builds schema version 3 from the 4.1 zip. It does not document this file as its output. Provenance of this exact sqlite is **UNVERIFIED**. Do not delete it as cleanup. Its redistribution status is **UNKNOWN**.
+`backend/tests/fixtures/pleiades_index_v2_baseline.sqlite3` is tracked and about 41 MB. `test_g6da_pleiades_v3_location_source_preservation.py` and `test_pleiades_index_g3.py` open it as a v2 baseline. The file contains embedded source metadata (Pleiades 4.1 / Zenodo 15540082, schema and importer 2). The exact v2 build command is not in this repository; `build_pleiades_index.py` currently emits schema v3. Available attribution is recorded in `backend/tests/fixtures/PLEIADES_BASELINE_NOTICE.md`. That notice does **not** independently declare redistribution requirements resolved. Do not delete the sqlite as cleanup.
 
 `.gitignore` ignores `.env`, most of `data/`, road and surface GeoJSON, `outputs/`, and logs. It does not ignore `docs/eval/`. Those evaluation notes are untracked and are not part of this document.
 
