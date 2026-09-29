@@ -122,3 +122,39 @@ A clone cannot, from Git alone:
 - enable Roman roads or the maritime surface.
 
 The count 7,230 is an observation of the local collection. It is not a reproducibility promise.
+
+## Historical Source Edition Inventory
+
+Observed on 2026-09-29 from the local registry `data/historical_sources/corpus.json` (not in Git) and from each EPUB’s `dc:identifier`. The registry lists 16 enabled `primary_source` documents. Every registry `source_url` is `https://www.gutenberg.org/`. Every registry `license` is `public_domain`. No source-file checksum is stored. EPUB identifiers below are **LOCAL_EPUB_IDENTIFIER** observations. They were not re-checked on Gutenberg or Archive.org. **VERIFIED_UPSTREAM_LICENSE: NOT PERFORMED.** **REDISTRIBUTION_PERMISSION** is not granted by this note.
+
+| document_id | author / work | edition identifier | source | license |
+| --- | --- | --- | --- | --- |
+| `appian_roman_history_civil_wars` | Appian, Roman History / Civil Wars | Internet Archive item `appiansromanhist02appiuoft` | Registry URL is the Gutenberg homepage. EPUB id is Archive.org | Recorded `public_domain`. Upstream check not performed |
+| `caesar_gallic_civil_wars` | Julius Caesar, Gallic War + Civil War | Gutenberg 10657 | Registry URL is the Gutenberg homepage. EPUB id is `http://www.gutenberg.org/10657` | Recorded `public_domain`. Upstream check not performed |
+| `cassius_dio_roman_history_v1` | Cassius Dio, Roman History, volume 1 | Gutenberg 18047 | Same homepage versus EPUB id | Recorded `public_domain`. Upstream check not performed |
+| `cassius_dio_roman_history_v2` | Cassius Dio, Roman History, volume 2 | Gutenberg 11607 | Same | Recorded `public_domain`. Upstream check not performed |
+| `cassius_dio_roman_history_v3` | Cassius Dio, Roman History, volume 3 | Gutenberg 10162 | Same | Recorded `public_domain`. Upstream check not performed |
+| `cassius_dio_roman_history_v4` | Cassius Dio, Roman History, volume 4 | Gutenberg 10883 | Same | Recorded `public_domain`. Upstream check not performed |
+| `cassius_dio_roman_history_v5` | Cassius Dio, Roman History, volume 5 | Gutenberg 10890 | Same | Recorded `public_domain`. Upstream check not performed |
+| `cassius_dio_roman_history_v6` | Cassius Dio, Roman History, volume 6 | Gutenberg 12061 | Same | Recorded `public_domain`. Upstream check not performed |
+| `livy_history_of_rome_books_9_26` | Livy, History of Rome, books 9–26 | Gutenberg 10907 | Same | Recorded `public_domain`. Upstream check not performed |
+| `livy_history_of_rome_books_27_36` | Livy, History of Rome, books 27–36 | Gutenberg 12582 | Same | Recorded `public_domain`. Upstream check not performed |
+| `livy_history_of_rome_books_37_end` | Livy, History of Rome, books 37–end | Gutenberg 44318 | Same | Recorded `public_domain`. Upstream check not performed |
+| `plutarch_parallel_lives` | Plutarch, Parallel Lives | Gutenberg 674 | Same | Recorded `public_domain`. Upstream check not performed |
+| `polybius_histories_v1` | Polybius, Histories, volume 1 | Gutenberg 44125 | Same | Recorded `public_domain`. Upstream check not performed |
+| `polybius_histories_v2` | Polybius, Histories, volume 2 | Gutenberg 44126 | Same | Recorded `public_domain`. Upstream check not performed |
+| `sallust_catiline_jugurthine_war` | Sallust, Catiline + Jugurthine War | Gutenberg 7990 | Same | Recorded `public_domain`. Upstream check not performed |
+| `suetonius_julius_caesar` | Suetonius, Julius Caesar | Gutenberg 6386 | Same | Recorded `public_domain`. Upstream check not performed |
+
+Pairings were read from each file’s OPF, not assigned from a list. All 16 local files were present. No pairing was ambiguous.
+
+Recording an identifier does not mean the same file bytes, the same chunk ids, or the same vectors.
+
+| Level | What it identifies | Current evidence |
+| --- | --- | --- |
+| A. Historical work | Author and work title | Registry `author` and `work` |
+| B. Digital edition | A particular EPUB | Local `dc:identifier` only. Registry URL is not an edition URL |
+| C. Identical file bytes | The same EPUB bytes | No checksum in the registry. Not established |
+| D. Identical sections and chunks | Parser `generic-epub-navigation-v2`, chunker `section-window-v1` | Deterministic only for the same bytes and the same code |
+| E. Identical embeddings | `intfloat/multilingual-e5-small`, prefix `passage: `, L2-normalized | Model revision is not pinned |
+| F. The existing Chroma collection | `roman_republic_primary_sources_v2`, observed count 7,230 | Not a rebuild contract |
