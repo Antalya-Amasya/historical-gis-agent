@@ -113,3 +113,60 @@ describe("route result UI labels", () => {
     expect(markup).toContain("Orikon");
   });
 });
+
+describe("NO_ROUTE projection diagnostics", () => {
+  async function resultFor(status: string, projection: unknown, anchorCount = 0) {
+    return fetchAgentHistoricalRoutePresentation("route", "s1", async () => mockResponse(status, {
+      historical_route_diagnostics: {
+        anchor_count: anchorCount,
+        projection_diagnostics: projection,
+        reason_codes: ["PLACE_RESOLUTION_FAILED"],
+      },
+    }));
+  }
+
+  it.each([
+    ["NON_EXACT_FEATURE_ANCHOR:event-A", "NON_EXACT_ANCHOR"],
+    ["UNRESOLVED_PLACE:event-A", "PLACE_RESOLUTION"],
+    ["AMBIGUOUS_PLACE:event-A", "PLACE_RESOLUTION"],
+    ["MISSING_COORDINATE:event-A", "PLACE_RESOLUTION"],
+  ] as const)("maps %s without exposing event IDs", async (code, expected) => {
+    const result = await resultFor("NO_ROUTE", [code]);
+    expect(result.routeDiagnosticSummary).toBe(expected);
+    const markup = renderToStaticMarkup(<AnswerResult reply="Answer" routeResultStatus={result.routeResultStatus} routeDiagnosticSummary={result.routeDiagnosticSummary} />);
+    expect(markup).toContain("当前证据不足以生成可靠路线");
+    expect(markup).not.toContain("event-A");
+  });
+
+  it("keeps mixed event causes distinct from the broad reason code", async () => {
+    const result = await resultFor("NO_ROUTE", ["NON_EXACT_FEATURE_ANCHOR:event-A", "UNRESOLVED_PLACE:event-B"]);
+    expect(result.routeDiagnosticSummary).toBe("MIXED");
+    const markup = renderToStaticMarkup(<AnswerResult reply="Answer" routeResultStatus={result.routeResultStatus} routeDiagnosticSummary={result.routeDiagnosticSummary} />);
+    expect(markup).toContain("坐标精度不足");
+    expect(markup).toContain("地点解析或坐标信息不足");
+    expect(markup).not.toContain("PLACE_RESOLUTION_FAILED");
+    expect(markup).not.toContain("event-A");
+    expect(markup).not.toContain("event-B");
+  });
+
+  it.each([
+    ["unknown", ["FUTURE_REASON:event-A"]],
+    ["missing", undefined],
+    ["malformed", ["NON_EXACT_FEATURE_ANCHOR"]],
+  ])("falls back to the neutral notice for %s diagnostics", async (_name, projection) => {
+    const result = await resultFor("NO_ROUTE", projection);
+    expect(result.routeDiagnosticSummary).toBeNull();
+    const markup = renderToStaticMarkup(<AnswerResult reply="Answer" routeResultStatus={result.routeResultStatus} routeDiagnosticSummary={result.routeDiagnosticSummary} />);
+    expect(markup).toContain("当前证据不足以生成可靠路线");
+    expect(markup).not.toContain("route-diagnostic-summary");
+  });
+
+  it("does not summarize when an anchor exists or a route is presented", async () => {
+    expect((await resultFor("NO_ROUTE", ["NON_EXACT_FEATURE_ANCHOR:event-A"], 1)).routeDiagnosticSummary).toBeNull();
+    const full = await resultFor("FULL_ROUTE", ["NON_EXACT_FEATURE_ANCHOR:event-A"]);
+    expect(full.routeDiagnosticSummary).toBeNull();
+    expect(full.payload).not.toBeNull();
+    const markup = renderToStaticMarkup(<AnswerResult reply="Answer" routeResultStatus="FULL_ROUTE" routeDiagnosticSummary="NON_EXACT_ANCHOR" />);
+    expect(markup).not.toContain("route-diagnostic-summary");
+  });
+});

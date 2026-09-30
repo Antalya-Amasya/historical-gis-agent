@@ -158,7 +158,7 @@ export type AgentRouteChatResponse = {
   state: {
     route_intent?: { intent: string; campaign_id: string } | null;
     historical_route_presentation?: HistoricalRoutePresentationPayload | null;
-    historical_route_diagnostics?: { route_source?: string; reason_codes?: string[] } | null;
+    historical_route_diagnostics?: { route_source?: string; reason_codes?: string[]; projection_diagnostics?: string[]; anchor_count?: number } | null;
     historical_route?: AgentHistoricalRouteSnapshot | null;
     historical_evidence?: AgentHistoricalEvidence[];
     resolved_places?: Array<{ canonical_name: string }>;
@@ -171,11 +171,34 @@ export type AgentRouteChatResult = {
   payload: HistoricalRoutePresentationPayload | null;
   campaignId: string | null;
   routeSource: string | null;
+  routeDiagnosticSummary: RouteDiagnosticSummary | null;
   evidence: AgentHistoricalEvidence[];
   resolvedPlaces: string[];
   limitations: string[];
   waypoints: string[];
 };
+
+export type RouteDiagnosticSummary = "NON_EXACT_ANCHOR" | "PLACE_RESOLUTION" | "MIXED";
+
+function summarizeRouteDiagnostics(
+  status: RouteResultStatus | null,
+  diagnostics: AgentRouteChatResponse["state"]["historical_route_diagnostics"],
+): RouteDiagnosticSummary | null {
+  if (status !== "NO_ROUTE" || diagnostics?.anchor_count !== 0 || !Array.isArray(diagnostics.projection_diagnostics)) return null;
+  let nonExact = false;
+  let resolution = false;
+  for (const entry of diagnostics.projection_diagnostics) {
+    if (typeof entry !== "string") continue;
+    const match = /^([A-Z_]+):([^:\s]+)$/.exec(entry);
+    if (!match) continue;
+    if (match[1] === "NON_EXACT_FEATURE_ANCHOR") nonExact = true;
+    if (["UNRESOLVED_PLACE", "AMBIGUOUS_PLACE", "MISSING_COORDINATE"].includes(match[1])) resolution = true;
+  }
+  if (nonExact && resolution) return "MIXED";
+  if (nonExact) return "NON_EXACT_ANCHOR";
+  if (resolution) return "PLACE_RESOLUTION";
+  return null;
+}
 
 function extractWaypoints(route: AgentHistoricalRouteSnapshot | null | undefined): string[] {
   if (!route) return [];
@@ -210,6 +233,7 @@ export async function fetchAgentHistoricalRoutePresentation(
     payload: payload ? loadHistoricalRoutePresentation(payload) : null,
     campaignId: body.state.route_intent?.campaign_id ?? null,
     routeSource: body.state.historical_route_diagnostics?.route_source ?? null,
+    routeDiagnosticSummary: summarizeRouteDiagnostics(body.route_result_status, body.state.historical_route_diagnostics),
     evidence: body.state.historical_evidence ?? [],
     resolvedPlaces: (body.state.resolved_places ?? []).map((place) => place.canonical_name),
     limitations: extractLimitations(body.state),
