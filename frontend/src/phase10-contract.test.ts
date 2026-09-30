@@ -6,6 +6,12 @@ const response = { route: { route_id: "r1", route_name: "Route", confidence: 0.7
 describe("Phase 10.1 presentation API contract", () => {
   it("fetches and loads backend route JSON", async () => { const payload = await fetchHistoricalRoutePresentation("r1", async () => ({ ok: true, status: 200, json: async () => response })); expect(routeFeature(payload)?.geometry?.type).toBe("LineString"); });
   it("preserves backend waypoint metadata for popups", () => { const feature = response.geojson.features[1]; expect(waypointPopupMetadata(response, feature)).toMatchObject({ name: "Anchor", evidenceCount: 1, knowledgePanelId: "a" }); });
+  it("labels a representative coordinate without the internal role name", () => {
+    const feature = { type: "Feature" as const, geometry: { type: "Point" as const, coordinates: [12.49, 41.89] as [number, number] }, properties: { name: "Roma", coordinate_role: "representative_point" } };
+    const metadata = waypointPopupMetadata({ ...response, waypoints: [] }, feature);
+    expect(metadata.description).toBe("地点坐标是代表性位置，不是考古精确点。");
+    expect(metadata.description).not.toContain("representative_point");
+  });
   it("does not select a marker for null geometry", () => { expect(markerFeatures(response)).toHaveLength(1); expect(response.geojson.features[2].geometry).toBeNull(); });
   it("renders supplied external references through the linked knowledge panel", () => { expect(panelForFeature(response, response.geojson.features[1])?.external_references[0].title).toBe("Reading"); });
 
