@@ -15,6 +15,15 @@ export function segmentLabel(kind: ReturnType<typeof routeSegments>[number]["kin
             : "未能重建的区段";
 }
 
+function visibleEndpoint(payload: HistoricalRoutePresentationPayload, identifier: string | undefined) {
+  if (!identifier) return null;
+  const named = markerFeatures(payload).find((feature) => String(feature.properties.waypoint_id ?? "") === identifier);
+  const name = named?.properties.name;
+  if (typeof name === "string" && name.trim() && !/^(pleiades-|sim-coast-|itiner-e:)/.test(name)) return name;
+  if (/^(pleiades-|sim-coast-|itiner-e:)/.test(identifier)) return null;
+  return identifier;
+}
+
 function friendlyRouteSource(source: string | null | undefined) {
   return source === "event_anchor" ? "事件锚点与史料顺序"
     : source === "legacy_movement_claims" ? "史料中的移动关系"
@@ -47,7 +56,11 @@ export function RouteDetails({ payload, routeSource }: { payload: HistoricalRout
     <section className="knowledge-panel reconstruction-card">
       <p className="panel-kicker">算法重建</p><h2>候选路线</h2>
       <p>{summary?.route_interpretation ?? "算法仅在历史路点之间重建地理候选路径，不创造历史事实。"}</p>
-      <ul className="segment-list">{segments.map((segment) => <li key={segment.id} className={`segment-${segment.kind}`}><strong>{segmentLabel(segment.kind)}</strong><span>{segment.from && segment.to ? `${segment.from} → ${segment.to}` : "历史路点之间"}</span>{segment.distanceKm !== undefined ? <span>距离 {formatMetric(segment.distanceKm, " km")}</span> : null}{segment.cost !== undefined ? <span>重建成本 {formatMetric(segment.cost)}</span> : null}{segment.terrainSource ? <small>地形数据：{segment.terrainSource}</small> : null}{segment.failureStatus ? <small className="gap-warning">原因：{segment.failureStatus}</small> : null}</li>)}</ul>
+      <ul className="segment-list">{segments.map((segment) => {
+        const from = visibleEndpoint(payload, segment.from);
+        const to = visibleEndpoint(payload, segment.to);
+        return <li key={segment.id} className={`segment-${segment.kind}`}><strong>{segmentLabel(segment.kind)}</strong><span>{from && to ? `${from} → ${to}` : "历史路点之间"}</span>{segment.distanceKm !== undefined ? <span>距离 {formatMetric(segment.distanceKm, " km")}</span> : null}{segment.cost !== undefined ? <span>重建成本 {formatMetric(segment.cost)}</span> : null}{segment.terrainSource ? <small>地形数据：{segment.terrainSource}</small> : null}{segment.failureStatus ? <small className="gap-warning">原因：{segment.failureStatus}</small> : null}</li>;
+      })}</ul>
       {!segments.length && <p className="route-empty">历史路点已确定，但当前没有可显示的候选几何。</p>}
       {failed.length > 0 && <p className="gap-warning" role="status">{failed.length} 个区段未能可靠重建；地图不会用直线补齐。</p>}
       {failedFragments.length > 0 && <p className="gap-warning" role="status">{failedFragments.length} 个证据片段未能安全重建；已成功片段仍单独显示，片段之间不连线。</p>}

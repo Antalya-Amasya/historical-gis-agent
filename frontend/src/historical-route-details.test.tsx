@@ -141,6 +141,30 @@ describe("Phase 33A historical route presentation", () => {
     expect(html).toContain("Not an exact documented track.");
   });
 
+  it("shows place names instead of internal gazetteer identifiers", () => {
+    const payload: HistoricalRoutePresentationPayload = {
+      ...road,
+      geojson: {
+        ...road.geojson,
+        features: [
+          point("pleiades-1", "Delphi", [1, 2]),
+          point("pleiades-2", "Roma", [2, 3]),
+          { type: "Feature" as const, geometry: { type: "LineString" as const, coordinates: [[1, 2], [2, 3]] as [number, number][] }, properties: { layer_type: "roman_road_segment", segment_role: "roman_road", leg_index: 1 } },
+        ],
+      },
+      road_network: {
+        source: "Itiner-e",
+        route_status: "COMPLETE",
+        aggregate: { successful_leg_count: 1, failed_leg_count: 0, total_network_distance_m: 12000, total_access_connector_distance_m: 0, road_type_counts: {}, segment_status_counts: {}, chronology_counts: {} },
+        limitations: ["Infrastructure candidate only."],
+        legs: [{ leg_index: 1, source_anchor_id: "pleiades-1", destination_anchor_id: "pleiades-2", reconstruction_method: "ROMAN_ROAD_NETWORK", candidate: { network_distance_m: 12000 } }],
+      },
+    };
+    const html = renderToStaticMarkup(<RouteDetails payload={payload} />);
+    expect(html).toContain("Delphi → Roma");
+    expect(html).not.toContain("pleiades-1");
+  });
+
   it("renders failed-gap warnings and Roman-road semantics as text, not color alone", () => {
     const html = renderToStaticMarkup(<RouteDetails payload={road} />);
     expect(html).toContain("古罗马道路优先重建");
