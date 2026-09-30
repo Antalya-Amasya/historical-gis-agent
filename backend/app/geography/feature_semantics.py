@@ -77,6 +77,26 @@ def exact_anchor_eligible(place: HistoricalPlace, *, strong_role: bool) -> bool:
     return place.coordinate_role in _EXACT_COORDINATE_ROLES
 
 
+_SIMULATION_POINT_SEMANTICS = frozenset({
+    PlaceSpatialSemantics.SETTLEMENT,
+    PlaceSpatialSemantics.PORT,
+})
+
+
+def simulation_anchor_eligible(place: HistoricalPlace) -> bool:
+    """Allow a resolved point-like place to anchor GIS simulation without exact-site authority."""
+    if place.spatial_semantics in _STRONG_ROUTE_POINT_BLOCKED_SEMANTICS:
+        return False
+    if place.spatial_semantics is PlaceSpatialSemantics.UNKNOWN:
+        return False
+    if exact_anchor_eligible(place, strong_role=True):
+        return True
+    return (
+        place.spatial_semantics in _SIMULATION_POINT_SEMANTICS
+        and place.coordinate_role == "representative_point"
+    )
+
+
 def traversal_eligible(place: HistoricalPlace) -> bool:
     return place.spatial_semantics in {
         PlaceSpatialSemantics.SEA,

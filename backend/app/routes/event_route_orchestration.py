@@ -1133,6 +1133,14 @@ class EventAnchorRouteBuilder:
             limitations.add("Multiple evidence-backed route components are present; component order is not asserted.")
         if branch_models:
             limitations.add("Some proven relations form branches or hubs and are not placed in a unique linear traversal.")
+        if any(
+            anchor.admission_type == "SIMULATION_ANCHOR"
+            for group in places.values()
+            for anchor in group
+        ):
+            limitations.add(
+                "Representative place coordinates are simulation anchors, not exact historical event sites."
+            )
         all_points = main_points or [point for component in component_models for point in component.ordered_points]
         confidence = round(sum(point.confidence for point in all_points) / len(all_points), 2) if all_points else 0.0
         route = HistoricalRoute(

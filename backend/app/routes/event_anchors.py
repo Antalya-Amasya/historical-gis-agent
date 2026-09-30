@@ -4,7 +4,7 @@ This deliberately projects no edges and performs no route/GIS inference.
 """
 from __future__ import annotations
 from dataclasses import dataclass
-from backend.app.geography.feature_semantics import exact_anchor_eligible
+from backend.app.geography.feature_semantics import exact_anchor_eligible, simulation_anchor_eligible
 from backend.app.models import (
     EventGroundingStatus,
     EventPlaceResolutionStatus,
@@ -78,15 +78,25 @@ def project_event_anchors(
                 diagnostics.append(f"UNRESOLVED_PLACE:{event.id}"); continue
             if binding.place.latitude is None or binding.place.longitude is None:
                 diagnostics.append(f"MISSING_COORDINATE:{event.id}"); continue
-            if not exact_anchor_eligible(binding.place, strong_role=strong):
+            exact = exact_anchor_eligible(binding.place, strong_role=strong)
+            simulated = strong and not exact and simulation_anchor_eligible(binding.place)
+            if strong and not exact and not simulated:
                 diagnostics.append(f"NON_EXACT_FEATURE_ANCHOR:{event.id}"); continue
             refs = set(binding.evidence_refs) or event_refs
             if not refs.issubset(visible):
                 diagnostics.append(f"INVALID_EVIDENCE_PROVENANCE:{event.id}"); continue
-            admission_type = (
-                "MOVEMENT_WAYPOINT" if binding.role in {EventPlaceRole.ORIGIN, EventPlaceRole.DESTINATION}
-                else "EVENT_SITE_WAYPOINT" if binding.role is EventPlaceRole.EVENT_SITE
-                else "CONTEXTUAL_WAYPOINT"
-            )
-            anchors.append(EventAnchor(event.id, event.event_type.value, binding.place.canonical_name, binding.role, binding.place.latitude, binding.place.longitude, tuple(sorted(refs)), binding.resolver_provenance, binding.place.coordinate_role, tuple(binding.limitations), event.period, binding.place, admission_type))
+            if simulated:
+                admission_type = "SIMULATION_ANCHOR"
+            else:
+                admission_type = (
+                    "MOVEMENT_WAYPOINT" if binding.role in {EventPlaceRole.ORIGIN, EventPlaceRole.DESTINATION}
+                    else "EVENT_SITE_WAYPOINT" if binding.role is EventPlaceRole.EVENT_SITE
+                    else "CONTEXTUAL_WAYPOINT"
+                )
+            limitations = tuple(binding.limitations)
+            if simulated:
+                limitations = limitations + (
+                    "Coordinate is a representative simulation anchor, not an exact historical event site.",
+                )
+            anchors.append(EventAnchor(event.id, event.event_type.value, binding.place.canonical_name, binding.role, binding.place.latitude, binding.place.longitude, tuple(sorted(refs)), binding.resolver_provenance, binding.place.coordinate_role, limitations, event.period, binding.place, admission_type))
     return anchors, diagnostics or ([] if anchors else ["NO_ELIGIBLE_EVENT_PLACES"])

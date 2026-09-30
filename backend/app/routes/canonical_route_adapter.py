@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from backend.app.geography.feature_semantics import exact_anchor_eligible, simulation_anchor_eligible
 from backend.app.models import EventPlaceResolutionStatus, EventPlaceRole, HistoricalEvent
 from backend.app.routes.event_anchors import EventAnchor
 from backend.app.routes.event_route_orchestration import (
@@ -111,12 +112,23 @@ def _places_with_resolved_observation_bindings(
             for anchor in group
         ):
             continue
+        exact = exact_anchor_eligible(place, strong_role=True)
+        simulated = not exact and simulation_anchor_eligible(place)
+        if not exact and not simulated:
+            continue
         refs = tuple(sorted(set(observation.evidence_refs) | set(binding.evidence_refs)))
-        admission_type = (
-            "MOVEMENT_WAYPOINT"
-            if observation.place_role in {EventPlaceRole.ORIGIN, EventPlaceRole.DESTINATION}
-            else "EVENT_SITE_WAYPOINT"
-        )
+        limitations = tuple(binding.limitations)
+        if simulated:
+            admission_type = "SIMULATION_ANCHOR"
+            limitations = limitations + (
+                "Coordinate is a representative simulation anchor, not an exact historical event site.",
+            )
+        else:
+            admission_type = (
+                "MOVEMENT_WAYPOINT"
+                if observation.place_role in {EventPlaceRole.ORIGIN, EventPlaceRole.DESTINATION}
+                else "EVENT_SITE_WAYPOINT"
+            )
         group.append(EventAnchor(
             observation.event_id,
             event.event_type.value,
@@ -127,7 +139,7 @@ def _places_with_resolved_observation_bindings(
             refs,
             binding.resolver_provenance,
             place.coordinate_role,
-            tuple(binding.limitations),
+            limitations,
             event.period,
             place,
             admission_type,

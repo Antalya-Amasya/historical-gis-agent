@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from backend.app.geography.feature_semantics import exact_anchor_eligible
+from backend.app.geography.feature_semantics import exact_anchor_eligible, simulation_anchor_eligible
 from backend.app.models import (
     EventGroundingStatus,
     EventPlaceResolutionStatus,
@@ -75,7 +75,7 @@ def _event(*bindings: HistoricalEventPlaceBinding) -> HistoricalEvent:
         (PlaceSpatialSemantics.ISLAND, "feature_centroid", EventPlaceRole.DESTINATION),
         (PlaceSpatialSemantics.MOUNTAIN_REGION, "regional_centroid", EventPlaceRole.DESTINATION),
         (PlaceSpatialSemantics.UNKNOWN, "representative_point", EventPlaceRole.ORIGIN),
-        (PlaceSpatialSemantics.SETTLEMENT, "representative_point", EventPlaceRole.EVENT_SITE),
+        (PlaceSpatialSemantics.RIVER, "representative_point", EventPlaceRole.ORIGIN),
     ],
 )
 def test_strong_roles_reject_non_exact_coordinates(
@@ -108,6 +108,26 @@ def test_strong_roles_allow_exact_site_coordinates(
     assert anchors[0].role is role
     assert diagnostics == []
     assert exact_anchor_eligible(place, strong_role=True)
+
+
+def test_representative_settlement_is_simulation_anchor_not_exact_site():
+    place = _place(
+        semantics=PlaceSpatialSemantics.SETTLEMENT,
+        coordinate_role="representative_point",
+        name="Roma",
+    )
+    anchors, diagnostics = project_event_anchors(
+        [_event(_binding(EventPlaceRole.DESTINATION, place))],
+        [_evidence()],
+    )
+    assert diagnostics == []
+    assert len(anchors) == 1
+    assert anchors[0].coordinate_role == "representative_point"
+    assert anchors[0].admission_type == "SIMULATION_ANCHOR"
+    assert place.coordinate_role == "representative_point"
+    assert not exact_anchor_eligible(place, strong_role=True)
+    assert simulation_anchor_eligible(place)
+    assert "not an exact historical event site" in anchors[0].limitations[-1]
 
 
 def test_resolved_region_remains_on_event_after_anchor_rejection():

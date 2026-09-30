@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Protocol
 
-from backend.app.geography.feature_semantics import exact_anchor_eligible
+from backend.app.geography.feature_semantics import simulation_anchor_eligible
 from backend.app.models import ExtractedHistoricalPlaceMention, GeoJsonLineString, HistoricalClaim, HistoricalPlace, HistoricalRoute, HistoricalRoutePoint
 from backend.app.routes.episode_relevance import filter_legacy_movement_claims
 from backend.app.routes.evidence_relevance import (
@@ -381,7 +381,7 @@ class HistoricalRouteExtractor:
                 diagnostics["reason_codes"] = ["UNRESOLVED_ANCHOR"]
                 return RouteBuildOutcome(None, diagnostics)  # required evidence-grounded anchor cannot receive an invented coordinate
             place = HistoricalPlace.model_validate({key: value for key, value in resolved.items() if key != "found"})
-            if not exact_anchor_eligible(place, strong_role=True):
+            if not simulation_anchor_eligible(place):
                 diagnostics["reason_codes"] = ["NON_EXACT_ROUTE_POINT"]
                 return RouteBuildOutcome(None, diagnostics)
             refs = list(dict.fromkeys(ref for claim in supporting_claims for ref in claim.supporting_evidence_ids))

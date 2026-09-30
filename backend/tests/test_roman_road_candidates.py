@@ -35,11 +35,15 @@ def test_access_keeps_historical_coordinate_and_enforces_threshold():
     assert RomanRoadCandidateService(graph, max_access_distance_m=50).resolve_access(anchor).status is RoadAccessStatus.TOO_FAR
 
 
-def test_representative_settlement_coordinate_is_not_treated_as_an_exact_point():
+def test_representative_settlement_can_attempt_road_access_without_becoming_exact():
     graph = RomanRoadGraph.from_segments([segment("one", ((0, 0), (1, 0)))], snap_tolerance_m=5)
-    access = RomanRoadCandidateService(graph).resolve_access(point("representative", 0, 0, coordinate_role="representative_point"))
-    assert access.status is RoadAccessStatus.NON_POINT_PLACE
-    assert access.road_node_id is None
+    anchor = point("representative", 0, 0, coordinate_role="representative_point")
+    access = RomanRoadCandidateService(graph).resolve_access(anchor)
+    assert access.status is RoadAccessStatus.AVAILABLE
+    assert anchor.historical_place.coordinate_role == "representative_point"
+    assert access.coordinate_role == "representative_point"
+    region = point("region", 0, 0, semantics=PlaceSpatialSemantics.REGION, coordinate_role="regional_centroid")
+    assert RomanRoadCandidateService(graph).resolve_access(region).status is RoadAccessStatus.NON_POINT_PLACE
 
 
 def test_river_region_and_unknown_semantics_fail_closed_without_point_snapping():
