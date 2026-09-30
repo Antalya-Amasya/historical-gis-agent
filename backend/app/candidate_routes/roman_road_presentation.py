@@ -1,11 +1,30 @@
 """Presentation-only projection of Roman-road orchestration results."""
 from __future__ import annotations
 
+from math import asin, cos, radians, sin, sqrt
+
 from pydantic import BaseModel
 
 from backend.app.models import HistoricalRoute
 
 from .roman_road_orchestration import RomanRoadRouteResult
+
+_PROVENANCE = {
+    "roman_road": "roman_road_simulation",
+    "access_connector": "roman_road_simulation",
+    "terrain_candidate": "terrain_simulation",
+    "simulated_coastal_access": "simulated_coastal_access",
+    "direct_water_edge": "direct_water_simulation",
+    "failed_gap": "failed_gap",
+}
+
+
+def _path_distance_m(coordinates: list[tuple[float, float]]) -> float:
+    total = 0.0
+    for (lon1, lat1), (lon2, lat2) in zip(coordinates, coordinates[1:]):
+        la, oa, lb, ob = map(radians, (lat1, lon1, lat2, lon2))
+        total += 2 * 6_371_008.8 * asin(sqrt(sin((lb - la) / 2) ** 2 + cos(la) * cos(lb) * sin((ob - oa) / 2) ** 2))
+    return total
 
 
 class RomanRoadPresentation(BaseModel):
@@ -34,7 +53,9 @@ class RomanRoadPresentationService:
             else "Roman-road-preferred candidate reconstruction with terrain A* fallback only for unavailable adjacent road legs; it is not proof of an exact historical track."
             if terrain_fallback_used
             else "Direct-water GIS reconstruction between historical sea constraints; not an exact historical sailing track."
-            if maritime_used
+            if maritime_used and not any(leg.simulation_route_mode == "LAND_SEA_MIXED" for leg in result.legs)
+            else "Land and sea segments are a simulated candidate. They are not an attested itinerary or a historical mode claim."
+            if any(leg.simulation_route_mode == "LAND_SEA_MIXED" for leg in result.legs)
             else "Partial Roman-road candidate reconstruction where available; it is not proof of an exact historical track."
         )
         anchor_features = [self._anchor_feature(point) for point in historical_route.ordered_points]
@@ -44,6 +65,8 @@ class RomanRoadPresentationService:
             geometry = {"type": "LineString", "coordinates": [list(item) for item in segment.coordinates]} if segment.coordinates else None
             if segment.segment_type == "direct_water_edge":
                 layer_type = "direct_water_edge"
+            elif segment.segment_type == "simulated_coastal_access":
+                layer_type = "simulated_coastal_access"
             elif segment.segment_type == "terrain_candidate":
                 layer_type = "terrain_reconstruction_segment"
             else:
@@ -54,9 +77,13 @@ class RomanRoadPresentationService:
                 "leg_index": segment.leg_index, "source_anchor_id": segment.source_anchor_id,
                 "destination_anchor_id": segment.destination_anchor_id, "failure_status": segment.failure_status,
             }
+            if segment.coordinates:
+                properties["segment_distance_m"] = round(_path_distance_m(list(segment.coordinates)), 3)
+                properties["simulation_provenance"] = _PROVENANCE.get(segment.segment_type, segment.segment_type)
             if segment.segment_type == "direct_water_edge" and leg is not None:
                 properties["reconstruction_method"] = leg.reconstruction_method
                 properties["travel_mode"] = leg.travel_mode.value
+                properties["simulation_route_mode"] = leg.simulation_route_mode
             segment_features.append({"type": "Feature", "geometry": geometry, "properties": properties})
         crossing_features = [
             self._crossing_feature(leg.crossing_candidate)
@@ -107,6 +134,7 @@ class RomanRoadPresentationService:
             "name": place.canonical_name, "modern_name": place.modern_name, "coordinate_role": place.coordinate_role,
             "spatial_semantics": place.spatial_semantics.value, "evidence_refs": list(point.evidence_refs),
             "confidence": point.confidence, "uncertain": place.uncertain, "source": place.source,
+            "simulation_provenance": "historical_endpoint",
             "source_id": place.source_id, "source_url": place.source_url,
         }}
 

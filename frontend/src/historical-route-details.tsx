@@ -10,8 +10,9 @@ export function segmentLabel(kind: ReturnType<typeof routeSegments>[number]["kin
   return kind === "roman_road" ? "古罗马道路优先重建"
     : kind === "terrain" ? "地形 A* 算法重建"
       : kind === "direct_water_edge" ? "海上重建路线"
-        : kind === "connector" ? "道路接入连接"
-          : "未能重建的区段";
+        : kind === "simulated_coastal_access" ? "模拟海岸接入"
+          : kind === "connector" ? "道路接入连接"
+            : "未能重建的区段";
 }
 
 function friendlyRouteSource(source: string | null | undefined) {

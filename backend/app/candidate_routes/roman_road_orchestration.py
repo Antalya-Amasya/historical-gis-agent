@@ -11,7 +11,9 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-from backend.app.models import GeoJsonLineString, HistoricalRoute, HistoricalRoutePoint, HistoricalTravelMode
+from backend.app.gis.coastal_access import find_coastal_accesses, select_simulation_mode, shortest_valid_water_pair
+from backend.app.gis.sea import _distance
+from backend.app.models import GeoJsonLineString, HistoricalPlace, HistoricalRoute, HistoricalRoutePoint, HistoricalTravelMode, PlaceSpatialSemantics
 
 from .barrier_crossings import (
     BarrierCrossingService,
@@ -65,6 +67,8 @@ class RomanRoadRouteLeg(BaseModel):
     ordering_provenance: list[dict[str, object]] = Field(default_factory=list)
     limitation: str | None = None
     travel_mode: HistoricalTravelMode = HistoricalTravelMode.UNKNOWN
+    simulation_route_mode: str = "LAND"
+    simulation_segments: list[RomanRoadRouteGeometrySegment] = Field(default_factory=list)
 
 
 class RomanRoadRouteAggregate(BaseModel):
@@ -167,11 +171,17 @@ class RomanRoadRouteOrchestrator:
             )
             if leg.candidate is None and self.terrain_route_service is not None:
                 leg = self._terrain_fallback(leg, source, destination)
+            if leg.travel_mode is HistoricalTravelMode.UNKNOWN and leg.failure_status not in {
+                "RIVER_GEOMETRY_UNAVAILABLE", "REGION_GEOMETRY_UNAVAILABLE", "UNKNOWN_PLACE_SEMANTICS", "NON_POINT_PLACE",
+            }:
+                mixed = self._mixed_simulation(leg_index, source, destination, historical_route, leg)
+                if mixed is not None:
+                    leg = mixed
             legs.append(leg)
             geometry_segments.extend(self._geometry(leg_index, source, destination, leg))
             point_index += 1
             leg_index += 1
-        successes = sum(leg.candidate is not None or leg.terrain_candidate is not None for leg in legs)
+        successes = sum(self._leg_succeeded(leg) for leg in legs)
         status = RomanRoadRouteStatus.COMPLETE if successes == len(legs) else RomanRoadRouteStatus.PARTIAL if successes else RomanRoadRouteStatus.UNAVAILABLE
         return RomanRoadRouteResult(
             historical_route_id=historical_route.id,
@@ -185,6 +195,10 @@ class RomanRoadRouteOrchestrator:
                 "HistoricalRoute anchors and order come from supplied evidence-backed route data; Roman-road paths are infrastructure candidates only.",
                 "Failed legs remain explicit gaps. Terrain fallback, when configured, is attempted only for the same supplied adjacent anchors; no OSM, straight-line, or cross-leg fallback is used.",
                 "Road chronology and certainty are preserved as source metadata and are not converted into historical movement claims.",
+                *(
+                    ["史料支持两端地点之间的移动。显示路线是根据古代道路、地形和海陆拓扑生成的合理模拟，并非史料记录的精确行程。"]
+                    if any(leg.simulation_route_mode == "LAND_SEA_MIXED" for leg in legs) else []
+                ),
             ],
         )
 
@@ -212,6 +226,10 @@ class RomanRoadRouteOrchestrator:
             destination.historical_place.longitude,
             self.maritime_surface,
         )
+        if not plan.available and plan.reason == "endpoint_not_ocean_interior":
+            coastal = self._explicit_sea_with_coastal_access(index, source, destination, historical_route)
+            if coastal is not None:
+                return coastal
         if not plan.available:
             status = (
                 "MARITIME_PLANNER_UNAVAILABLE"
@@ -230,6 +248,7 @@ class RomanRoadRouteOrchestrator:
                 ordering_provenance=self._ordering_provenance(source, destination, historical_route),
                 limitation="; ".join(plan.limitations),
                 travel_mode=HistoricalTravelMode.SEA,
+                simulation_route_mode="SEA",
             )
         distance_km = plan.physical_distance_m / 1000
         candidate = CandidateRoute(
@@ -272,6 +291,7 @@ class RomanRoadRouteOrchestrator:
             ordering_provenance=self._ordering_provenance(source, destination, historical_route),
             limitation="; ".join(plan.limitations),
             travel_mode=HistoricalTravelMode.SEA,
+            simulation_route_mode="SEA",
         )
 
     @staticmethod
@@ -288,7 +308,148 @@ class RomanRoadRouteOrchestrator:
             ordering_provenance=RomanRoadRouteOrchestrator._ordering_provenance(source, destination, historical_route),
             limitation="Explicit sea travel is not eligible for Roman-road or land-terrain planning; no maritime planner is configured.",
             travel_mode=HistoricalTravelMode.SEA,
+            simulation_route_mode="SEA",
         )
+
+    def _explicit_sea_with_coastal_access(self, index, source, destination, historical_route) -> RomanRoadRouteLeg | None:
+        """Keep historical SEA authority while embarkation points stay simulated."""
+        pair = shortest_valid_water_pair(
+            find_coastal_accesses(source.historical_place.latitude, source.historical_place.longitude, self.maritime_surface),
+            find_coastal_accesses(destination.historical_place.latitude, destination.historical_place.longitude, self.maritime_surface),
+            self.maritime_surface,
+        )
+        if pair is None:
+            return None
+        left, right, plan = pair
+        segments = [
+            self._coastal_segment(index, source, destination, left),
+            self._water_segment(index, source, destination, plan),
+            self._coastal_segment(index, source, destination, right),
+        ]
+        return RomanRoadRouteLeg(
+            leg_index=index,
+            source_anchor_id=source.historical_place.id,
+            destination_anchor_id=destination.historical_place.id,
+            source_evidence_refs=list(source.evidence_refs),
+            destination_evidence_refs=list(destination.evidence_refs),
+            status=RomanRoadCandidateStatus.AVAILABLE,
+            reconstruction_method="DIRECT_WATER_EDGE",
+            ordering_provenance=self._ordering_provenance(source, destination, historical_route),
+            limitation="Historical sea travel is attested. Coastal access points are simulated and are not historical embarkation sites.",
+            travel_mode=HistoricalTravelMode.SEA,
+            simulation_route_mode="SEA",
+            simulation_segments=segments,
+        )
+
+    def _mixed_simulation(self, index, source, destination, historical_route, land_leg: RomanRoadRouteLeg) -> RomanRoadRouteLeg | None:
+        if self.maritime_surface is None:
+            return None
+        pair = shortest_valid_water_pair(
+            find_coastal_accesses(source.historical_place.latitude, source.historical_place.longitude, self.maritime_surface),
+            find_coastal_accesses(destination.historical_place.latitude, destination.historical_place.longitude, self.maritime_surface),
+            self.maritime_surface,
+        )
+        if pair is None:
+            return None
+        left, right, plan = pair
+        origin_link = self._land_link(source, left.land_longitude, left.land_latitude, "origin")
+        destination_link = self._land_link(destination, right.land_longitude, right.land_latitude, "destination")
+        if origin_link is None or destination_link is None:
+            return None
+        mixed_distance = origin_link[1] + plan.physical_distance_m + destination_link[1]
+        land_distance = self._land_distance_m(land_leg)
+        if select_simulation_mode(historical_mode="UNKNOWN", land_distance_m=land_distance, mixed_distance_m=mixed_distance) != "LAND_SEA_MIXED":
+            return None
+        segments = [
+            *origin_link[0],
+            self._coastal_segment(index, source, destination, left),
+            self._water_segment(index, source, destination, plan),
+            self._coastal_segment(index, source, destination, right),
+            *destination_link[0],
+        ]
+        for item in segments:
+            item.leg_index = index
+            item.source_anchor_id = source.historical_place.id
+            item.destination_anchor_id = destination.historical_place.id
+        return RomanRoadRouteLeg(
+            leg_index=index,
+            source_anchor_id=source.historical_place.id,
+            destination_anchor_id=destination.historical_place.id,
+            source_evidence_refs=list(source.evidence_refs),
+            destination_evidence_refs=list(destination.evidence_refs),
+            status=RomanRoadCandidateStatus.AVAILABLE,
+            reconstruction_method="LAND_SEA_MIXED",
+            ordering_provenance=self._ordering_provenance(source, destination, historical_route),
+            limitation="Simulated land and sea geometry. Coastal access points are not historical waypoints, and the selected mode is not a historical travel claim.",
+            travel_mode=HistoricalTravelMode.UNKNOWN,
+            simulation_route_mode="LAND_SEA_MIXED",
+            simulation_segments=segments,
+        )
+
+    def _land_link(self, historical_point: HistoricalRoutePoint, longitude: float, latitude: float, side: str):
+        target = self._simulated_access_point(f"sim-coast-{side}-{historical_point.historical_place.id}", longitude, latitude)
+        if _distance(
+            type("P", (), {"latitude": historical_point.historical_place.latitude, "longitude": historical_point.historical_place.longitude})(),
+            type("P", (), {"latitude": latitude, "longitude": longitude})(),
+        ) < 1.0:
+            return [], 0.0
+        if self.candidate_service is not None:
+            built = self.candidate_service.build(historical_point, target)
+            if built.candidate is not None:
+                segments = [
+                    RomanRoadRouteGeometrySegment(
+                        segment_type=item.segment_type, leg_index=1, coordinates=list(item.coordinates),
+                        source_anchor_id=historical_point.historical_place.id, destination_anchor_id=target.historical_place.id,
+                    )
+                    for item in built.candidate.geometry_segments
+                ]
+                return segments, built.candidate.network_distance_m + built.candidate.access_connector_distance_m
+        if self.terrain_route_service is None:
+            return None
+        try:
+            candidate = self.terrain_route_service.build_between(historical_point, target, self.terrain_profile)
+        except (ValueError, KeyError):
+            return None
+        return [RomanRoadRouteGeometrySegment(
+            segment_type="terrain_candidate", leg_index=1, coordinates=list(candidate.geometry.coordinates),
+            source_anchor_id=historical_point.historical_place.id, destination_anchor_id=target.historical_place.id,
+        )], candidate.metrics.distance_km * 1000
+
+    @staticmethod
+    def _simulated_access_point(identifier: str, longitude: float, latitude: float) -> HistoricalRoutePoint:
+        return HistoricalRoutePoint(
+            sequence=1,
+            historical_place=HistoricalPlace(
+                id=identifier, canonical_name="simulated coastal access", longitude=longitude, latitude=latitude,
+                source="simulated_coastal_access", confidence=0.0, spatial_semantics=PlaceSpatialSemantics.SETTLEMENT,
+                coordinate_role="representative_point",
+            ),
+            event_summary="Simulated coastal access point; not a historical waypoint.",
+            evidence_refs=[], confidence=0.0, coordinate_role="representative_point",
+        )
+
+    @staticmethod
+    def _coastal_segment(index, source, destination, access) -> RomanRoadRouteGeometrySegment:
+        return RomanRoadRouteGeometrySegment(
+            segment_type="simulated_coastal_access", leg_index=index,
+            coordinates=[(access.land_longitude, access.land_latitude), (access.ocean_longitude, access.ocean_latitude)],
+            source_anchor_id=source.historical_place.id, destination_anchor_id=destination.historical_place.id,
+        )
+
+    @staticmethod
+    def _water_segment(index, source, destination, plan) -> RomanRoadRouteGeometrySegment:
+        return RomanRoadRouteGeometrySegment(
+            segment_type="direct_water_edge", leg_index=index, coordinates=list(plan.coordinates),
+            source_anchor_id=source.historical_place.id, destination_anchor_id=destination.historical_place.id,
+        )
+
+    @staticmethod
+    def _land_distance_m(leg: RomanRoadRouteLeg) -> float | None:
+        if leg.candidate is not None:
+            return leg.candidate.network_distance_m + leg.candidate.access_connector_distance_m
+        if leg.terrain_candidate is not None and leg.reconstruction_method != "DIRECT_WATER_EDGE":
+            return leg.terrain_candidate.metrics.distance_km * 1000
+        return None
 
     @staticmethod
     def _land_unavailable_leg(index, source, destination, historical_route) -> RomanRoadRouteLeg:
@@ -411,7 +572,13 @@ class RomanRoadRouteOrchestrator:
         })
 
     @staticmethod
+    def _leg_succeeded(leg: RomanRoadRouteLeg) -> bool:
+        return leg.candidate is not None or leg.terrain_candidate is not None or any(item.coordinates for item in leg.simulation_segments)
+
+    @staticmethod
     def _geometry(index: int, source: HistoricalRoutePoint, destination: HistoricalRoutePoint, leg: RomanRoadRouteLeg) -> list[RomanRoadRouteGeometrySegment]:
+        if leg.simulation_segments:
+            return list(leg.simulation_segments)
         if leg.candidate is None and leg.terrain_candidate is None:
             # Empty coordinates deliberately avoid rendering a fabricated line
             # across an unresolved historical gap.
@@ -441,8 +608,8 @@ class RomanRoadRouteOrchestrator:
             statuses.update(candidate.segment_status_counts)
             chronology.update(candidate.chronology_counts)
         return RomanRoadRouteAggregate(
-            successful_leg_count=sum(leg.candidate is not None or leg.terrain_candidate is not None for leg in legs),
-            failed_leg_count=sum(leg.candidate is None and leg.terrain_candidate is None for leg in legs),
+            successful_leg_count=sum(RomanRoadRouteOrchestrator._leg_succeeded(leg) for leg in legs),
+            failed_leg_count=sum(not RomanRoadRouteOrchestrator._leg_succeeded(leg) for leg in legs),
             total_network_distance_m=sum(item.network_distance_m for item in candidates),
             total_access_connector_distance_m=sum(item.access_connector_distance_m for item in candidates),
             road_type_counts=dict(road_types), segment_status_counts=dict(statuses), chronology_counts=dict(chronology),

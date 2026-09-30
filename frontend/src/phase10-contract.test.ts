@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fetchAgentHistoricalRoutePresentation, fetchHistoricalRoutePresentation, loadHistoricalRoutePresentation, markerFeatures, panelForFeature, romanRoadSegmentFeatures, routeDirectionArrows, routeFeature, routeFragmentFeatures, visibleMapLayers, toLeafletLineCoordinates, uncertaintyCorridorFeatures, waypointPopupMetadata } from "./phase10-contract";
+import { fetchAgentHistoricalRoutePresentation, fetchHistoricalRoutePresentation, loadHistoricalRoutePresentation, markerFeatures, panelForFeature, romanRoadSegmentFeatures, routeDirectionArrows, routeFeature, routeFragmentFeatures, routeSegments, visibleMapLayers, toLeafletLineCoordinates, uncertaintyCorridorFeatures, waypointPopupMetadata } from "./phase10-contract";
 
 const response = { route: { route_id: "r1", route_name: "Route", confidence: 0.7 }, waypoints: [{ id: "a", name: "Anchor", event_type: "CITY", period: "218 BCE", description: "Supplied", location_confidence: "EXACT", evidence_refs: ["e1"] }], geojson: { type: "FeatureCollection" as const, features: [{ type: "Feature" as const, geometry: { type: "LineString" as const, coordinates: [[1, 2], [3, 4]] as [number, number][] }, properties: {} }, { type: "Feature" as const, geometry: { type: "Point" as const, coordinates: [1, 2] as [number, number] }, properties: { waypoint_id: "a", knowledge_panel_id: "a" } }, { type: "Feature" as const, geometry: null, properties: { waypoint_id: "missing" } }] }, knowledge_panels: [{ waypoint_id: "a", title: "Anchor", summary: "Bound summary", evidence_refs: ["e1"], source_references: ["e1"], external_references: [{ id: "ref", title: "Reading", url: "https://example.invalid", reference_type: "PAPER" }], confidence: "EXACT" }] };
 
@@ -69,6 +69,22 @@ describe("Phase 10.1 presentation API contract", () => {
     expect(fragments[0].properties.component_id).toBe("comp-a");
     expect(fragments[0].geometry?.coordinates[0]).not.toEqual(fragments[1].geometry?.coordinates[0]);
     expect(routeFeature(payload)?.geometry?.type).toBe("LineString");
+  });
+
+  it("uses each access connector's own geometry distance", () => {
+    const payload = loadHistoricalRoutePresentation({
+      ...response,
+      road_network: { source: "Itiner-e", route_status: "COMPLETE", aggregate: { successful_leg_count: 1, failed_leg_count: 0, total_network_distance_m: 2_191_000, total_access_connector_distance_m: 200, road_type_counts: {}, segment_status_counts: {}, chronology_counts: {} }, limitations: [], legs: [{ leg_index: 1, source_anchor_id: "a", destination_anchor_id: "b", candidate: { network_distance_m: 2_191_000 } }] },
+      geojson: { type: "FeatureCollection", features: [
+        { type: "Feature", geometry: { type: "LineString", coordinates: [[22.5, 38.48], [22.51, 38.48]] }, properties: { layer_type: "roman_road_segment", segment_role: "access_connector", leg_index: 1, segment_distance_m: 900 } },
+        { type: "Feature", geometry: { type: "LineString", coordinates: [[22.51, 38.48], [12.5, 41.9]] }, properties: { layer_type: "roman_road_segment", segment_role: "roman_road", leg_index: 1, segment_distance_m: 2_191_000 } },
+      ] },
+    });
+    const segments = routeSegments(payload);
+    expect(segments[0].kind).toBe("connector");
+    expect(segments[0].distanceKm).toBeCloseTo(0.9);
+    expect(segments[1].kind).toBe("roman_road");
+    expect(segments[1].distanceKm).toBeCloseTo(2191);
   });
 
 });
