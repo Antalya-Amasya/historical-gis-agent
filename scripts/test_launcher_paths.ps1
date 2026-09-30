@@ -75,6 +75,15 @@ try {
     Assert-PathUnder $legacyRoot $script:chromaData "compat chroma data path"
     Assert-True (-not (Test-EnvFlagEnabled "ROMAN_ROAD_ENABLED")) "roman roads stay disabled unless explicitly enabled"
     Assert-OptionalGisDependencies
+    Enable-DefaultGisAssets
+    Assert-OptionalGisDependencies
+    Assert-True (Test-EnvFlagEnabled "ROMAN_ROAD_ENABLED") "normal launcher enables existing Roman roads"
+    Assert-SamePath (Join-Path $projectRoot "data\raw\itiner_e\itinere_roads_zenodo_17122148.geojson") $env:ROMAN_ROAD_GEOJSON_PATH "default road dataset"
+    Assert-SamePath (Join-Path $projectRoot "data\gis\natural_earth_10m") $env:MARITIME_SURFACE_DATA_ROOT "default Natural Earth dataset"
+    Assert-SamePath (Join-Path $projectRoot "data\pleiades_v4_1\pleiades_v4_1.sqlite3") $env:PLEIADES_GAZETTEER_PATH "default Pleiades index"
+    @("PLEIADES_GAZETTEER_PATH", "ROMAN_ROAD_ENABLED", "ROMAN_ROAD_GEOJSON_PATH", "MARITIME_SURFACE_DATA_ROOT") | ForEach-Object {
+        [Environment]::SetEnvironmentVariable($_, $null)
+    }
 
     # B. Second runtime root supplied entirely through configuration.
     $env:HISTORICAL_GIS_RUNTIME_ROOT = $tempRoot

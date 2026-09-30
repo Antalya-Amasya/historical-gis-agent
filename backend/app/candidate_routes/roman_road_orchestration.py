@@ -92,7 +92,7 @@ class RomanRoadRouteOrchestrator:
 
     def __init__(
         self,
-        candidate_service: RomanRoadCandidateService,
+        candidate_service: RomanRoadCandidateService | None,
         *,
         terrain_route_service: GeographicCandidateRouteService | None = None,
         terrain_profile: ArmyProfile | None = None,
@@ -102,10 +102,12 @@ class RomanRoadRouteOrchestrator:
         self.terrain_route_service = terrain_route_service
         self.terrain_profile = terrain_profile or ArmyProfile(name="terrain_fallback")
         self.maritime_surface = maritime_surface
-        self.barrier_crossing_service = BarrierCrossingService(
-            candidate_service,
-            terrain_route_service=terrain_route_service,
-            terrain_profile=self.terrain_profile,
+        self.barrier_crossing_service = (
+            BarrierCrossingService(
+                candidate_service,
+                terrain_route_service=terrain_route_service,
+                terrain_profile=self.terrain_profile,
+            ) if candidate_service is not None else None
         )
 
     def build_roman_road_candidates(self, historical_route: HistoricalRoute) -> RomanRoadRouteResult:
@@ -137,6 +139,13 @@ class RomanRoadRouteOrchestrator:
                     geometry_segments.extend(self._geometry(leg_index, source, destination, leg))
                     break
                 exit_point = points[point_index + 2]
+                if self.barrier_crossing_service is None:
+                    leg = self._land_unavailable_leg(leg_index, source, exit_point, historical_route)
+                    legs.append(leg)
+                    geometry_segments.extend(self._geometry(leg_index, source, exit_point, leg))
+                    point_index += 2
+                    leg_index += 1
+                    continue
                 crossing = self.barrier_crossing_service.build(source, destination, exit_point)
                 leg = self._barrier_leg(leg_index, source, destination, exit_point, crossing, historical_route)
                 legs.append(leg)
@@ -151,8 +160,11 @@ class RomanRoadRouteOrchestrator:
                 point_index += 1
                 leg_index += 1
                 continue
-            result = self.candidate_service.build(source, destination)
-            leg = self._leg(leg_index, source, destination, result, historical_route)
+            leg = (
+                self._leg(leg_index, source, destination, self.candidate_service.build(source, destination), historical_route)
+                if self.candidate_service is not None
+                else self._land_unavailable_leg(leg_index, source, destination, historical_route)
+            )
             if leg.candidate is None and self.terrain_route_service is not None:
                 leg = self._terrain_fallback(leg, source, destination)
             legs.append(leg)
@@ -163,7 +175,11 @@ class RomanRoadRouteOrchestrator:
         status = RomanRoadRouteStatus.COMPLETE if successes == len(legs) else RomanRoadRouteStatus.PARTIAL if successes else RomanRoadRouteStatus.UNAVAILABLE
         return RomanRoadRouteResult(
             historical_route_id=historical_route.id,
-            generation_method="ROMAN_ROAD_PREFERRED_TERRAIN_FALLBACK" if self.terrain_route_service is not None else "ROMAN_ROAD_NETWORK",
+            generation_method=(
+                "GIS_RECONSTRUCTION_NO_ROAD_NETWORK" if self.candidate_service is None
+                else "ROMAN_ROAD_PREFERRED_TERRAIN_FALLBACK" if self.terrain_route_service is not None
+                else "ROMAN_ROAD_NETWORK"
+            ),
             status=status, legs=legs, geometry_segments=geometry_segments,
             aggregate=self._aggregate(legs), limitations=[
                 "HistoricalRoute anchors and order come from supplied evidence-backed route data; Roman-road paths are infrastructure candidates only.",
@@ -272,6 +288,22 @@ class RomanRoadRouteOrchestrator:
             ordering_provenance=RomanRoadRouteOrchestrator._ordering_provenance(source, destination, historical_route),
             limitation="Explicit sea travel is not eligible for Roman-road or land-terrain planning; no maritime planner is configured.",
             travel_mode=HistoricalTravelMode.SEA,
+        )
+
+    @staticmethod
+    def _land_unavailable_leg(index, source, destination, historical_route) -> RomanRoadRouteLeg:
+        return RomanRoadRouteLeg(
+            leg_index=index,
+            source_anchor_id=source.historical_place.id,
+            destination_anchor_id=destination.historical_place.id,
+            source_evidence_refs=list(source.evidence_refs),
+            destination_evidence_refs=list(destination.evidence_refs),
+            status=RomanRoadCandidateStatus.DISCONNECTED,
+            failure_status="LAND_NETWORK_UNAVAILABLE",
+            reconstruction_method="UNAVAILABLE",
+            ordering_provenance=RomanRoadRouteOrchestrator._ordering_provenance(source, destination, historical_route),
+            limitation="No Roman-road network is configured for this land leg.",
+            travel_mode=RomanRoadRouteOrchestrator._travel_mode(source, destination, historical_route),
         )
 
     @staticmethod

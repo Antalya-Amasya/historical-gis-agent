@@ -117,3 +117,21 @@ def test_raw_unhashed_constructor_is_not_used_for_production_surface(monkeypatch
     assert orchestrator.maritime_surface is not None
     assert hashes and hashes[0]
     assert all(item is not None for item in hashes)
+
+
+def test_maritime_loads_without_roman_roads_and_land_remains_a_gap(monkeypatch, tmp_path):
+    monkeypatch.setattr(main.settings, "roman_road_enabled", False)
+    monkeypatch.setattr(main.settings, "dem_hgt_dir", None)
+    monkeypatch.setattr(main.settings, "maritime_surface_data_root", str(_fixture_root(tmp_path)))
+    monkeypatch.setattr(main.RomanRoadGraph, "load", lambda *_args: (_ for _ in ()).throw(AssertionError("roads disabled")))
+    with TestClient(main.app) as client:
+        assert client.get("/health").json()["natural_earth"] == "ACTIVE"
+        assert client.get("/health").json()["itiner_e"] == "UNAVAILABLE"
+        orchestrator = main.agent.tools.roman_road_orchestrator
+        assert orchestrator.terrain_route_service is None
+        sea = _route([_point("P", "leg", -2.0, -2.0), _point("Q", "leg", -5.0, -5.0)], HistoricalTravelMode.SEA)
+        land = _route([_point("A", "leg", 0.0, 0.0), _point("B", "leg", 1.0, 0.0)], HistoricalTravelMode.LAND)
+        assert orchestrator.build_roman_road_candidates(sea).geometry_segments[0].segment_type == "direct_water_edge"
+        land_result = orchestrator.build_roman_road_candidates(land)
+        assert land_result.legs[0].failure_status == "LAND_NETWORK_UNAVAILABLE"
+        assert land_result.geometry_segments[0].coordinates == []

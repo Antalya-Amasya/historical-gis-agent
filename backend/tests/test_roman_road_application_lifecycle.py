@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+import pytest
 
 import backend.app.main as main
 from backend.app.roads.itiner_e import RomanRoadGraph, RomanRoadSegment, RoadChronology
@@ -26,3 +27,12 @@ def test_enabled_capability_loads_once_per_application_lifecycle(monkeypatch):
         client.get("/health")
         client.get("/health")
     assert calls == [main.Path("fixture.geojson")]
+
+
+def test_configured_missing_dem_fails_instead_of_using_synthetic_terrain(monkeypatch):
+    monkeypatch.setattr(main.settings, "roman_road_enabled", False)
+    monkeypatch.setattr(main.settings, "maritime_surface_data_root", None)
+    monkeypatch.setattr(main.settings, "dem_hgt_dir", "missing-srtm-directory")
+    with pytest.raises(RuntimeError, match="configured SRTM terrain directory is unavailable"):
+        with TestClient(main.app):
+            pass

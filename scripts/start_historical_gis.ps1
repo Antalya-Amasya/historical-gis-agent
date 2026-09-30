@@ -256,6 +256,19 @@ function Test-Backend {
         $null -ne $response.agent -and $null -ne $response.provider
 }
 
+function Assert-BackendGisAssets {
+    $response = Invoke-LocalJson "http://127.0.0.1:8000/health"
+    $required = @("pleiades", "srtm", "natural_earth")
+    if (Test-EnvFlagEnabled "ROMAN_ROAD_ENABLED") {
+        $required += "itiner_e"
+    }
+    foreach ($asset in $required) {
+        if ($null -eq $response -or $response.$asset -ne "ACTIVE") {
+            throw "Backend GIS asset '$asset' is not ACTIVE. A backend already running on 8000 may predate this configuration; restart that matching backend and relaunch."
+        }
+    }
+}
+
 function Test-Frontend {
     try {
         $response = Invoke-WebRequest -Uri $browserUrl -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop
@@ -430,6 +443,24 @@ function Assert-OptionalGisDependencies {
     }
 }
 
+function Enable-DefaultGisAssets {
+    # Explicit deployment overrides, including ROMAN_ROAD_ENABLED=0, take precedence.
+    if ($null -eq (Get-LauncherEnvValue "PLEIADES_GAZETTEER_PATH")) {
+        $env:PLEIADES_GAZETTEER_PATH = Join-Path $projectRoot "data\pleiades_v4_1\pleiades_v4_1.sqlite3"
+    }
+    if ($null -eq (Get-LauncherEnvValue "ROMAN_ROAD_ENABLED")) {
+        $env:ROMAN_ROAD_ENABLED = "1"
+    }
+    if ((Test-EnvFlagEnabled "ROMAN_ROAD_ENABLED") -and $null -eq (Get-LauncherEnvValue "ROMAN_ROAD_GEOJSON_PATH")) {
+        $env:ROMAN_ROAD_GEOJSON_PATH = Join-Path $projectRoot "data\raw\itiner_e\itinere_roads_zenodo_17122148.geojson"
+    }
+    if ($null -eq (Get-LauncherEnvValue "MARITIME_SURFACE_DATA_ROOT")) {
+        $env:MARITIME_SURFACE_DATA_ROOT = Join-Path $projectRoot "data\gis\natural_earth_10m"
+    }
+    Assert-Path $env:PLEIADES_GAZETTEER_PATH "Pleiades index" Leaf
+    Assert-Path (Join-Path $env:MARITIME_SURFACE_DATA_ROOT "surface-manifest.json") "Natural Earth manifest" Leaf
+}
+
 function Get-ChromaPathFromCommandLine {
     param([string]$CommandLine)
 
@@ -537,12 +568,14 @@ function Ensure-HistoricalGisBackend {
                 "--env-file", (Quote-ProcessArgument $externalEnv), "--app-dir", (Quote-ProcessArgument $ExpectedProjectRoot)
             ) $ExpectedProjectRoot | Out-Null
             Wait-Service ${function:Test-Backend} "Backend"
+            Assert-BackendGisAssets
             Write-Host "      Backend ready."
         }
         "SameWorktree" {
             if (-not (Test-Backend)) {
                 throw "Port 8000 belongs to the expected Historical GIS backend worktree, but the health probe failed."
             }
+            Assert-BackendGisAssets
             Write-Host "      Already running on 8000 (same worktree)."
         }
         "StaleWorktree" {
@@ -618,6 +651,7 @@ if ($MyInvocation.InvocationName -eq '.') {
 
 try {
     Resolve-HistoricalGisLauncherConfig
+    Enable-DefaultGisAssets
     Assert-OptionalGisDependencies
     Assert-Path (Join-Path $frontendRoot "package.json") "Frontend package.json" Leaf
     Assert-Path $frontendModules "Frontend dependencies (run 'pnpm install --frozen-lockfile' in frontend)" Container

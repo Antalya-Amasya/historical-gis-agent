@@ -1,4 +1,6 @@
 import logging
+import sqlite3
+from contextlib import closing
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +24,7 @@ from backend.app.candidate_routes.geographic import GeographicCandidateRouteServ
 from backend.app.candidate_routes.terrain import MosaicDEMProvider
 from backend.app.roads.itiner_e import RomanRoadGraph
 from backend.app.gis.natural_earth_surface import NaturalEarthAvailability, NaturalEarthSurfaceClassifier
+from backend.app.geography.place_registry import _connect_read_only, _index_path, _metadata
 from pathlib import Path
 from backend.app.historical_route_presentation_service import (
     HistoricalRoutePresentationReadService, PresentationContractError, PresentationNotFoundError,
@@ -116,24 +119,43 @@ def maritime_surface_from_settings(data_root: str | None = None):
 
 @app.on_event("startup")
 def compose_roman_road_capability() -> None:
-    """Load the optional deployment dataset once per FastAPI application lifecycle."""
+    """Load independently configured GIS assets once per application lifecycle."""
     global agent
-    if not settings.roman_road_enabled:
-        return
-    path = Path(settings.roman_road_geojson_path)
-    if not path.is_file():
-        raise RuntimeError(f"roman-road capability is enabled but dataset is unavailable: {path}")
-    terrain_service = GeographicCandidateRouteService(
-        MosaicDEMProvider(Path(settings.dem_hgt_dir))
-        if settings.dem_hgt_dir and Path(settings.dem_hgt_dir).is_dir()
-        else None,
-    )
-    orchestrator = RomanRoadRouteOrchestrator(
-        RomanRoadCandidateService(RomanRoadGraph.load(path)),
-        terrain_route_service=terrain_service,
-        maritime_surface=maritime_surface_from_settings(),
-    )
-    agent = build_agent(roman_road_orchestrator=orchestrator)
+    index_path, _ = _index_path()
+    pleiades_status = "UNAVAILABLE"
+    if index_path is not None and index_path.is_file():
+        try:
+            with closing(_connect_read_only(index_path)) as connection:
+                _metadata(connection)
+            pleiades_status = "ACTIVE"
+        except (OSError, RuntimeError, sqlite3.Error):
+            logger.warning("Pleiades index could not be verified", exc_info=True)
+    road_service = None
+    if settings.roman_road_enabled:
+        path = Path(settings.roman_road_geojson_path)
+        if not path.is_file():
+            raise RuntimeError(f"roman-road capability is enabled but dataset is unavailable: {path}")
+        road_service = RomanRoadCandidateService(RomanRoadGraph.load(path))
+    terrain_service = None
+    if settings.dem_hgt_dir:
+        dem_path = Path(settings.dem_hgt_dir)
+        if not dem_path.is_dir():
+            raise RuntimeError(f"configured SRTM terrain directory is unavailable: {dem_path}")
+        terrain_service = GeographicCandidateRouteService(MosaicDEMProvider(dem_path))
+    maritime_surface = maritime_surface_from_settings()
+    if road_service is not None or maritime_surface is not None:
+        agent = build_agent(roman_road_orchestrator=RomanRoadRouteOrchestrator(
+            road_service,
+            terrain_route_service=terrain_service,
+            maritime_surface=maritime_surface,
+        ))
+    app.state.gis_assets = {
+        "pleiades": pleiades_status,
+        "srtm": "ACTIVE" if terrain_service is not None else "UNAVAILABLE",
+        "itiner_e": "ACTIVE" if road_service is not None else "UNAVAILABLE",
+        "natural_earth": "ACTIVE" if maritime_surface is not None else "UNAVAILABLE",
+    }
+    logger.info("GIS assets: %s", app.state.gis_assets)
 
 
 @app.get("/health")
@@ -143,6 +165,7 @@ def health() -> dict[str, str]:
         "agent": "mock" if settings.agent_mode == "mock" else "bounded",
         "provider": settings.agent_llm_provider if settings.agent_mode != "mock" else "mock",
     }
+    payload.update(getattr(app.state, "gis_assets", {}))
     if settings.agent_mode != "mock" and settings.agent_llm_provider == "zhipu":
         payload["model_policy"] = settings.agent_model_policy
         payload["default_model"] = settings.zhipu_model_flash or settings.zhipu_model or ""
