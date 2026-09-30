@@ -111,11 +111,11 @@ def test_route_built_malformed_submit_preserves_structured_route(monkeypatch):
     reply, state = subject.respond("show a historical route", AgentState(session_id="g4d-route-submit"))
     assert state.historical_route is not None
     assert len(state.historical_route.ordered_points) == 2
-    assert state.status == "completed_with_guardrail"
-    assert state.final_grounding_status == "guardrail_fallback"
-    assert reply == ROUTE_PROSE_GROUNDING_FALLBACK
+    assert state.status == "completed"
+    assert state.final_grounding_status == "route_state_summary"
+    assert "Genava" in reply and "not a documented exact itinerary" in reply
     assert reply != GENERIC_GUARDRAIL
-    assert "unsupported_historical_answer_discarded" in state.warnings
+    assert "Unsupported prose" not in reply
 
 
 def test_ordinary_answer_malformed_submit_keeps_generic_guardrail():

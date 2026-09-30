@@ -14,6 +14,7 @@ from backend.app.agent.route_orchestration import (
     visible_historical_events,
 )
 from backend.app.models import AgentProviderCallTiming, AgentState, AgentToolHistoryEntry
+from backend.app.agent.route_summary import admitted_route_summary
 from backend.app.route_result_status import RouteResultStatus, derive_route_result_status
 
 logger = logging.getLogger(__name__)
@@ -334,11 +335,12 @@ class BoundedAgentLoop:
             state.warnings.append("provenance_candidate_explosion")
 
     def _route_preserving_guardrail_reply(self, state: AgentState) -> str:
-        if state.requested_output == "historical_route" and (
-            state.historical_route is not None or state.historical_route_presentation is not None
-        ):
-            if state.historical_route_presentation is not None:
-                return ROUTE_PROSE_GROUNDING_FALLBACK
+        summary = admitted_route_summary(state)
+        if summary:
+            return summary
+        if state.requested_output == "historical_route" and state.historical_route_presentation is not None:
+            return ROUTE_PROSE_GROUNDING_FALLBACK
+        if state.requested_output == "historical_route" and state.historical_route is not None:
             return ROUTE_PROSE_GROUNDING_FALLBACK_NO_PRESENTATION
         return GENERIC_GROUNDING_GUARDRAIL
 
@@ -355,6 +357,11 @@ class BoundedAgentLoop:
         *,
         reason_warning: str,
     ) -> tuple[str, AgentState]:
+        summary = admitted_route_summary(state)
+        if summary:
+            state.status = "completed"
+            state.final_grounding_status = "route_state_summary"
+            return self._finish(summary, state, started)
         state.status = "completed_with_guardrail"
         state.final_grounding_status = "guardrail_fallback"
         state.warnings.append(reason_warning)

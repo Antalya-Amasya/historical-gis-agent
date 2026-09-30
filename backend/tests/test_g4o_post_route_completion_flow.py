@@ -191,10 +191,11 @@ def test_g4g3_fallback_preserved_after_suppression():
         AgentModelResponse(content=""),
     ], with_presentation=True)
     reply, state = subject.respond("show Hannibal route", AgentState(session_id="g4o-9"))
-    assert state.status == "completed_with_guardrail"
-    assert reply == ROUTE_PROSE_GROUNDING_FALLBACK
+    assert state.status == "completed"
+    assert state.final_grounding_status == "route_state_summary"
+    assert "Genava" in reply
     assert state.historical_route is not None
-    assert "route_terminal_submission_missing" in state.warnings
+    assert "route_terminal_submission_missing" not in state.warnings
 
 
 def test_suppressed_tool_does_not_erase_route():
@@ -249,10 +250,11 @@ def test_g4l_shaped_sequence_no_longer_hits_max_steps_from_redundant_resolves():
     assert state.status in {"completed", "completed_with_guardrail"}
     assert state.tool_execution_stats["suppressed_tool_calls"] == 3
     assert state.historical_route is not None
-    if state.status == "completed":
+    if state.final_grounding_status == "grounded":
         assert reply.startswith("Hannibal marched")
     else:
-        assert reply in {ROUTE_PROSE_GROUNDING_FALLBACK, ROUTE_PROSE_GROUNDING_FALLBACK_NO_PRESENTATION}
+        assert state.final_grounding_status == "route_state_summary"
+        assert "Hannibal marched from Iberia" not in reply
 
 
 def test_suppression_tool_message_contains_guidance():

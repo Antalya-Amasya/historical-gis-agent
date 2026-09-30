@@ -53,13 +53,14 @@ def test_route_presentation_free_form_prose_triggers_guardrail_closure():
         AgentModelResponse(content=PROSE),
     ])
     reply, state = subject.respond("show Hannibal route", AgentState(session_id="g4g3-1"))
-    assert state.status == "completed_with_guardrail"
-    assert state.final_grounding_status == "guardrail_fallback"
-    assert reply == ROUTE_PROSE_GROUNDING_FALLBACK
+    assert state.status == "completed"
+    assert state.final_grounding_status == "route_state_summary"
+    assert "Genava" in reply and "Alpes" in reply
+    assert "not a documented exact itinerary" in reply
     assert PROSE not in reply
     assert state.historical_route is not None
     assert state.historical_route_presentation is not None
-    assert "route_terminal_submission_missing" in state.warnings
+    assert "route_terminal_submission_missing" not in state.warnings
 
 
 def test_route_empty_terminal_response_uses_route_fallback():
@@ -71,8 +72,9 @@ def test_route_empty_terminal_response_uses_route_fallback():
         EMPTY,
     ])
     reply, state = subject.respond("show Hannibal route", AgentState(session_id="g4g3-2"))
-    assert state.status == "completed_with_guardrail"
-    assert reply == ROUTE_PROSE_GROUNDING_FALLBACK_NO_PRESENTATION
+    assert state.status == "completed"
+    assert "Genava" in reply and "Alpes" in reply
+    assert "No simulated map geometry is attached." in reply
     assert reply != "The agent completed without a final answer."
     assert state.historical_route is not None
 
@@ -101,8 +103,9 @@ def test_route_without_presentation_does_not_claim_map_exists():
     ])
     reply, state = subject.respond("show Hannibal route", AgentState(session_id="g4g3-4"))
     assert state.historical_route_presentation is None
-    assert reply == ROUTE_PROSE_GROUNDING_FALLBACK_NO_PRESENTATION
+    assert "No simulated map geometry is attached." in reply
     assert "fragments" not in reply
+    assert "displayed path" not in reply
 
 
 def test_malformed_submit_path_unchanged():
@@ -115,9 +118,10 @@ def test_malformed_submit_path_unchanged():
     ])
     subject.max_grounding_corrections = 0
     reply, state = subject.respond("show a historical route", AgentState(session_id="g4g3-5"))
-    assert state.status == "completed_with_guardrail"
-    assert reply == ROUTE_PROSE_GROUNDING_FALLBACK
-    assert "unsupported_historical_answer_discarded" in state.warnings
+    assert state.status == "completed"
+    assert state.final_grounding_status == "route_state_summary"
+    assert "Unsupported prose" not in reply
+    assert "Genava" in reply
     assert state.historical_route is not None
 
 
@@ -177,9 +181,11 @@ def test_deterministic_route_build_then_missing_submit_triggers_fallback():
     ])
     subject.max_steps = 4
     reply, state = subject.respond("show a historical route", AgentState(session_id="g4g3-10"))
-    assert state.status == "completed_with_guardrail"
+    assert state.status == "completed"
+    assert state.final_grounding_status == "route_state_summary"
     assert state.tool_execution_stats["completion_corrections"] == 0
-    assert reply == ROUTE_PROSE_GROUNDING_FALLBACK
+    assert "I will answer without a route." not in reply
+    assert "Genava" in reply
     assert state.historical_route is not None
 
 
@@ -219,7 +225,7 @@ def test_fallback_adds_zero_new_evidence_claims():
     reply, state = subject.respond("show Hannibal route", AgentState(session_id="g4g3-13"))
     assert "Polybius" not in reply
     assert "Hannibal" not in reply
-    assert "Genava" not in reply
+    assert "Genava" in reply
     assert state.evidence_grounded_claim_count == 0
 
 
@@ -253,8 +259,8 @@ def test_sulla_shaped_component_fragment_fixture():
     assert state.historical_route is not None
     assert state.historical_route_presentation is not None
     assert len(state.historical_route.route_components) == 1
-    assert state.status == "completed_with_guardrail"
-    assert reply == ROUTE_PROSE_GROUNDING_FALLBACK
+    assert state.status == "completed"
+    assert "not a documented exact itinerary" in reply
     assert "Sulla" not in reply
 
 
@@ -269,5 +275,6 @@ def test_hannibal_shaped_empty_terminal_closure():
     reply, state = subject.respond("show Hannibal route through the Alps", AgentState(session_id="g4g3-hannibal"))
     assert state.historical_route is not None
     assert reply != "The agent completed without a final answer."
-    assert state.status == "completed_with_guardrail"
-    assert reply == ROUTE_PROSE_GROUNDING_FALLBACK_NO_PRESENTATION
+    assert state.status == "completed"
+    assert "No simulated map geometry is attached." in reply
+    assert "Hannibal" not in reply
