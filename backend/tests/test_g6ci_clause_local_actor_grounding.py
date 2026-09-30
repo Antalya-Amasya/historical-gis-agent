@@ -1,6 +1,8 @@
 """G6CI: structured clause-local actor grounding on HistoricalEvent."""
 from __future__ import annotations
 
+import pytest
+
 from backend.app.models import EventActorStatus, EventPlaceRole, Evidence, HistoricalEventType
 from backend.app.routes.events import EvidenceGroundedHistoricalEventExtractor
 from backend.tests.test_g6bx_clause_local_modality_eligibility import POMPEY_PASSAGE
@@ -44,6 +46,67 @@ def assert_unknown_actor(text: str):
 
 def test_ariston_sailed_explicit_actor():
     assert_explicit_actor("Ariston sailed from Rhodes to Cyprus.", "Ariston")
+
+
+@pytest.mark.parametrize(
+    ("text", "actor"),
+    [
+        ("Marcus Tullius Cicero returned to Rome.", "Marcus Tullius Cicero"),
+        ("Marcus Tullius Cicero, the envoy, returned to Rome.", "Marcus Tullius Cicero"),
+        ("Lucius Cornelius Sulla, commander of the army, marched toward Athens.", "Lucius Cornelius Sulla"),
+        ("Aurelian Varus, a veteran guide, sailed from Rhodes to Cyprus.", "Aurelian Varus"),
+        ("After Bion waited, Ariston, the envoy, sailed from Rhodes to Cyprus.", "Ariston"),
+    ],
+)
+def test_same_clause_noun_appositive_keeps_explicit_actor(text: str, actor: str):
+    assert_explicit_actor(text, actor)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "He returned to Rome.",
+        "The soldiers, the army, marched toward Athens.",
+        "Ariston and Bion, the envoys, returned to Rome.",
+        "Bion said, Ariston, the envoy, returned to Rome.",
+        "Ariston, the companion of Bion, returned to Rome.",
+        "Ariston, who was the envoy, returned to Rome.",
+        "Ariston, the envoy; returned to Rome.",
+        "Ariston, the envoy—returned to Rome.",
+    ],
+)
+def test_appositive_bridge_rejects_ambiguous_or_cross_clause_actor(text: str):
+    assert EvidenceGroundedHistoricalEventExtractor._ground_movement_actor(text).actor_status is EventActorStatus.UNKNOWN
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Ariston, the envoy, did not return to Rome.",
+        "Ariston, the envoy, was prevented from entering Rome.",
+        "Ariston, the envoy, planned to return to Rome.",
+        'Bion said, "Ariston, the envoy, returned to Rome."',
+    ],
+)
+def test_appositive_bridge_does_not_turn_non_assertion_into_movement(text: str):
+    events, _ = extract(text)
+    assert not any(event.event_type is HistoricalEventType.MOVEMENT for event in events)
+
+
+def test_appositive_actor_change_keeps_directional_roles():
+    event = movement_event("Ariston, the envoy, sailed from Rhodes to Cyprus.")
+    assert event.actor.actor_text == "Ariston"
+    assert {mention.raw_text: mention.role for mention in event.place_mentions} == {
+        "Rhodes": EventPlaceRole.ORIGIN,
+        "Cyprus": EventPlaceRole.DESTINATION,
+    }
+
+
+def test_appositive_movement_fix_does_not_change_presence_actor_grounding():
+    actor = EvidenceGroundedHistoricalEventExtractor._ground_presence_actor(
+        "Ariston, the envoy, was at Rome."
+    )
+    assert actor.actor_status is EventActorStatus.UNKNOWN
 
 
 def test_bion_crossed_while_ariston_waited():

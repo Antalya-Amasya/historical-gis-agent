@@ -354,7 +354,7 @@ class EvidenceGroundedHistoricalEventExtractor:
 
     @classmethod
     def _movement_predicate_actor_score(cls, statement: str, span: tuple[int, int]) -> tuple[int, int, int]:
-        actor = cls._ground_clause_actor(statement, span[0])
+        actor = cls._ground_clause_actor(statement, span[0], allow_appositive=True)
         possessive_governed = (
             span[0] >= 2
             and statement[span[0] - 1] in "'’"
@@ -484,7 +484,9 @@ class EvidenceGroundedHistoricalEventExtractor:
         return name_match, actor_text
 
     @classmethod
-    def _ground_clause_actor(cls, statement: str, predicate_start: int) -> HistoricalEventActorGrounding:
+    def _ground_clause_actor(
+        cls, statement: str, predicate_start: int, *, allow_appositive: bool = False,
+    ) -> HistoricalEventActorGrounding:
         clause, clause_start = cls._local_clause(statement, predicate_start)
         prefix = cls._actor_prefix_before_predicate(statement, predicate_start)
         tail = statement[predicate_start:]
@@ -492,7 +494,39 @@ class EvidenceGroundedHistoricalEventExtractor:
         predicate = verb_match.group(0) if verb_match else tail.split()[0]
         resolved = cls._explicit_actor_name_match(prefix, predicate=predicate)
         if resolved is None:
-            return cls._unknown_actor()
+            if not allow_appositive:
+                return cls._unknown_actor()
+            # A comma-delimited noun appositive is part of the same subject:
+            # "Ariston, the envoy, returned ...".  Do not cross a clause,
+            # quotation, named appositive, or competing grammatical subject.
+            full_prefix = statement[:predicate_start]
+            appositive = re.search(
+                rf"(?P<name>{cls._ACTOR_PROPER_NAME}),\s*"
+                r"(?P<description>[a-z]+(?:\s+[a-z]+){0,6}),\s*$",
+                full_prefix,
+            )
+            if appositive is None:
+                return cls._unknown_actor()
+            prior = full_prefix[:appositive.start("name")]
+            description = appositive.group("description")
+            if (
+                (prior.strip() and not prior.rstrip().endswith(","))
+                or re.search(r"\b(?:said|reported|claimed|declared)\b|[\"“”]", prior, re.IGNORECASE)
+                or re.search(r"\b(?:who|whom|whose|which|that|while|after|before|when|and|or|but|said|reported|claimed|declared)\b", description)
+                or re.search(rf"\b{cls._ACTOR_SUBJECT_AUXILIARIES}\b", description)
+                or cls._MOVEMENT_VERBS.search(description)
+                or not cls._valid_explicit_actor_name(appositive.group("name"))
+            ):
+                return cls._unknown_actor()
+            name = appositive.group("name")
+            start, end = appositive.span("name")
+            return HistoricalEventActorGrounding(
+                actor_text=name,
+                actor_tokens=name.split(),
+                actor_span=(start, end),
+                actor_status=EventActorStatus.EXPLICIT,
+                actor_clause_span=(start, clause_start + len(clause)),
+            )
         name_match, actor_text = resolved
         extended_prefix = statement[:predicate_start]
         prefix_start = 0 if prefix == extended_prefix else clause_start
@@ -520,7 +554,7 @@ class EvidenceGroundedHistoricalEventExtractor:
         predicate = cls._asserted_movement_predicate_span(statement)
         if predicate is None:
             return cls._unknown_actor()
-        return cls._ground_clause_actor(statement, predicate[0])
+        return cls._ground_clause_actor(statement, predicate[0], allow_appositive=True)
 
     @classmethod
     def _asserted_presence_predicate_span(cls, statement: str) -> tuple[int, int] | None:
