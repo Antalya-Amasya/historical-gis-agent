@@ -69,11 +69,6 @@ NO_ROUTE_TERMINAL_GUARDRAIL = (
     "The current retrieved historical evidence is insufficient to support a reliable "
     "HistoricalRoute, so the system will not add unsupported places or route details."
 )
-_KNOWN_GUARDRAIL_PREFIXES = (
-    "the current retrieved historical evidence is insufficient",
-    "the system could not safely validate",
-    "a structured route was built from the current evidence",
-)
 
 
 def _fingerprint(name: str, arguments: dict) -> str:
@@ -881,13 +876,38 @@ class BoundedAgentLoop:
         if not (answer or "").strip():
             return False
         normalized = answer.casefold().strip()
-        if any(normalized.startswith(prefix) for prefix in _KNOWN_GUARDRAIL_PREFIXES):
+        if normalized in {GENERIC_GROUNDING_GUARDRAIL.casefold(), NO_ROUTE_TERMINAL_GUARDRAIL.casefold()}:
             return False
-        if "no route" in normalized or any(term in normalized for term in _INSUFFICIENT_TERMS):
-            return False
-        if has_unsupported_route_pattern(answer):
-            return True
-        return "route" in normalized
+        # Polarity belongs to a clause: a negative explanation must neither be
+        # rejected for mentioning a route nor shield a separate positive claim.
+        clauses = re.split(r"[.;!?\n,]+|\b(?:but|however|yet|and|so|therefore|although|because|while)\b", normalized)
+        route_language = r"\b(?:route\w*|movement|travel\w*|journey|waypoints?|geometry|origin|destination|sailed|marched)\b|\bwent\s+from\b|→|->|—>|路线"
+        negative_prefix = (
+            r"\b(?:no|never)\b(?:\W+\w+){0,5}\W*$"
+            r"|\b(?:does|did|do)\s+not\s+(?:establish|support|show|prove|confirm|describe|document)\b[^.!?;]*$"
+            r"|\b(?:insufficient|evidence is not enough)\b[^.!?;]*$"
+            r"|\b(?:cannot|can't|could not|unable to)\s+(?:establish|support|show|prove|confirm|describe|document|reconstruct|build|generate)\b[^.!?;]*$"
+            r"|(?:无法|不能|证据不足)[^.!?;]*$"
+            r"|\b(?:is|are|was|were)\s+not\s+(?:(?:a|an|the|completed|actual|historical)\s+)*$"
+        )
+        negative_suffix = (
+            r"^.{0,80}?\b(?:"
+            r"(?:cannot|can't|could not|should not|must not)\s+(?:be\s+)?(?:reconstruct\w*|draw\w*|build|built|generat\w*|establish\w*|support\w*|confirm\w*|prove\w*)"
+            r"|(?:was|were|is|are)\s+not\s+(?:completed|executed|established|supported|documented|reconstructed|drawn|built|generated|available|proven|confirmed|shown|attested)"
+            r"|(?:was|were|is|remains?)\s+(?:prevented|blocked|aborted|abandoned|incomplete|unexecuted|proposed|planned))\b"
+        )
+        for clause in clauses:
+            mentions = list(re.finditer(route_language, clause))
+            if not mentions:
+                continue
+            # Double negation and possibility language do not deny a route.
+            if re.search(r"\bnot\s+(?:impossible|unlikely)|\b(?:cannot|can't)\s+(?:exclude|rule out)", clause):
+                return True
+            for mention in mentions:
+                prefix, suffix = clause[:mention.start()], clause[mention.end():]
+                if not (re.search(negative_prefix, prefix) or re.search(negative_suffix, suffix)):
+                    return True
+        return False
 
     @staticmethod
     def _no_route_terminal_guardrail_reply(state: AgentState) -> str:
