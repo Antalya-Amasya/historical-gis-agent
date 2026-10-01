@@ -20,6 +20,16 @@ const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_BASE_URL ?? "http://127.0.0.
 
 export function loadHistoricalRoutePresentation(payload: HistoricalRoutePresentationPayload): HistoricalRoutePresentationPayload {
   if (payload.geojson.type !== "FeatureCollection") throw new Error("Expected a GeoJSON FeatureCollection");
+  // Reject invalid coordinates inside the request boundary, before React map effects.
+  const features = [...payload.geojson.features, payload.route_geojson, ...(payload.fragments ?? []).map(fragment => fragment.route_geojson)];
+  for (const feature of features) {
+    const geometry = feature?.geometry;
+    if (!geometry || (geometry.type !== "Point" && geometry.type !== "LineString")) continue;
+    const coordinates = geometry.type === "Point" ? [geometry.coordinates] : geometry.coordinates;
+    if (!Array.isArray(coordinates) || coordinates.some(point => !Array.isArray(point) || point.length < 2 || !Number.isFinite(point[0]) || !Number.isFinite(point[1]) || Math.abs(point[0]) > 180 || Math.abs(point[1]) > 90)) {
+      throw new Error("Route contains an invalid coordinate");
+    }
+  }
   return payload;
 }
 

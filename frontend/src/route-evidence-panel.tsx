@@ -48,8 +48,8 @@ export function RouteEvidencePanel({
           <p className="panel-kicker">史料依据</p>
           <h2>相关证据</h2>
           <ul className="segment-list">
-            {evidence.map((item) => (
-              <li key={item.id}>
+            {evidence.map((item, index) => (
+              <li key={`${item.id}-${index}`}>
                 <strong>{item.author} · {item.work} {item.locator}</strong>
                 <span>{item.excerpt ?? item.text ?? "Evidence excerpt unavailable."}</span>
               </li>
