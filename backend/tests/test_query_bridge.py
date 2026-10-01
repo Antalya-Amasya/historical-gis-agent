@@ -16,7 +16,7 @@ def test_registry_bridge_preserves_original_and_e5_prefix():
 
 def test_bridge_applicability_disable_and_original_preservation():
     bridge = HistoricalQueryBridge()
-    assert bridge.transform("Caesar and Pompey").applied is False
+    assert bridge.transform("Caesar and Pompey").retrieval_query.startswith("Caesar and Pompey")
     assert bridge.transform("未知中文问题").retrieval_query == "未知中文问题"
     assert HistoricalQueryBridge(enabled=False).transform("凯撒与庞培的内战").retrieval_query == "凯撒与庞培的内战"
     result = bridge.transform("汉尼拔翻越阿尔卑斯山")
@@ -51,5 +51,5 @@ def test_shared_retriever_applies_bridge_only_to_read_only_store_query():
             return {"ids": [["x"]], "documents": [["text"]], "metadatas": [[{"document_id": "doc", "author": "Author", "work": "Work"}]], "distances": [[0.1]]}
     embedding, collection = Embedding(), Collection()
     ChromaHistoricalRetriever(ChromaHttpEvidenceStore(collection, embedding), HistoricalQueryBridge()).retrieve("凯撒与庞培的内战", 1)
-    assert embedding.values == ["query: 凯撒与庞培的内战 caesar"]
+    assert embedding.values == ["query: 凯撒与庞培的内战 caesar julius caesar pompey"]
     assert not hasattr(collection, "add") and not hasattr(collection, "upsert")

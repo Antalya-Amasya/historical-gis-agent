@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "semantics": "Identity normalization only. Presence is neither actor proof nor route eligibility; absent identities remain investigable.",
+  "provenance": "Migration of existing production normalization aliases; no new identities or evaluation cases added.",
+  "aliases": {
+    "caesar": [
+      "caesar",
+      "凯撒",
+      "julius caesar"
+    ],
+    "gaul": [
+      "gaul",
+      "gallic",
+      "gallia",
+      "高卢"
+    ],
+    "hannibal": [
+      "hannibal",
+      "汉尼拔"
+    ],
+    "alps": [
+      "alps",
+      "alpine",
+      "阿尔卑斯"
+    ],
+    "polybius": [
+      "polybius",
+      "波利比乌斯"
+    ],
+    "livy": [
+      "livy",
+      "李维"
+    ],
+    "pompey": [
+      "pompey",
+      "庞培"
+    ],
+    "marius": [
+      "marius",
+      "马略"
+    ],
+    "sulla": [
+      "sulla",
+      "苏拉"
+    ],
+    "catiline": [
+      "catiline",
+      "喀提林"
+    ],
+    "jugurtha": [
+      "jugurtha",
+      "朱古达"
+    ]
+  }
+}

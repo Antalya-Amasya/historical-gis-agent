@@ -1,52 +1,23 @@
 """Deterministic relevance and provenance assessment for grounded Agent outputs."""
 from __future__ import annotations
 from dataclasses import dataclass
+import json
+from pathlib import Path
 import re
 import re
 from backend.app.routes.place_aliases import HISTORICAL_PLACE_ALIASES
 
-# Maintainable bilingual normalization data, intentionally separate from runtime contracts.
+# Shared production identity data, also consumed by the retrieval query bridge.
+# These labels normalize identity only; evidence-local actor admission is separate.
+_ALIAS_DATA = Path(__file__).resolve().parents[1] / "rag" / "registries" / "subject_aliases.json"
 SUBJECT_ALIASES: dict[str, tuple[str, ...]] = {
-    "caesar": ("caesar", "凯撒"),
-    "gaul": ("gaul", "gallic", "gallia", "高卢"),
-    "hannibal": ("hannibal", "汉尼拔"),
-    "alps": ("alps", "alpine", "阿尔卑斯"),
-    "polybius": ("polybius", "波利比乌斯"),
-    "livy": ("livy", "李维"),
+    canonical: tuple(forms)
+    for canonical, forms in json.loads(_ALIAS_DATA.read_text(encoding="utf-8"))["aliases"].items()
 }
 
 
-def _bridge_person_subject_aliases() -> dict[str, tuple[str, ...]]:
-    from backend.app.rag.query_bridge import V1_ENTRIES
-
-    aliases: dict[str, tuple[str, ...]] = {}
-    for chinese, english_forms, entry_type in V1_ENTRIES:
-        if entry_type != "person":
-            continue
-        key = english_forms[0].lower().split()[-1]
-        forms: list[str] = []
-        for form in english_forms:
-            lowered = form.lower()
-            if lowered not in forms:
-                forms.append(lowered)
-        if chinese not in forms:
-            forms.append(chinese)
-        if key in aliases:
-            merged = [*aliases[key], *forms]
-            aliases[key] = tuple(dict.fromkeys(merged))
-        else:
-            aliases[key] = tuple(forms)
-    return aliases
-
-
 def _subject_alias_registry() -> dict[str, tuple[str, ...]]:
-    registry = dict(SUBJECT_ALIASES)
-    for key, forms in _bridge_person_subject_aliases().items():
-        if key in registry:
-            registry[key] = tuple(dict.fromkeys([*registry[key], *forms]))
-        else:
-            registry[key] = forms
-    return registry
+    return dict(SUBJECT_ALIASES)
 
 
 @dataclass(frozen=True)
