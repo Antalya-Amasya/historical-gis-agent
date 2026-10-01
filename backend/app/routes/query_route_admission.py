@@ -61,6 +61,7 @@ class QueryRouteScope:
     temporal_end: int | None = None
     temporal_precision: TemporalPrecision | None = None
     has_temporal_constraint: bool = False
+    subject_ambiguous: bool = False
 
 
 @dataclass(frozen=True)
@@ -76,10 +77,58 @@ class QueryRouteRelationAdmission:
     reason_codes: tuple[str, ...]
 
 
+def _fallback_person_subjects(query: str, parsed) -> set[str]:
+    # Reuse identity aliases, excluding geographic entries in that shared data.
+    # Presence supplies query compatibility only, never an evidence actor.
+    from backend.app.agent.evidence_support import _subject_alias_registry
+    from backend.app.geography.place_registry import records, physical_records
+
+    place_names = {
+        str(name).casefold() for item in [*records(), *physical_records()]
+        for name in [item["canonical_name"], *item["aliases"]]
+    }
+    subjects: set[str] = set()
+    for canonical, aliases in _subject_alias_registry().items():
+        if place_names.intersection(form.casefold() for form in (canonical, *aliases)):
+            continue
+        for alias in (canonical, *aliases):
+            pattern = re.escape(alias)
+            if not re.search(r"[\u4e00-\u9fff]", alias):
+                pattern = rf"(?<!\w){pattern}(?!\w)"
+            for match in re.finditer(pattern, query, re.I):
+                if any(span.role.value != "SUBJECT"
+                       and span.start <= match.start() and match.end() <= span.end
+                       for span in parsed.spans):
+                    continue
+                # A documentary source mention is not the requested mover.
+                if re.search(
+                    r"\b(?:(?:described|reported|recorded|written|documented|narrated)\s+by|according\s+to)\s*$",
+                    query[:match.start()], re.I,
+                ):
+                    continue
+                subjects.add(canonical)
+    return subjects
+
+
 def parse_query_route_scope(contexts: tuple[str, ...] | None) -> QueryRouteScope:
     parsed = build_query_route_scope(contexts)
+    subject = parsed.subject
+    # A determiner-led request object is not a literal person name, even when
+    # the narrow parser captures it as a subject (e.g. "the movement ...").
+    if subject and re.match(r"^(?:the|a|an)\b", subject, re.I):
+        subject = None
+    ambiguous = False
+    if subject is None:
+        from backend.app.agent.loop import infer_requested_output
+
+        query = next((item for item in (contexts or ()) if (item or "").strip()), "")
+        if infer_requested_output(query) == "historical_route":
+            candidates = _fallback_person_subjects(query, parsed)
+            ambiguous = len(candidates) > 1
+            if len(candidates) == 1:
+                subject = next(iter(candidates))
     return QueryRouteScope(
-        subject=parsed.subject,
+        subject=subject,
         origin=parsed.origin,
         destination=parsed.destination,
         episode=parsed.episode,
@@ -90,6 +139,7 @@ def parse_query_route_scope(contexts: tuple[str, ...] | None) -> QueryRouteScope
         temporal_end=parsed.temporal_end,
         temporal_precision=parsed.temporal_precision,
         has_temporal_constraint=parsed.has_temporal_constraint,
+        subject_ambiguous=ambiguous,
     )
 
 
@@ -228,11 +278,15 @@ def _observation_relation_statement(
 
 
 def _normalized_person_identity(value: str) -> str:
-    return " ".join(
-        token
-        for part in value.split()
-        if (token := normalize_subject_name(part))
+    from backend.app.agent.evidence_support import _subject_alias_registry
+
+    normalized = " ".join(
+        token for part in value.split() if (token := normalize_subject_name(part))
     )
+    for canonical, aliases in _subject_alias_registry().items():
+        if normalized in {normalize_subject_name(alias) for alias in (canonical, *aliases)}:
+            return canonical
+    return normalized
 
 
 def _classify_subject_match(
@@ -250,6 +304,8 @@ def _classify_subject_match(
         return AuthorityState.UNKNOWN
     if earlier.actor_text.casefold() != later.actor_text.casefold():
         return AuthorityState.UNKNOWN
+    if scope.subject_ambiguous:
+        return AuthorityState.UNKNOWN
     if scope.subject is None:
         return AuthorityState.MATCH
     actor_identity = _normalized_person_identity(earlier.actor_text)
@@ -260,6 +316,8 @@ def _classify_subject_match(
 
 
 def _statement_supports_scope_subject(statement: str, scope: QueryRouteScope) -> bool:
+    if scope.subject_ambiguous:
+        return False
     if scope.subject is None:
         return True
     subject = scope.subject.casefold().strip()
@@ -742,7 +800,7 @@ def relation_non_phase_eligible(
     if not query_contexts:
         return movement_assertion is AuthorityState.MATCH and event_episode_compatibility is AuthorityState.MATCH
     required: list[AuthorityState] = [event_episode_compatibility, movement_assertion]
-    if scope.subject is not None:
+    if scope.subject is not None or scope.subject_ambiguous:
         required.append(subject_match)
     if scope.has_episode_constraint:
         required.append(episode_match)
@@ -920,7 +978,7 @@ def _compose_admitted(
         return False
     if query_active:
         required.append(movement_assertion)
-        if scope.subject is not None:
+        if scope.subject is not None or scope.subject_ambiguous:
             required.append(subject_match)
         if scope.has_episode_constraint:
             required.append(episode_match)
@@ -946,7 +1004,7 @@ def _reason_codes_for_admission(
     query_active: bool,
 ) -> tuple[str, ...]:
     codes: list[str] = []
-    if query_active and scope.subject is not None:
+    if query_active and (scope.subject is not None or scope.subject_ambiguous):
         if subject_match is AuthorityState.WRONG:
             codes.append("QUERY_SUBJECT_REJECTED")
         elif subject_match is AuthorityState.UNKNOWN:
