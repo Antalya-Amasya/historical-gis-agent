@@ -32,7 +32,7 @@ Trace Libo's route from Oricum to Brundisium.
 | Simulation | **Simulated coastal access** connectors where needed; **Natural Earth** land/sea validation; **direct-water edge** geometry only when endpoint surface rules pass |
 | Say aloud | The sea movement is evidence-backed; **exact embarkation points are not** attested; coastal access segments are **generated for visualization**; water lines are algorithmic, not primary-source geometry |
 
-If GIS validation rejects both endpoints as ocean-interior (representative settlement coordinates), the UI may show an explicit **`failed_gap`** instead of a water line. That is intentional fail-closed behavior, not a missing feature.
+Representative settlement coordinates may use explicitly labeled simulated coastal access. If no valid access pair or ocean-only water path can be constructed, the UI retains an explicit **`failed_gap`** instead of a water line.
 
 ## 3–5 minute walkthrough script
 
@@ -45,6 +45,8 @@ If GIS validation rejects both endpoints as ocean-interior (representative settl
 7. **Historical fact vs simulation** — Close with: **WHAT** moved (evidence) is separate from **HOW** it might have moved (GIS). Simulation geometry is **not** historical evidence.
 
 ## Pre-interview checklist
+
+These demos require the prepared external runtime and GIS assets described in [data provenance](v1_data_provenance.md); a fresh Git clone alone does not supply them. The standard launcher activates all four GIS assets.
 
 - [ ] Chroma listening on `127.0.0.1:8002` with production collection loaded (~7,230 records on canonical machine)
 - [ ] Backend on `127.0.0.1:8000`; `GET /health` returns `status: ok`

@@ -247,7 +247,7 @@ function Get-ChromaCollectionCount {
     }
     $countUri = "http://127.0.0.1:8002/api/v2/tenants/default_tenant/databases/default_database/collections/$($collection.id)/count"
     $countResponse = Invoke-LocalJson $countUri
-    return $countResponse.count
+    return $countResponse
 }
 
 function Test-Backend {

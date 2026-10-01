@@ -1,6 +1,6 @@
 # V1 data provenance and dependencies
 
-Scope: what a clone of `agent/cursor` at `ce9a60b674378aeded33f688bc0fe5ff6182e386` contains, and which runtime assets stay outside Git. Evidence is the tracked tree plus local files inspected for V1-RC9 and this note. This audit did not download data, rebuild Chroma, or re-fetch upstream records.
+Scope: tracked publication content and external runtime assets on `agent/cursor`. The acquisition observations below retain their original audit dates. Runtime wiring was rechecked for V2-REL1 on 2026-10-01 at `bec38814c3540cf73c0e318612b8894697c14b5c`: the documented launcher reports all four GIS assets ACTIVE. No data was downloaded or Chroma rebuilt in that recheck.
 
 Labels:
 
@@ -19,8 +19,10 @@ Labels:
 | Chroma collection `roman_republic_primary_sources_v2` | Retrieval | `C:\D\python\202608231533\data\chroma_server_roman_republic_v2` via the launcher | No | **OBSERVED LOCALLY**: 7,230 records (V1-RC1) |
 | Embedding model | Query and ingest vectors | `rag_embedding_model=intfloat/multilingual-e5-small` | No | Weights are a local cache. Launcher sets `HF_HUB_OFFLINE=1` |
 | Pleiades index | Place resolution | `data/pleiades_v4_1/pleiades_v4_1.sqlite3` or `PLEIADES_GAZETTEER_PATH` | No | **OBSERVED LOCALLY** in this worktree |
-| Natural Earth 1:10m | Optional sea surface | `MARITIME_SURFACE_DATA_ROOT` | No | **OBSERVED LOCALLY** under `data/gis/natural_earth_10m`. Manifest audit `AVAILABLE` |
-| Itiner-e roads | Optional Roman-road graph | `ROMAN_ROAD_GEOJSON_PATH` | Metadata only | GeoJSON **OBSERVED LOCALLY** and gitignored. `data/raw/itiner_e/metadata.json` is tracked |
+| SRTM HGT mosaic | Terrain fallback and slope plausibility; not water authority | `DEM_HGT_DIR` (original machine: `C:\data\srtm-hgt`) | No | **OBSERVED LOCALLY**, ACTIVE in the prepared runtime |
+| Natural Earth 1:10m | Maritime surface | `MARITIME_SURFACE_DATA_ROOT`, default worktree `data/gis/natural_earth_10m` | No | **OBSERVED LOCALLY**, ACTIVE; manifest audit `AVAILABLE` |
+| Itiner-e roads | Roman-road routing prior | `ROMAN_ROAD_GEOJSON_PATH`, default worktree `data/raw/itiner_e/itinere_roads_zenodo_17122148.geojson` | Metadata only | GeoJSON **OBSERVED LOCALLY**, ACTIVE and gitignored. `data/raw/itiner_e/metadata.json` is tracked |
+| OpenStreetMap tiles | Frontend basemap only | Remote tile service in the frontend | No local tiles | Presentation only; not used to admit historical facts or route geometry |
 | Caesar corpus JSON | One tracked source extract | `data/historical_sources/raw/caesar/corpus.json` | Yes | Not the full collection |
 
 The launcher in `scripts/start_historical_gis.ps1` still uses `C:\D\python\202608231533` as a compatibility fallback for Python, Chroma, and `.env` when no overrides are set. Independent developers can point at another complete runtime with `HISTORICAL_GIS_RUNTIME_ROOT` and related variables (see README). That fallback is a local development machine, not a portable default, and it does not make a fresh clone able to rebuild the 7,230-record collection.
@@ -67,7 +69,7 @@ The place registry uses representative coordinates and states that they are not 
 
 **UNKNOWN:** acquisition URL and license. None are in the tracked tree. Do not infer them.
 
-`MARITIME_SURFACE_DATA_ROOT` is optional. If it is unset, sea legs do not get a surface. The default launcher does not set it.
+Direct backend startup without `MARITIME_SURFACE_DATA_ROOT` has no maritime surface. The standard launcher now supplies the existing worktree surface directory by default and checks its manifest and backend health. An explicit configured directory takes precedence. Sea geometry and coastal access remain simulation; they do not establish an exact historical sailing track.
 
 ## Itiner-e
 
@@ -84,7 +86,7 @@ The place registry uses representative coordinates and states that they are not 
 
 The GeoJSON is gitignored (`data/raw/itiner_e/*.geojson`). It is **OBSERVED LOCALLY**. This audit did not recompute the sha256 (**UNVERIFIED** against the file bytes).
 
-Roman-road mode is off unless `ROMAN_ROAD_ENABLED=true` and the GeoJSON path exists. The launcher does not enable it. Road geometry is infrastructure, not proof of a historical march.
+The standard launcher now defaults `ROMAN_ROAD_ENABLED=1` and supplies the existing worktree GeoJSON path. Explicit settings, including `ROMAN_ROAD_ENABLED=0`, take precedence. Direct backend startup retains the optional feature switch. Road geometry is an infrastructure prior, not proof of a historical march.
 
 ## Embedding dependencies
 

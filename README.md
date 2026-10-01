@@ -1,6 +1,6 @@
 # Historical Military GIS Agent
 
-Evidence-grounded **Historical GIS Agent** for Roman Republic-era movement questions: primary-source retrieval determines **what** movement happened; optional GIS layers reconstruct one **plausible how** for map presentation.
+Evidence-grounded **Historical GIS Agent** for Roman Republic-era movement questions: primary-source retrieval determines **what** movement happened; configured GIS layers simulate one **plausible how** for map presentation.
 
 **Not claimed:** exact historical itinerary recovery, archaeological certainty, complete Mediterranean coverage, or a production-grade “historical truth engine.”
 
@@ -42,8 +42,8 @@ Natural-language query
 
 | Mode | Behavior |
 | --- | --- |
-| **LAND** | Itiner-e Roman-road network preferred → **SRTM** terrain fallback when roads disconnect |
-| **SEA** | Natural Earth land/ocean/lake topology validation → direct-water edge when valid; otherwise **failed_gap** (no silent ocean snap) |
+| **LAND** | Itiner-e Roman-road network preferred → **SRTM** terrain fallback when road access or a connected path is unavailable |
+| **SEA** | Explicitly simulated coastal access where needed → Natural Earth ocean-only direct-water validation; otherwise **failed_gap** |
 | **UNKNOWN** | Simulation may compare plausible alternatives for display without changing the historical movement claim |
 
 Backend (`backend/`) owns retrieval, agent orchestration, route logic, and APIs. Frontend (`frontend/`) is the query workspace UI. Shared runtime data and Python environment may live outside this Git worktree; see [data provenance](docs/v1_data_provenance.md) and launcher overrides below.
@@ -51,11 +51,11 @@ Backend (`backend/`) owns retrieval, agent orchestration, route logic, and APIs.
 ## V1 capabilities
 
 - Evidence-grounded historical movement reconstruction
-- Exact / eligible geographic anchors via local geography data
+- Resolved historical places with eligible geographic simulation anchors
 - Explicit route result states: `FULL_ROUTE`, `PARTIAL`, `NO_ROUTE`, `ERROR`
 - Provenance and fail-closed safety when evidence is insufficient
 - Frontend map visualization when presentation geometry is attached
-- Optional Roman-road, terrain, and maritime GIS when launcher/env configure datasets (see health check)
+- The standard launcher activates the prepared local Roman-road, terrain, and maritime assets (see health check)
 
 ## GIS and map data assets
 
@@ -112,7 +112,7 @@ Health check:
 Invoke-RestMethod http://127.0.0.1:8000/health
 ```
 
-When GIS datasets are configured for the backend process, expect conceptual fields (values **`ACTIVE`** or **`UNAVAILABLE`**):
+The prepared standard runtime must report all four GIS fields as **`ACTIVE`**. The backend reports **`UNAVAILABLE`** when a provider is absent, and the launcher refuses readiness if a required asset is unavailable:
 
 | Field | Meaning |
 | --- | --- |
@@ -125,24 +125,33 @@ Example shape (provider fields vary): `status`, `agent`, `pleiades`, `srtm`, `it
 
 ### Manual startup
 
-If you need separate terminals, start in this order:
+If you need separate terminals, run this preparation block from the repository root in each backend/Chroma PowerShell terminal. It reuses the launcher's configurable paths and GIS defaults:
+
+```powershell
+. .\scripts\start_historical_gis.ps1
+Resolve-HistoricalGisLauncherConfig
+Enable-DefaultGisAssets
+Assert-OptionalGisDependencies
+```
+
+Then start in this order:
 
 1. Chroma (shared persistence):
 
 ```powershell
-C:\D\python\202608231533\.venv\Scripts\chroma.exe run `
-  --path C:\D\python\202608231533\data\chroma_server_roman_republic_v2 `
+& $chromaExe run `
+  --path $chromaData `
   --host 127.0.0.1 --port 8002
 ```
 
 2. Backend (from this worktree):
 
 ```powershell
-$env:PYTHONPATH = "C:\D\python\historical-gis-cursor"
-C:\D\python\202608231533\.venv\Scripts\python.exe -m uvicorn backend.app.main:app `
+$env:PYTHONPATH = $projectRoot
+& $pythonExe -m uvicorn backend.app.main:app `
   --host 127.0.0.1 --port 8000 `
-  --env-file C:\D\python\202608231533\.env `
-  --app-dir C:\D\python\historical-gis-cursor
+  --env-file $externalEnv `
+  --app-dir $projectRoot
 ```
 
 3. Frontend:
@@ -157,7 +166,7 @@ Open http://127.0.0.1:5173/.
 
 ## Runtime requirements
 
-This project assumes the current canonical Windows layout:
+The original Windows machine uses the layout below. These are documented examples; another prepared runtime can use the launcher overrides:
 
 | Resource | Path |
 |---|---|
@@ -166,7 +175,8 @@ This project assumes the current canonical Windows layout:
 | External `.env` | `C:\D\python\202608231533\.env` |
 | Chroma persistence | `C:\D\python\202608231533\data\chroma_server_roman_republic_v2` |
 | Chroma collection | `roman_republic_primary_sources_v2` |
-| Geography data | `C:\D\python\202608231533\data\geography\` |
+| Pleiades index | Worktree `data/pleiades_v4_1/pleiades_v4_1.sqlite3`, or `PLEIADES_GAZETTEER_PATH` |
+| Terrain | `DEM_HGT_DIR` in the private runtime environment (original machine: `C:\data\srtm-hgt`) |
 | Embedding model | `intfloat/multilingual-e5-small` (cached locally; launcher sets offline HF flags) |
 | Frontend deps | `frontend/node_modules` via `pnpm install` |
 | Runtime logs | `%LOCALAPPDATA%\HistoricalGISAgent\runtime\` |
@@ -185,36 +195,16 @@ Launcher path overrides (explicit environment → existing original-machine layo
 | `HISTORICAL_GIS_ENV_FILE` | Private environment file (may live outside the repo) |
 | `HISTORICAL_GIS_CHROMA_DATA` | Chroma persistence directory for `roman_republic_primary_sources_v2` |
 | `HISTORICAL_GIS_LOG_ROOT` | Optional launcher log directory (default `%LOCALAPPDATA%\HistoricalGISAgent\runtime`) |
-| `PLEIADES_GAZETTEER_PATH` | Optional explicit Pleiades sqlite (application setting) |
-| `ROMAN_ROAD_ENABLED` / `ROMAN_ROAD_GEOJSON_PATH` | Optional Roman-road mode; both required when enabled |
-| `MARITIME_SURFACE_DATA_ROOT` | Optional maritime surface root; validated only when set |
+| `PLEIADES_GAZETTEER_PATH` | Override the default worktree Pleiades sqlite path |
+| `ROMAN_ROAD_ENABLED` / `ROMAN_ROAD_GEOJSON_PATH` | Launcher defaults to enabled and the existing worktree Itiner-e GeoJSON; explicit overrides take precedence |
+| `MARITIME_SURFACE_DATA_ROOT` | Override the default worktree `data/gis/natural_earth_10m` manifest-backed surface |
+| `DEM_HGT_DIR` | Existing SRTM HGT directory, supplied through the runtime environment |
 
-The launcher does not enable Roman-road or maritime GIS merely because files exist. Explicit path overrides never fall back to `C:\D\python\202608231533`.
+The launcher activates the existing worktree GIS assets and validates required health fields. Explicit path overrides never fall back to the original-machine runtime. `ROMAN_ROAD_ENABLED=0` explicitly disables roads. A fresh clone needs the external corpus, embedding cache, Pleiades index, SRTM tiles, road GeoJSON, and Natural Earth layers before it can run the interview demos. SRTM supplies terrain, never water authority; Roman roads supply routing priors, never proof of historical usage. OSM is a remote frontend basemap; no local basemap tiles are provided.
 
-Optional Roman-road capability before backend startup:
+## Other queries
 
-```powershell
-$env:ROMAN_ROAD_ENABLED = "true"
-$env:ROMAN_ROAD_GEOJSON_PATH = "C:\D\python\202608231533\data\raw\itiner_e\itinere_roads_zenodo_17122148.geojson"
-```
-
-Roman-road geometry is infrastructure evidence, not proof of historical movement.
-
-## Example query
-
-Reproducible route-control example (direct pipeline / unit tests; live agent retrieval may vary):
-
-```text
-Trace the route from Oricum to Brundisium.
-```
-
-Gold evidence passage (Caesar, Civil War XXIII): Libo sailed from Oricum to Brundisium. Named variant that aligns episode subject admission:
-
-```text
-Trace Libo's route from Oricum to Brundisium.
-```
-
-Many other natural-language movement questions are supported when retrieval and admission rules allow; the controls above are regression anchors, not the only supported queries.
+Use the two official interview queries above for the prepared demo. Other movement questions are supported when retrieval and admission rules allow; live results depend on retrieved evidence and provider availability.
 
 Non-route example:
 
@@ -228,8 +218,8 @@ Top-level API field: `route_result_status`
 
 | Status | Meaning |
 |---|---|
-| `FULL_ROUTE` | Ordered historical route with sufficient evidence-backed anchors |
-| `PARTIAL` | Some route structure or presentation exists, but the result is not a complete attested route |
+| `FULL_ROUTE` | Complete ordered historical route under the canonical route contract; does not certify complete GIS geometry or an exact itinerary |
+| `PARTIAL` | Partial historical route structure or presentation; inspect diagnostics and any failed geometry gaps |
 | `NO_ROUTE` | Evidence insufficiency or admission failure; fail-closed, not a transport error |
 | `ERROR` | Provider / tool / processing failure distinct from historical insufficiency |
 | `null` | Non-route answer request |
@@ -264,8 +254,9 @@ Short notes for the project owner (expanded checklist in [docs/v1_interview_demo
 Maintained for engineers; not part of the live demo narrative:
 
 - Internal **`FULL_ROUTE` / `PARTIAL_ROUTE`** taxonomy vs API `route_result_status` naming drift in older tests/docs.
-- Some legacy **provenance** integration tests may fail or skip on partial runtime layouts.
-- Terminal agent loop may omit **`submit_grounded_answer`**; route-state summary and guardrails compensate (`route_terminal_submission_missing`).
+- `test_route_provenance.py` has three stale synthetic expectations: generic army fixtures yield no canonical route, and the disabled legacy path no longer emits the expected rejection reason. Reconcile these fixtures separately; do not restore legacy authority to make them pass.
+- Two `test_g4g3_terminal_grounding_closure.py` cases (`test_successful_submit_grounded_answer_unchanged`, `test_successful_submit_after_route_build_does_not_trigger_closure`) expect submitted prose to survive despite an absent canonical route. Current behavior returns grounded insufficiency; these are stale test contracts.
+- When an admitted route exists and **`submit_grounded_answer`** is omitted, terminal closure now generates an evidence-linked route-state summary. `route_terminal_submission_missing` remains a diagnostic; it does not erase the route. Absent routes still return insufficiency.
 - Multimodal LAND/SEA thresholds and maritime validation heuristics are **V1 policy**, not settled historiography.
 
 ## Safety / interpretation
@@ -280,8 +271,9 @@ Maintained for engineers; not part of the live demo narrative:
 
 ```powershell
 # Backend focused regressions
-$env:PYTHONPATH = "C:\D\python\historical-gis-cursor"
-C:\D\python\202608231533\.venv\Scripts\python.exe -m pytest `
+$env:PYTHONPATH = (Get-Location).Path
+# Resolve launcher paths as in Manual startup before using $pythonExe.
+& $pythonExe -m pytest `
   backend/tests/test_v1c_route_result_status.py `
   backend/tests/test_v1b3_same_movement_direct_subject_admission.py `
   backend/tests/test_g4b_route_components.py -q

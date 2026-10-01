@@ -76,4 +76,23 @@ elseif ($liveFrontend.Status -eq "SameWorktree") {
     Assert-Equals "SameWorktree" $liveFrontend.Status "live same-worktree frontend reuse allowed"
 }
 
-Write-Host "launcher identity regression: PASS"
+# Chroma's count endpoint returns a JSON integer, not an object with a count field.
+$originalLocalJson = (Get-Item Function:Invoke-LocalJson).ScriptBlock
+try {
+    function Invoke-LocalJson {
+        param([string]$Uri)
+        if ($Uri.EndsWith("/count")) { return $script:testRecordCount }
+        return [pscustomobject]@{ name = $collectionName; id = "fixture-collection" }
+    }
+    $script:testRecordCount = [long]7230
+    Assert-Equals "7230" (Get-ChromaCollectionCount) "actual record count must survive scalar JSON"
+    $script:testRecordCount = [long]0
+    Assert-Equals "0" (Get-ChromaCollectionCount) "empty collection count remains zero"
+    $script:testRecordCount = $null
+    Assert-True ($null -eq (Get-ChromaCollectionCount)) "failed count read remains unknown"
+}
+finally {
+    Set-Item Function:Invoke-LocalJson $originalLocalJson
+}
+
+Write-Host "launcher identity and count regression: PASS"

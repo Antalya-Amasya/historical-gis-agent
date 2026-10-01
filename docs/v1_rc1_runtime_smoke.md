@@ -7,6 +7,8 @@ Launcher: `scripts/start_historical_gis.ps1` (see README quick start)
 
 This note captures the **accepted V1-RC1** runtime smoke outcome. It is observational documentation only; it does not change product behavior or release requirements.
 
+**Historical snapshot:** later V2 integration activates the existing GIS assets in the standard launcher, supports eligible representative simulation anchors and coastal access, and summarizes admitted routes when terminal submission is omitted. Use [README](../README.md) and the [interview demo](v1_interview_demo.md) for current behavior; the dated observations below are preserved.
+
 ## Measured results
 
 | Check | Outcome |
