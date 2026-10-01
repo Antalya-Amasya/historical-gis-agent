@@ -89,7 +89,11 @@ def assess_evidence_support(user_query: str, requested_output: str, evidence: li
     if requested_output != "historical_route":
         return EvidenceSupportAssessment("sufficient", (), 0, len(evidence), (), (), "route support not requested")
     if not subject_terms:
-        return EvidenceSupportAssessment("insufficient", (), 0, len(evidence), (), (), "no specific route subject could be extracted")
+        # Alias recognition is normalization, not the universe of eligible actors.
+        # Leave evidence-backed actor and route admission to the existing pipeline.
+        status = "unassessed" if evidence else "insufficient"
+        reason = "UNKNOWN_SUBJECT: alias registry cannot assess support" if evidence else "no accumulated Evidence"
+        return EvidenceSupportAssessment(status, (), 0, len(evidence), (), (), reason)
     relevances: list[EvidenceRelevance] = []
     covered: set[str] = set()
     for item in evidence:
