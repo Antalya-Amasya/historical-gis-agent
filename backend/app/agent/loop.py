@@ -130,6 +130,12 @@ def _has_movement_display_intent(normalized: str) -> bool:
 
 def _has_movement_intent(normalized: str) -> bool:
     """Detect general movement questions without requiring the literal word 'route'."""
+    # An explicit movement-display request remains a route request when it also
+    # asks for explanation. Auxiliary analytical clauses must not veto it.
+    if _contains_display_verb(normalized) and (
+        _contains_movement_object(normalized) or _contains_movement_verb(normalized)
+    ):
+        return True
     if _has_analytical_movement_question(normalized):
         return False
     if _has_movement_display_intent(normalized):
