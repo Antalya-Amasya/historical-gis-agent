@@ -1270,13 +1270,31 @@ class EvidenceGroundedHistoricalEventExtractor:
                 incomplete = self._incomplete_movement_fact(sentence, item.id)
                 if incomplete is not None:
                     incomplete_facts.append(incomplete)
-                    if incomplete.outcome == "ABORTED" and incomplete.destination_mentions and re.search(
-                        r"\btoward(?:s)?\b|\bbefore\s+(?:reaching|entering|arriving)\b", sentence, re.I,
-                    ) and incomplete.source_statement == sentence:
-                        continue
+                    if incomplete.source_statement != sentence:
+                        # The fact ends before an independently completed contrast
+                        # clause. Project only that clause, without its predecessor's
+                        # endpoints or actor.
+                        sentence = re.sub(
+                            r"^\s*but\b\s*", "",
+                            sentence[len(incomplete.source_statement):], flags=re.I,
+                        ).strip()
+                    elif incomplete.outcome == "ABORTED":
+                        # Non-completion authority does not depend on whether the
+                        # diagnostic destination recognizer understood the verb.
+                        movement_actor = self._ground_movement_actor(sentence)
+                        if (
+                            incomplete.actor.actor_status is EventActorStatus.EXPLICIT
+                            and movement_actor.actor_status is EventActorStatus.EXPLICIT
+                            and incomplete.actor.actor_text != movement_actor.actor_text
+                        ):
+                            # A different actor's abandonment does not cancel the
+                            # earlier actor's completed clause.
+                            sentence = re.split(r"\bbut\b", sentence, flags=re.I)[0].strip()
+                        else:
+                            continue
                 event_type = self._event_type(sentence)
                 if not self._eligible(
-                    sentence,
+                    sentences[index],
                     event_type,
                     contexts,
                     sentences=sentences,
@@ -1287,7 +1305,7 @@ class EvidenceGroundedHistoricalEventExtractor:
                 places = self._places(sentence, item.id)
                 movement_context = (
                     self._semicolon_joined_context(sentences, index)
-                    if event_type is HistoricalEventType.MOVEMENT
+                    if event_type is HistoricalEventType.MOVEMENT and sentence == sentences[index]
                     else sentence
                 )
                 route_orderings: list[EventRouteOrdering] = []
