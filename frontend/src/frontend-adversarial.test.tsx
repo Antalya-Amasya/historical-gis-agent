@@ -66,8 +66,8 @@ describe("Generic frontend adversarial contract", () => {
     const html=renderToStaticMarkup(<RouteDetails payload={p}/>); const historical=html.split('reconstruction-card')[0];
     expect(historical).not.toContain("Simulated crossing");expect(html).toContain("Simulated crossing");expect(html).toContain("非历史路点");
   });
-  it("handles duplicate evidence identities without dropping content", () => {
-    const e=evidence(50).map(x=>({...x,id:"duplicate"})); expect(renderToStaticMarkup(<RouteEvidencePanel evidence={e} resolvedPlaces={[]} waypoints={[]} limitations={[]} />).match(/<li/g)).toHaveLength(50);
+  it("renders duplicate cited-support identities only once", () => {
+    const e=evidence(50).map(x=>({...x,id:"duplicate"})); expect(renderToStaticMarkup(<RouteEvidencePanel evidence={e} resolvedPlaces={[]} waypoints={[]} limitations={[]} />).match(/<li/g)).toHaveLength(1);
   });
   it("runs fifty deterministic valid shape combinations", async () => {
     for(let i=0;i<50;i++){

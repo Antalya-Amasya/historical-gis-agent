@@ -46,10 +46,10 @@ export function RouteEvidencePanel({
       {evidence.length > 0 && (
         <section className="knowledge-panel authority-card">
           <p className="panel-kicker">史料依据</p>
-          <h2>相关证据</h2>
+          <h2>回答引用的史料</h2>
           <ul className="segment-list">
-            {evidence.map((item, index) => (
-              <li key={`${item.id}-${index}`}>
+            {[...new Map(evidence.filter((item) => item?.id).map((item) => [item.id, item])).values()].map((item) => (
+              <li key={item.id}>
                 <strong>{item.author} · {item.work} {item.locator}</strong>
                 <span>{item.excerpt ?? item.text ?? "Evidence excerpt unavailable."}</span>
               </li>

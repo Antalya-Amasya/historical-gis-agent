@@ -176,6 +176,7 @@ export type AgentRouteChatResponse = {
     historical_route_diagnostics?: { route_source?: string; reason_codes?: string[]; projection_diagnostics?: string[]; anchor_count?: number } | null;
     historical_route?: AgentHistoricalRouteSnapshot | null;
     historical_evidence?: AgentHistoricalEvidence[];
+    supporting_evidence?: AgentHistoricalEvidence[];
     resolved_places?: Array<{ canonical_name: string }>;
   };
 };
@@ -188,6 +189,7 @@ export type AgentRouteChatResult = {
   routeSource: string | null;
   routeDiagnosticSummary: RouteDiagnosticSummary | null;
   evidence: AgentHistoricalEvidence[];
+  supportingEvidence: AgentHistoricalEvidence[];
   resolvedPlaces: string[];
   limitations: string[];
   waypoints: string[];
@@ -250,6 +252,9 @@ export async function fetchAgentHistoricalRoutePresentation(
     routeSource: body.state.historical_route_diagnostics?.route_source ?? null,
     routeDiagnosticSummary: summarizeRouteDiagnostics(body.route_result_status, body.state.historical_route_diagnostics),
     evidence: body.state.historical_evidence ?? [],
+    supportingEvidence: [...new Map((body.state.supporting_evidence ?? [])
+      .filter((item) => item && typeof item.id === "string" && item.id.length > 0)
+      .map((item) => [item.id, item] as const)).values()],
     resolvedPlaces: (body.state.resolved_places ?? []).map((place) => place.canonical_name),
     limitations: extractLimitations(body.state),
     waypoints: extractWaypoints(body.state.historical_route),

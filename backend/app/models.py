@@ -458,6 +458,7 @@ class AgentState(BaseModel):
     army_profile: ArmyProfile | None = None
     assumptions: dict[str, Any] = Field(default_factory=dict)
     historical_evidence: list[Evidence] = Field(default_factory=list)
+    supporting_evidence: list[Evidence] = Field(default_factory=list)
     tool_results: dict[str, Any] = Field(default_factory=dict)
     map_state: dict[str, Any] = Field(default_factory=dict)
     user_query: str | None = None

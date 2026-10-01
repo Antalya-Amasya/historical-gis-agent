@@ -495,3 +495,17 @@ def validate_evidence_citations(answer: str | None, evidence: list, *, require_c
             if actual != expected:
                 issues.append(f"mismatched_evidence_{field}:{identifier}")
     return tuple(issues)
+
+
+def final_answer_support(answer: str, evidence: list, *, validated_reference_ids: tuple[str, ...] = ()) -> list:
+    """Project validated final citations, never retrieval relevance, into UI support.
+
+    Reference IDs are supplied only for the exact backend-generated route summary.
+    """
+    by_id = {str(item.id): item for item in evidence}
+    ids = []
+    for citation in _EVIDENCE_CITATION.finditer(answer or ""):
+        if not validate_evidence_citations(citation.group(0), evidence, require_citation=True):
+            ids.append(citation.group("id").strip())
+    ids.extend(validated_reference_ids)
+    return [by_id[identifier] for identifier in dict.fromkeys(ids) if identifier in by_id]

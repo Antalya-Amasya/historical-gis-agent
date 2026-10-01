@@ -2,7 +2,7 @@ from __future__ import annotations
 import json, logging, re
 from time import perf_counter
 from backend.app.agent.prompts import SYSTEM_PROMPT
-from backend.app.agent.evidence_support import assess_evidence_support, assess_final_answer_provenance, event_relation_supports_answer, has_unsupported_route_pattern, render_evidence_citations, validate_evidence_citations, validate_evidence_selection
+from backend.app.agent.evidence_support import final_answer_support, assess_evidence_support, assess_final_answer_provenance, event_relation_supports_answer, has_unsupported_route_pattern, render_evidence_citations, validate_evidence_citations, validate_evidence_selection
 from backend.app.agent.route_orchestration import (
     PRE_ROUTE_SUPPRESSION_MESSAGE,
     duplicate_attempt_payload,
@@ -436,6 +436,7 @@ class BoundedAgentLoop:
             if state.requested_output == "historical_route" else None
         )
         state.historical_route = None
+        state.supporting_evidence = []
         state.historical_route_presentation = None
         state.historical_route_diagnostics = None
         state.historical_events = []
@@ -866,6 +867,12 @@ class BoundedAgentLoop:
             answer = self._no_route_terminal_guardrail_reply(state)
         elif state.historical_route is None and self._final_answer_asserts_unsupported_route(answer):
             state.warnings.append("Final answer mentioned a route without route state")
+        summary_refs = ()
+        if state.historical_route is not None and answer == admitted_route_summary(state):
+            summary_refs = tuple(ref for ref in state.historical_route.evidence_refs if ref)[:4]
+        state.supporting_evidence = final_answer_support(
+            answer, state.historical_evidence, validated_reference_ids=summary_refs,
+        )
         state.final_answer = answer
         logger.info("agent_finished status=%s elapsed_ms=%s", state.status, int((perf_counter() - started) * 1000))
         state.messages.append({"role": "assistant", "content": answer})

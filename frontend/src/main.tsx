@@ -54,7 +54,7 @@ function QueryApp() {
       setRouteResultStatus(result.routeResultStatus);
       setRouteDiagnosticSummary(result.routeDiagnosticSummary);
       setRouteSource(result.routeSource);
-      setEvidence(result.evidence);
+      setEvidence(result.supportingEvidence);
       setResolvedPlaces(result.resolvedPlaces);
       setLimitations(result.limitations);
       setWaypoints(result.waypoints);
@@ -77,7 +77,7 @@ function QueryApp() {
   };
 
   const showMap = Boolean(payload) && shouldRenderRouteMap(routeResultStatus, Boolean(payload));
-  const showEvidencePanel = routeResultStatus === "PARTIAL" || routeResultStatus === "NO_ROUTE" || (routeResultStatus === "FULL_ROUTE" && !showMap);
+  const showEvidencePanel = evidence.length > 0 || routeResultStatus === "PARTIAL" || routeResultStatus === "NO_ROUTE" || (routeResultStatus === "FULL_ROUTE" && !showMap);
 
   return <main className="demo-shell">
     <header className="demo-header"><p className="eyebrow">Historical GIS Agent</p><h1>Historical GIS Agent</h1><p>Ask about a historical campaign, movement, or place.</p></header>
