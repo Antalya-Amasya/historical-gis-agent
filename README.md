@@ -166,30 +166,31 @@ Open http://127.0.0.1:5173/.
 
 ## Runtime requirements
 
-The original Windows machine uses the layout below. These are documented examples; another prepared runtime can use the launcher overrides:
+The standard Windows runtime root is `C:\data\historical-gis-runtime`. On the prepared machine it is a directory junction to the existing runtime at `C:\D\python\202608231533`; no runtime data is copied. A fresh machine can set `HISTORICAL_GIS_RUNTIME_ROOT` to another complete runtime location.
 
 | Resource | Path |
 |---|---|
 | Git worktree (code) | `C:\D\python\historical-gis-cursor` |
-| Shared Python venv | `C:\D\python\202608231533\.venv` |
-| External `.env` | `C:\D\python\202608231533\.env` |
-| Chroma persistence | `C:\D\python\202608231533\data\chroma_server_roman_republic_v2` |
+| Shared runtime root | `C:\data\historical-gis-runtime` (directory junction to the existing legacy runtime) |
+| Shared Python venv | `C:\data\historical-gis-runtime\.venv` |
+| External `.env` | `C:\data\historical-gis-runtime\.env` |
+| Chroma persistence | `C:\data\historical-gis-runtime\data\chroma_server_roman_republic_v2` |
 | Chroma collection | `roman_republic_primary_sources_v2` |
 | Pleiades index | Worktree `data/pleiades_v4_1/pleiades_v4_1.sqlite3`, or `PLEIADES_GAZETTEER_PATH` |
-| Terrain | `DEM_HGT_DIR` in the private runtime environment (original machine: `C:\data\srtm-hgt`) |
+| Terrain | `DEM_HGT_DIR=C:\data\srtm-hgt` in the private runtime environment |
 | Embedding model | `intfloat/multilingual-e5-small` (cached locally; launcher sets offline HF flags) |
 | Frontend deps | `frontend/node_modules` via `pnpm install` |
 | Runtime logs | `%LOCALAPPDATA%\HistoricalGISAgent\runtime\` |
 
 Prerequisites: Python 3.11+, Node.js 20+, pnpm, packages in `backend/requirements.txt`.
 
-Copy `.env.example` to a private runtime `.env` (the original machine uses `C:\D\python\202608231533\.env`) and configure provider keys there. The launcher never copies secrets into the worktree.
+Copy `.env.example` to a private runtime `.env` (the prepared machine resolves it as `C:\data\historical-gis-runtime\.env`) and configure provider keys there. The launcher never copies secrets into the worktree. If provisioning the prepared machine manually, create the junction with `New-Item -ItemType Junction -Path C:\data\historical-gis-runtime -Target C:\D\python\202608231533`; the latter is a compatibility fallback for installations without the standard path.
 
-Launcher path overrides (explicit environment → existing original-machine layout → error). See [data provenance](docs/v1_data_provenance.md). A fresh clone still cannot rebuild the 7,230-record collection.
+Launcher path resolution (explicit environment → standard runtime root → legacy fallback → error). See [data provenance](docs/v1_data_provenance.md). A fresh clone still cannot rebuild the 7,230-record collection.
 
 | Variable | Purpose |
 |---|---|
-| `HISTORICAL_GIS_RUNTIME_ROOT` | Shared runtime directory containing `.venv`, `.env`, and Chroma persistence |
+| `HISTORICAL_GIS_RUNTIME_ROOT` | Override for the shared runtime directory containing `.venv`, `.env`, and Chroma persistence; default `C:\data\historical-gis-runtime` |
 | `HISTORICAL_GIS_PYTHON` | Python executable |
 | `HISTORICAL_GIS_CHROMA_EXE` | Chroma executable |
 | `HISTORICAL_GIS_ENV_FILE` | Private environment file (may live outside the repo) |
@@ -301,4 +302,4 @@ pnpm run build
 | `docs/eval/` | Evaluation reports (local / optional) |
 | `outputs/` | Local evaluation/runtime artifacts (git-ignored) |
 
-Primary-source corpus, Chroma indexes, embedding cache, and shared `.env` are local runtime assets under `C:\D\python\202608231533` and are deliberately not committed.
+Primary-source corpus, Chroma indexes, embedding cache, and shared `.env` are external runtime assets resolved through `C:\data\historical-gis-runtime` on the prepared machine (legacy target: `C:\D\python\202608231533`) and are deliberately not committed. SRTM remains external at `C:\data\srtm-hgt`.

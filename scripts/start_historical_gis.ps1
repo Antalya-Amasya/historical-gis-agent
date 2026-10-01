@@ -6,7 +6,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$DefaultSharedRuntime = "C:\D\python\202608231533"
+$DefaultSharedRuntime = "C:\data\historical-gis-runtime"
+$LegacySharedRuntime = "C:\D\python\202608231533"
 $sharedRuntime = $DefaultSharedRuntime
 $pythonExe = Join-Path $sharedRuntime ".venv\Scripts\python.exe"
 $chromaExe = Join-Path $sharedRuntime ".venv\Scripts\chroma.exe"
@@ -33,7 +34,18 @@ function Normalize-ProjectPath {
     if ([string]::IsNullOrWhiteSpace($Path)) {
         return $null
     }
-    return [System.IO.Path]::GetFullPath($Path).TrimEnd('\').ToLowerInvariant()
+    $fullPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $runtimeRoot = [System.IO.Path]::GetFullPath($script:sharedRuntime).TrimEnd('\')
+    if ($fullPath.Equals($runtimeRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $fullPath.StartsWith($runtimeRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $runtimeInfo = Get-Item -LiteralPath $runtimeRoot -Force -ErrorAction SilentlyContinue
+        if ($runtimeInfo -and $runtimeInfo.LinkType -in @('Junction', 'SymbolicLink') -and $runtimeInfo.Target) {
+            $targetRoot = [System.IO.Path]::GetFullPath([string]$runtimeInfo.Target).TrimEnd('\')
+            $suffix = $fullPath.Substring($runtimeRoot.Length)
+            $fullPath = ($targetRoot + $suffix).TrimEnd('\')
+        }
+    }
+    return $fullPath.ToLowerInvariant()
 }
 
 function Get-PortListenerProcess {
@@ -379,13 +391,20 @@ function Resolve-HistoricalGisLauncherConfig {
             throw "HISTORICAL_GIS_RUNTIME_ROOT is missing: $($script:sharedRuntime)"
         }
         $script:usedLegacyRuntimeFallback = $false
+        $script:usedDefaultRuntime = $false
     }
     elseif (Test-Path -LiteralPath $DefaultSharedRuntime -PathType Container) {
         $script:sharedRuntime = Convert-ToFullPath $DefaultSharedRuntime
+        $script:usedLegacyRuntimeFallback = $false
+        $script:usedDefaultRuntime = $true
+    }
+    elseif (Test-Path -LiteralPath $LegacySharedRuntime -PathType Container) {
+        $script:sharedRuntime = Convert-ToFullPath $LegacySharedRuntime
         $script:usedLegacyRuntimeFallback = $true
+        $script:usedDefaultRuntime = $true
     }
     else {
-        throw "HISTORICAL_GIS_RUNTIME_ROOT is unset and the original-machine runtime is absent: $DefaultSharedRuntime"
+        throw "HISTORICAL_GIS_RUNTIME_ROOT is unset and neither the standard runtime nor legacy fallback exists. Configure HISTORICAL_GIS_RUNTIME_ROOT or provision $DefaultSharedRuntime."
     }
 
     $script:pythonExe = Resolve-RequiredConfiguredPath "HISTORICAL_GIS_PYTHON" (Join-Path $script:sharedRuntime ".venv\Scripts\python.exe") "Python executable" Leaf
@@ -408,7 +427,7 @@ function Resolve-HistoricalGisLauncherConfig {
     }
 
     $script:forceOfflineModels = $false
-    if ($null -eq (Get-LauncherEnvValue "HF_HUB_OFFLINE") -and $script:usedLegacyRuntimeFallback) {
+    if ($null -eq (Get-LauncherEnvValue "HF_HUB_OFFLINE") -and $script:usedDefaultRuntime) {
         $script:forceOfflineModels = $true
     }
 
