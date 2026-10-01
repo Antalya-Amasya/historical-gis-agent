@@ -664,6 +664,12 @@ class BoundedAgentLoop:
                         state.final_grounding_status = "validator_error"
                         state.warnings.append(f"grounding_validator_error:{type(exc).__name__}")
                         return self._finish("The system could not safely validate the requested HistoricalRoute response.", state, started)
+                    citation_issues = validate_evidence_citations(
+                        response.content or "", state.historical_evidence, require_citation=False,
+                    )
+                    if citation_issues:
+                        state.warnings.extend(citation_issues)
+                        return self._finish_grounding_guardrail(state, started)
                     entity_assessments = claim_assessment.candidate_entities
                     state.detected_phrase_count = len(entity_assessments)
                     state.detected_entity_count = sum(item.entity_like for item in entity_assessments)
@@ -695,7 +701,14 @@ class BoundedAgentLoop:
                         return self._finish("The current retrieved historical evidence is insufficient to support a reliable HistoricalRoute, so the system will not add unsupported places or route details.", state, started)
                     state.final_grounding_status = "provenance_corrected" if grounding_corrections else claim_assessment.status
                     state.warnings.append("insufficient_relevant_evidence")
-                    answer = response.content if _explicitly_insufficient(response.content) else "The current retrieved historical evidence is insufficient to support a reliable HistoricalRoute."
+                    # Grounded evidence can establish non-completion or disagreement
+                    # without using an insufficiency keyword. The final route guard
+                    # still rejects any positive claim without route state.
+                    preserve_answer = _explicitly_insufficient(response.content) or (
+                        bool(state.historical_evidence)
+                        and claim_assessment.status in {"grounded", "grounded_with_unverified_suggestions"}
+                    )
+                    answer = response.content if preserve_answer else "The current retrieved historical evidence is insufficient to support a reliable HistoricalRoute."
                     return self._finish(answer, state, started)
                 if completion_action == "correct" and step < self.max_steps:
                     corrections += 1
@@ -891,34 +904,65 @@ class BoundedAgentLoop:
         normalized = answer.casefold().strip()
         if normalized in {GENERIC_GROUNDING_GUARDRAIL.casefold(), NO_ROUTE_TERMINAL_GUARDRAIL.casefold()}:
             return False
-        # Polarity belongs to a clause: a negative explanation must neither be
-        # rejected for mentioning a route nor shield a separate positive claim.
-        clauses = re.split(r"[.;!?\n,]+|\b(?:but|however|yet|and|so|therefore|although|because|while)\b", normalized)
-        route_language = r"\b(?:route\w*|movement|travel\w*|journey|waypoints?|geometry|origin|destination|sailed|marched)\b|\bwent\s+from\b|→|->|—>|路线"
-        negative_prefix = (
+        # Inspect asserted predicates, not mere route vocabulary. Infinitives
+        # expressing a refused task are not assertions that a route occurred.
+        clauses = re.split(r"[.;!?\n,。！？，；]+|\b(?:but|however|yet|and|so|therefore|although|though|because|while)\b|但是|然而|但|因此", normalized)
+        route_language = r"\b(?:route\w*|movement|travel\w*|journey|waypoints?|geometry|origin|destination)\b"
+        movement_predicate = r"\b(?:went|travelled|traveled|sailed|marched|followed|passed|crossed|entered|arrived|reached)\b"
+        construction_predicate = r"\b(?:draw|draws|drew|build|builds|built|reconstruct(?:ed|s|ing)?|generat\w*|establish\w*|prove\w*|confirm\w*|mention\w*)\b"
+        nominal_predicate = rf"{route_language}[^.;!?]{{0,100}}?\b(?:is|are|was|were|includes?|shows?|follows?|consists?)\b"
+        denial = (
             r"\b(?:no|never)\b(?:\W+\w+){0,5}\W*$"
-            r"|\b(?:does|did|do)\s+not\s+(?:establish|support|show|prove|confirm|describe|document)\b[^.!?;]*$"
-            r"|\b(?:insufficient|evidence is not enough)\b[^.!?;]*$"
+            r"|\b(?:does|did|do)\s+not\s+(?:establish|support|show|prove|confirm|describe|document|mention)\b[^.!?;]*$"
             r"|\b(?:cannot|can't|could not|unable to)\s+(?:establish|support|show|prove|confirm|describe|document|reconstruct|build|generate)\b[^.!?;]*$"
-            r"|(?:无法|不能|证据不足)[^.!?;]*$"
-            r"|\b(?:is|are|was|were)\s+not\s+(?:(?:a|an|the|completed|actual|historical)\s+)*$"
+            r"|\b(?:not|never)\s+(?:\w+ly\s+){0,2}$"
         )
-        negative_suffix = (
-            r"^.{0,80}?\b(?:"
+        non_completion = (
+            r"^.{0,80}?\b(?P<negative>"
             r"(?:cannot|can't|could not|should not|must not)\s+(?:be\s+)?(?:reconstruct\w*|draw\w*|build|built|generat\w*|establish\w*|support\w*|confirm\w*|prove\w*)"
             r"|(?:was|were|is|are)\s+not\s+(?:completed|executed|established|supported|documented|reconstructed|drawn|built|generated|available|proven|confirmed|shown|attested)"
             r"|(?:was|were|is|remains?)\s+(?:prevented|blocked|aborted|abandoned|incomplete|unexecuted|proposed|planned))\b"
         )
         for clause in clauses:
-            mentions = list(re.finditer(route_language, clause))
-            if not mentions:
-                continue
-            # Double negation and possibility language do not deny a route.
-            if re.search(r"\bnot\s+(?:impossible|unlikely)|\b(?:cannot|can't)\s+(?:exclude|rule out)", clause):
+            assertions = list(re.finditer(movement_predicate, clause))
+            if re.search(route_language, clause):
+                assertions += list(re.finditer(construction_predicate, clause))
+                assertions += list(re.finditer(nominal_predicate, clause))
+            if not assertions:
+                assertions += list(re.finditer(rf"{route_language}\s*(?::|\b(?:from|via|through)\b)", clause))
+            assertions += list(re.finditer(r"→|->|—>", clause))
+            if (assertions or re.search(route_language, clause)) and re.search(
+                r"\bnot\s+(?:impossible|unlikely)|\b(?:does|do|did)\s+not\s+(?:disprove|deny)"
+                r"|\b(?:cannot|can't)\s+(?:exclude|rule out|deny|say)", clause,
+            ):
                 return True
-            for mention in mentions:
-                prefix, suffix = clause[:mention.start()], clause[mention.end():]
-                if not (re.search(negative_prefix, prefix) or re.search(negative_suffix, suffix)):
+            for assertion in assertions:
+                prefix = clause[:assertion.start()]
+                if re.search(r"\bto\s*$|\bwhether\b", prefix):
+                    continue
+                if re.search(denial, prefix):
+                    continue
+                # Nominal predicates include their route subject; inspect the
+                # subject's remaining clause for non-completion scope.
+                nominal = re.match(route_language, assertion.group())
+                mentions = list(re.finditer(route_language, prefix))
+                tail = (
+                    clause[assertion.start() + nominal.end():] if nominal else
+                    clause[mentions[-1].end():] if mentions else clause[assertion.end():]
+                )
+                negative = re.search(non_completion, tail)
+                if negative:
+                    # A later denied action cannot cancel an earlier assertion.
+                    # Locate its governing auxiliary rather than treating the
+                    # entire remaining clause as negative.
+                    before_denial = tail[:negative.start("negative")]
+                    if not re.search(rf"{movement_predicate}|\b(?:is|are|was|were)\b", before_denial):
+                        continue
+                return True
+            if re.search(r"路线|移动|行军|旅程|几何|进入|到达", clause) and re.search(
+                r"是|经过|途经|沿|包含|包括|从.+到|完成|建立|重建", clause,
+            ):
+                if not re.search(r"没有|无法|不能|不足|未|不应|不宜|不曾|被阻止|中止|放弃", clause):
                     return True
         return False
 
