@@ -16,6 +16,7 @@ from backend.app.models import (
     EventRouteOrderingEndpointKind,
     EventRouteOrderingRef,
     HistoricalEvent,
+    HistoricalIncompleteMovementFact,
     HistoricalEventActorGrounding,
     HistoricalEventPlaceMention,
     HistoricalEventTemporalGrounding,
@@ -1188,6 +1189,65 @@ class EvidenceGroundedHistoricalEventExtractor:
             start -= 1
         return " ".join(part.rstrip() for part in sentences[start : index + 1])
 
+    def _incomplete_movement_fact(self, sentence: str, evidence_id: str) -> HistoricalIncompleteMovementFact | None:
+        # Keep documentary polarity separate from the completed-event pipeline.
+        if self._REPORTED_SPEECH.search(sentence) or self._NAVIGATION_HEADING.search(sentence):
+            return None
+        if re.search(r"\b(?:if|might|would|could|may|should)\b", sentence, re.I):
+            return None
+        patterns = (
+            ("PREVENTED", r"\b(?:prevented|blocked|stopped)\b(?!\s+before\b)"),
+            ("ABORTED", r"\b(?:abandoned|aborted)\b|\bstopped\s+before\b"),
+            ("PLANNED", r"\b(?:planned|intended|proposed)\s+to\b"),
+            ("ATTEMPTED", r"\battempted\s+to\b"),
+            ("NEGATED", r"\b(?:did\s+not|didn't|never)\s+(?:enter|march|sail|move|reach)\b"),
+        )
+        movement = re.search(r"\b(?:enter(?:ed|ing)?|march(?:ed|ing)?|sail(?:ed|ing)?|move(?:d)?|reach(?:ed|ing)?|advance)\b", sentence, re.I)
+        if movement is None:
+            return None
+        matched = next(((outcome, match) for outcome, pattern in patterns
+                        if (match := re.search(pattern, sentence, re.I))), None)
+        if matched is None:
+            return None
+        outcome, marker = matched
+        # A later positive clause is not an attempted endpoint of the earlier fact.
+        contrast = next((match for match in re.finditer(r"\bbut\b", sentence, re.I)
+                         if marker.start() < match.start()
+                         and self._has_completed_movement_assertion(sentence[match.end():])), None)
+        bounded = sentence[:contrast.start()] if contrast else sentence
+        actor = self._ground_clause_actor(bounded, marker.start())
+        destination_start = marker.start()
+        if outcome == "PREVENTED":
+            attempts = list(re.finditer(r"\b(?:attempted|tried)\s+to\b", bounded[:marker.start()], re.I))
+            if attempts:
+                destination_start = attempts[-1].start()
+                actor = self._ground_clause_actor(bounded, destination_start)
+            else:
+                passive = re.search(r"\b(?:was|were)\s+(?:initially\s+)?$", bounded[:marker.start()], re.I)
+                actor = self._ground_clause_actor(bounded, passive.start()) if passive else self._unknown_actor()
+        elif outcome == "ABORTED":
+            preceding = list(self._MOVEMENT_VERBS.finditer(bounded[:marker.start()]))
+            actor = self._ground_clause_actor(bounded, preceding[-1].start()) if preceding else actor
+            blocker_actor = self._ground_clause_actor(bounded, marker.start())
+            if blocker_actor.actor_status is EventActorStatus.EXPLICIT and blocker_actor.actor_text != actor.actor_text:
+                actor = blocker_actor
+            else:
+                destination_start = 0
+        destinations = []
+        for match in re.finditer(
+            r"\b(?:enter(?:ed|ing)?|reach(?:ed|ing)?|(?:march(?:ed|ing)?|sail(?:ed|ing)?|move(?:d)?)\s+(?:to|toward(?:s)?|into))\s+(?:the\s+)?(?P<place>[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*){0,3})", bounded[destination_start:],
+        ):
+            destinations.append(HistoricalEventPlaceMention(raw_text=match.group("place"),
+                role=EventPlaceRole.UNKNOWN, evidence_refs=[evidence_id]))
+        context_places = self._places(bounded, evidence_id)
+        # Siege context can identify a place without proving it was reached.
+        for match in re.finditer(r"\bbesieging\s+(?:the\s+)?(?:city\s+)?(?P<place>[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*){0,3})", bounded):
+            context_places.append(HistoricalEventPlaceMention(raw_text=match.group("place"), evidence_refs=[evidence_id]))
+        context_places = [mention.model_copy(update={"role": EventPlaceRole.UNKNOWN}) for mention in context_places]
+        return HistoricalIncompleteMovementFact(outcome=outcome, source_statement=bounded,
+            evidence_refs=[evidence_id], actor=actor, destination_mentions=destinations,
+            context_place_mentions=context_places)
+
     def extract(
         self,
         evidence: list[Evidence],
@@ -1196,6 +1256,7 @@ class EvidenceGroundedHistoricalEventExtractor:
         query_contexts: tuple[str, ...] | None = None,
     ) -> tuple[list[HistoricalEvent], dict[str, object]]:
         events: list[HistoricalEvent] = []
+        incomplete_facts: list[HistoricalIncompleteMovementFact] = []
         temporal_codes: set[str] = set()
         contexts = query_contexts
         if contexts is None and query and query.strip():
@@ -1206,6 +1267,13 @@ class EvidenceGroundedHistoricalEventExtractor:
             prior_endpoints: tuple = ()
             temporal_context = TemporalResolutionContext()
             for index, sentence in enumerate(sentences):
+                incomplete = self._incomplete_movement_fact(sentence, item.id)
+                if incomplete is not None:
+                    incomplete_facts.append(incomplete)
+                    if incomplete.outcome == "ABORTED" and incomplete.destination_mentions and re.search(
+                        r"\btoward(?:s)?\b|\bbefore\s+(?:reaching|entering|arriving)\b", sentence, re.I,
+                    ) and incomplete.source_statement == sentence:
+                        continue
                 event_type = self._event_type(sentence)
                 if not self._eligible(
                     sentence,
@@ -1287,7 +1355,8 @@ class EvidenceGroundedHistoricalEventExtractor:
             reason_codes.append("TEMPORAL_CONFLICT")
         if events and any(not event.place_mentions for event in events):
             reason_codes.append("PLACE_UNRESOLVED")
-        return events, {"evidence_count": len(evidence), "event_count": len(events), "reason_codes": reason_codes}
+        return events, {"evidence_count": len(evidence), "event_count": len(events), "reason_codes": reason_codes,
+                        "incomplete_movement_facts": [fact.model_dump(mode="json") for fact in incomplete_facts]}
 
 
 class HistoricalEventConsolidator:

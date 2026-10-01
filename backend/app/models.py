@@ -216,6 +216,20 @@ class EventRouteOrdering(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
 
 
+class HistoricalIncompleteMovementFact(BaseModel):
+    """Documentary non-completion context; never an event/route constraint.
+
+    Destination mentions describe intended or denied endpoints, not arrivals.
+    UNKNOWN place roles deliberately exclude these mentions from route projection.
+    """
+    outcome: Literal["ATTEMPTED", "PREVENTED", "ABORTED", "PLANNED", "NEGATED"]
+    source_statement: str
+    evidence_refs: list[str]
+    actor: HistoricalEventActorGrounding = Field(default_factory=HistoricalEventActorGrounding)
+    destination_mentions: list[HistoricalEventPlaceMention] = Field(default_factory=list)
+    context_place_mentions: list[HistoricalEventPlaceMention] = Field(default_factory=list)
+
+
 class HistoricalEvent(BaseModel):
     id: str
     name: str
