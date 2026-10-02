@@ -65,11 +65,18 @@ _CLAUSE_BOUNDARY = re.compile(
     r"during|in|throughout|for)\b|(?:,\s*(?:trace|show|reconstruct|follow)\b)|[,;:\u2014]|[.;]|$",
     re.IGNORECASE,
 )
-# Presentation instructions terminate route syntax, including coordinated clauses.
+# A clause boundary + presentation command + output object ends route syntax.
+# Directional continuations ("and then to ...") do not match this grammar.
 _PRESENTATION_INSTRUCTION = re.compile(
-    r"(?:[,;.!?]\s*(?:(?:and|but)\s+)?|\b(?:and|but)\s+)"
+    r"(?:[,;.!?]\s*(?:(?:and|but)\s+)?|\b(?:and|but)\s+)(?:then\s+)?"
+    r"(?:"
     r"(?:separat(?:e|ing)|divid(?:e|ing)|group(?:ing)?|turn(?:ing)?|convert(?:ing)?|split(?:ting)?)\b"
-    r"[^.;!?]{0,80}?\b(?:result|answer|evidence|output|response|coordinates)\b",
+    r"[^.;!?]{0,80}?\b(?:result|answer|evidence|output|response|coordinates)\b|"
+    r"(?:explain|summarize|format|return|show|display)\s+"
+    r"(?:(?:the|this|every|separately|a|an)\s+)*"
+    r"(?:result|answer|evidence|output|response|uncertainty|sections?|coordinates|(?:[a-z]+|\d+)\s+sections?)\b|"
+    r"(?:summarize|format)\s+(?:in|as)\s+(?:a\s+)?(?:table|sections?)\b"
+    r")",
     re.IGNORECASE,
 )
 
@@ -744,7 +751,10 @@ def _claim_time(
 
 
 def parse_query_scope(text: str) -> QueryScopeParse:
-    registry = _SpanRegistry(text or "")
+    text = text or ""
+    instruction = _PRESENTATION_INSTRUCTION.search(text)
+    # Keep original offsets, but do not parse instructions as historical constraints.
+    registry = _SpanRegistry(text[:instruction.start()] if instruction else text)
     subject = _claim_subject(registry)
     _claim_context(registry)
     origin, _via, destination, endpoint_strict, frame_subjects, has_endpoint_constraint = _claim_route_frame(registry)
@@ -753,6 +763,10 @@ def parse_query_scope(text: str) -> QueryScopeParse:
         registry.spans = [span for span in registry.spans if span.role is not QuerySpanRole.SUBJECT]
     temporal_start, temporal_end, temporal_precision, has_temporal = _claim_time(registry)
     episode, has_episode, episode_ambiguous = _claim_episodes(registry)
+    if instruction:
+        registry.spans.append(QueryRoleSpan(
+            QuerySpanRole.CONTEXT, instruction.start(), len(text), text[instruction.start():],
+        ))
     return QueryScopeParse(
         subject=subject,
         origin=origin,

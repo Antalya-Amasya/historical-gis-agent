@@ -44,7 +44,7 @@ _EVENT_SUBJECT_TOKENS = frozenset({
     "battle", "battles", "war", "wars", "campaign", "campaigns",
     "siege", "sieges", "expedition", "expeditions",
 })
-_LEADING_COMMANDS = frozenset({"explain", "show", "trace", "display", "reconstruct", "follow"})
+_LEADING_COMMANDS = frozenset({"explain", "show", "trace", "display", "reconstruct", "follow", "describe"})
 _TRAILING_ROUTE_NOUNS = frozenset({
     "route", "routes", "movement", "movements", "march", "marches",
     "journey", "journeys", "advance", "advances", "return", "returns",
@@ -66,11 +66,12 @@ _SOURCE_ROLE_PREFIX = re.compile(
     r"\b(?:(?:described|reported|recorded|written|documented|narrated)\s+by|according\s+to)\s*$",
     re.IGNORECASE,
 )
-# Subject position only. Multi-token literals keep single-token places off this path;
-# known one-token people still resolve through the alias fallback.
+# Names are eligible only in an explicit requested-subject position.
+# Place, event, and collective exclusions apply to single- and multi-token names.
 _LITERAL_SUBJECT_PATTERNS = (
     re.compile(
-        rf"(?i:\b(?:show|display|trace|reconstruct|follow)\s+)(?P<names>{_LITERAL_NAME_LIST})\s+"
+        rf"(?i:\b(?:show|display|explain|describe|trace|reconstruct|follow)\s+)"
+        rf"(?P<names>{_LITERAL_NAME}(?:\s+(?:and|or)\s+{_LITERAL_NAME})*)\s+"
         rf"(?i:{_LITERAL_MOVEMENT_OBJECT}\b)"
     ),
     re.compile(
@@ -80,7 +81,7 @@ _LITERAL_SUBJECT_PATTERNS = (
     re.compile(rf"(?i:\broutes?\s+for\s+)(?P<names>{_LITERAL_NAME_LIST})\b"),
     re.compile(rf"(?:^|\A\s*|(?<=[.!?]\s))(?P<names>{_LITERAL_MULTI_NAME})\s+(?i:routes?\s*:)"),
     re.compile(
-        rf"(?i:\bcompare\s+)(?P<left>{_LITERAL_MULTI_NAME})\s+(?i:routes?\s+with\s+)(?P<right>{_LITERAL_NAME})\b"
+        rf"(?i:\bcompare\s+)(?P<left>{_LITERAL_NAME})\s+(?i:routes?\s+with\s+)(?P<right>{_LITERAL_NAME})\b"
     ),
 )
 
@@ -223,6 +224,8 @@ def _literal_route_subjects(query: str, parsed) -> dict[str, str]:
             else:
                 groups.append((match.start("left"), match.group("left")))
                 groups.append((match.start("right"), match.group("right")))
+            pieces = [(start, piece) for start, raw in groups
+                      for piece in re.finditer(_LITERAL_NAME, raw or "")]
             for start, raw in groups:
                 if not raw:
                     continue
@@ -232,6 +235,12 @@ def _literal_route_subjects(query: str, parsed) -> dict[str, str]:
                     if _SOURCE_ROLE_PREFIX.search(query[:abs_start]):
                         continue
                     if _inside_non_subject_span(parsed, abs_start, abs_end):
+                        continue
+                    # A lone bare word without a complete route frame is not
+                    # enough to infer an unseen person. Explicit name lists still
+                    # participate in ambiguity; known aliases retain their fallback.
+                    if (len(piece.group(0).split()) == 1 and len(pieces) == 1
+                            and not (parsed.origin and parsed.destination)):
                         continue
                     label = _accept_literal_person(piece.group(0), places)
                     if label:
@@ -243,20 +252,23 @@ def parse_query_route_scope(contexts: tuple[str, ...] | None) -> QueryRouteScope
     parsed = build_query_route_scope(contexts)
     subject = _sanitize_requested_subject(parsed.subject)
     ambiguous = False
-    if subject is None:
-        from backend.app.agent.loop import infer_requested_output
+    from backend.app.agent.loop import infer_requested_output
 
-        query = next((item for item in (contexts or ()) if (item or "").strip()), "")
-        if infer_requested_output(query) == "historical_route":
-            candidates = {
-                _normalized_person_identity(label): label
-                for label in _fallback_person_subjects(query, parsed)
-            }
-            for key, label in _literal_route_subjects(query, parsed).items():
-                candidates.setdefault(key, label)
-            ambiguous = len(candidates) > 1
-            if len(candidates) == 1:
-                subject = next(iter(candidates.values()))
+    query = next((item for item in (contexts or ()) if (item or "").strip()), "")
+    if infer_requested_output(query) == "historical_route":
+        # Explicit lists constrain even a subject already found by the narrow parser.
+        literals = _literal_route_subjects(query, parsed)
+        candidates = dict(literals)
+        if subject is None:
+            for label in _fallback_person_subjects(query, parsed):
+                candidates.setdefault(_normalized_person_identity(label), label)
+        elif literals:
+            candidates.setdefault(_normalized_person_identity(subject), subject)
+        ambiguous = len(candidates) > 1
+        if ambiguous:
+            subject = None
+        elif subject is None and len(candidates) == 1:
+            subject = next(iter(candidates.values()))
     return QueryRouteScope(
         subject=subject,
         origin=parsed.origin,

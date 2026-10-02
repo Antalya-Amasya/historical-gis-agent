@@ -157,6 +157,14 @@ def infer_requested_output(user_message: str) -> str:
     normalized = user_message.lower()
     if any(term in normalized for term in _ROUTE_TERMS):
         return "historical_route"
+    # An explicit command + named movement + from-frame is a route request,
+    # even when the command is normally analytical ("explain" / "describe").
+    if re.search(
+        r"(?i:\b(?:explain|describe)\s+)(?:[A-Z][A-Za-z'\u2019-]+\s+){1,4}"
+        r"(?i:(?:movements?|marches?|journeys?|advances?|returns?|travels?|voyages?)\s+from\b)",
+        user_message,
+    ):
+        return "historical_route"
     if _has_movement_intent(normalized):
         return "historical_route"
     if any(term in normalized for term in _GEOGRAPHY_TERMS):
