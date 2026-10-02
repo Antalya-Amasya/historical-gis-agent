@@ -40,6 +40,49 @@ _EXPLICIT_OTHER_EPISODE_STATEMENT = re.compile(
     r"\b(?:exile\b|with\s+antiochus\b)",
     re.IGNORECASE,
 )
+_EVENT_SUBJECT_TOKENS = frozenset({
+    "battle", "battles", "war", "wars", "campaign", "campaigns",
+    "siege", "sieges", "expedition", "expeditions",
+})
+_LEADING_COMMANDS = frozenset({"explain", "show", "trace", "display", "reconstruct", "follow"})
+_TRAILING_ROUTE_NOUNS = frozenset({
+    "route", "routes", "movement", "movements", "march", "marches",
+    "journey", "journeys", "advance", "advances", "return", "returns",
+    "travel", "travels", "voyage", "voyages",
+})
+# Collective, office, and event words are not unseen person identities.
+_NON_PERSON_SUBJECT_TOKENS = _LEADING_COMMANDS | _TRAILING_ROUTE_NOUNS | _EVENT_SUBJECT_TOKENS | frozenset({
+    "army", "armies", "consul", "consuls", "commander", "commanders",
+    "troops", "troop", "forces", "force", "soldiers", "soldier", "fleet", "fleets",
+    "compare",
+})
+_LITERAL_NAME = r"[A-Z][A-Za-z'\u2019-]+(?:\s+[A-Z][A-Za-z'\u2019-]+){0,3}"
+_LITERAL_MULTI_NAME = r"[A-Z][A-Za-z'\u2019-]+(?:\s+[A-Z][A-Za-z'\u2019-]+){1,3}"
+_LITERAL_NAME_LIST = rf"{_LITERAL_MULTI_NAME}(?:\s+(?:and|or)\s+{_LITERAL_NAME})*"
+_LITERAL_MOVEMENT_OBJECT = (
+    r"(?:historical\s+)?(?:routes?|movements?|marches?|journeys?|advances?|returns?|travels?|voyages?)"
+)
+_SOURCE_ROLE_PREFIX = re.compile(
+    r"\b(?:(?:described|reported|recorded|written|documented|narrated)\s+by|according\s+to)\s*$",
+    re.IGNORECASE,
+)
+# Subject position only. Multi-token literals keep single-token places off this path;
+# known one-token people still resolve through the alias fallback.
+_LITERAL_SUBJECT_PATTERNS = (
+    re.compile(
+        rf"(?i:\b(?:show|display|trace|reconstruct|follow)\s+)(?P<names>{_LITERAL_NAME_LIST})\s+"
+        rf"(?i:{_LITERAL_MOVEMENT_OBJECT}\b)"
+    ),
+    re.compile(
+        rf"(?i:\b(?:movements?|marches?|journeys?|advances?|returns?|travels?|voyages?)\s+of\s+)"
+        rf"(?P<names>{_LITERAL_NAME_LIST})\b"
+    ),
+    re.compile(rf"(?i:\broutes?\s+for\s+)(?P<names>{_LITERAL_NAME_LIST})\b"),
+    re.compile(rf"(?:^|\A\s*|(?<=[.!?]\s))(?P<names>{_LITERAL_MULTI_NAME})\s+(?i:routes?\s*:)"),
+    re.compile(
+        rf"(?i:\bcompare\s+)(?P<left>{_LITERAL_MULTI_NAME})\s+(?i:routes?\s+with\s+)(?P<right>{_LITERAL_NAME})\b"
+    ),
+)
 
 
 class AuthorityState(str, Enum):
@@ -101,32 +144,119 @@ def _fallback_person_subjects(query: str, parsed) -> set[str]:
                        for span in parsed.spans):
                     continue
                 # A documentary source mention is not the requested mover.
-                if re.search(
-                    r"\b(?:(?:described|reported|recorded|written|documented|narrated)\s+by|according\s+to)\s*$",
-                    query[:match.start()], re.I,
-                ):
+                if _SOURCE_ROLE_PREFIX.search(query[:match.start()]):
                     continue
                 subjects.add(canonical)
     return subjects
 
 
+def _sanitize_requested_subject(subject: str | None) -> str | None:
+    """Drop command verbs and route nouns that the narrow parser folded into a name."""
+    if not subject or not subject.strip():
+        return None
+    parts = subject.split()
+    while parts and parts[0].casefold().strip(".,:;\"'") in _LEADING_COMMANDS:
+        parts.pop(0)
+    while parts and parts[-1].casefold().strip(".,:;\"'") in _TRAILING_ROUTE_NOUNS:
+        parts.pop()
+    if not parts or parts[0].casefold() in {"the", "a", "an"}:
+        return None
+    # "Trace Second Punic War route" occupies the trace-subject slot, but an
+    # event name is not a requested person.
+    if any(part.casefold().strip(".,:;\"'") in _EVENT_SUBJECT_TOKENS for part in parts):
+        return None
+    return " ".join(parts)
+
+
+def _known_place_names() -> set[str]:
+    from backend.app.geography.place_registry import physical_records, records
+    from backend.app.routes.place_aliases import HISTORICAL_PLACE_ALIASES
+
+    names = {
+        str(name).casefold()
+        for item in [*records(), *physical_records()]
+        for name in [item["canonical_name"], *item["aliases"]]
+    }
+    for alias in HISTORICAL_PLACE_ALIASES:
+        names.add(alias.canonical_name.casefold())
+        names.update(item.casefold() for item in alias.aliases)
+    return names
+
+
+def _inside_non_subject_span(parsed, start: int, end: int) -> bool:
+    return any(
+        span.role.value != "SUBJECT" and span.start <= start and end <= span.end
+        for span in parsed.spans
+    )
+
+
+def _literal_subject_label(name: str) -> str:
+    identity = _normalized_person_identity(name)
+    from backend.app.agent.evidence_support import _subject_alias_registry
+
+    if identity in _subject_alias_registry():
+        return identity
+    return " ".join(name.split())
+
+
+def _accept_literal_person(name: str, places: set[str]) -> str | None:
+    cleaned = " ".join(name.split())
+    tokens = [token.casefold() for token in cleaned.split()]
+    if not tokens or tokens[0] in {"the", "a", "an"}:
+        return None
+    if any(token in _NON_PERSON_SUBJECT_TOKENS for token in tokens):
+        return None
+    if cleaned.casefold() in places or any(token in places for token in tokens):
+        return None
+    return _literal_subject_label(cleaned)
+
+
+def _literal_route_subjects(query: str, parsed) -> dict[str, str]:
+    """Literal requested-subject phrases. Compatibility only; never an evidence actor."""
+    places = _known_place_names()
+    found: dict[str, str] = {}
+    for pattern in _LITERAL_SUBJECT_PATTERNS:
+        for match in pattern.finditer(query):
+            groups = []
+            if "names" in pattern.groupindex:
+                groups.append((match.start("names"), match.group("names")))
+            else:
+                groups.append((match.start("left"), match.group("left")))
+                groups.append((match.start("right"), match.group("right")))
+            for start, raw in groups:
+                if not raw:
+                    continue
+                for piece in re.finditer(_LITERAL_NAME, raw):
+                    abs_start = start + piece.start()
+                    abs_end = start + piece.end()
+                    if _SOURCE_ROLE_PREFIX.search(query[:abs_start]):
+                        continue
+                    if _inside_non_subject_span(parsed, abs_start, abs_end):
+                        continue
+                    label = _accept_literal_person(piece.group(0), places)
+                    if label:
+                        found.setdefault(_normalized_person_identity(label), label)
+    return found
+
+
 def parse_query_route_scope(contexts: tuple[str, ...] | None) -> QueryRouteScope:
     parsed = build_query_route_scope(contexts)
-    subject = parsed.subject
-    # A determiner-led request object is not a literal person name, even when
-    # the narrow parser captures it as a subject (e.g. "the movement ...").
-    if subject and re.match(r"^(?:the|a|an)\b", subject, re.I):
-        subject = None
+    subject = _sanitize_requested_subject(parsed.subject)
     ambiguous = False
     if subject is None:
         from backend.app.agent.loop import infer_requested_output
 
         query = next((item for item in (contexts or ()) if (item or "").strip()), "")
         if infer_requested_output(query) == "historical_route":
-            candidates = _fallback_person_subjects(query, parsed)
+            candidates = {
+                _normalized_person_identity(label): label
+                for label in _fallback_person_subjects(query, parsed)
+            }
+            for key, label in _literal_route_subjects(query, parsed).items():
+                candidates.setdefault(key, label)
             ambiguous = len(candidates) > 1
             if len(candidates) == 1:
-                subject = next(iter(candidates))
+                subject = next(iter(candidates.values()))
     return QueryRouteScope(
         subject=subject,
         origin=parsed.origin,
