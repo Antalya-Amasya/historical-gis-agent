@@ -26,6 +26,7 @@ class CorpusIngestionConfig:
     batch_size: int = 128
     max_batches: int | None = None
     max_documents: int | None = None
+    chunker_version: str = "section-window-v1"
 
     def state_path(self, name: str) -> Path:
         return self.state_dir / f"{name}_{self.state_prefix}.json"
@@ -114,7 +115,7 @@ def default_backend_factory(config, args):
         registry=CorpusRegistry.from_file(args.registry)
         def load(document):
             sections,_=load_epub_sections(args.incoming / document.filename,document)
-            return document_chunks(sections,document)
+            return document_chunks(sections,document,chunker_version=config.chunker_version)
         return CorpusDocumentSource(registry.documents,load)
     def store_factory():
         import chromadb
