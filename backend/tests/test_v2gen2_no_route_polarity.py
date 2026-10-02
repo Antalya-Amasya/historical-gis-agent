@@ -37,7 +37,7 @@ from backend.tests.test_v1_1h2_no_route_terminal_arbitration import _loop, _rout
 ])
 def test_terminal_polarity_controls(text, reject):
     assert BoundedAgentLoop._final_answer_asserts_unsupported_route(text) is reject
-    state = _route_state()
+    state = _route_state(historical_evidence=[ev("negative-control", text)] if not reject else [])
     reply, finished = _loop()._finish(text, state, perf_counter())
     assert reply == (NO_ROUTE_TERMINAL_GUARDRAIL if reject else text)
     assert derive_route_result_status(finished) is RouteResultStatus.NO_ROUTE

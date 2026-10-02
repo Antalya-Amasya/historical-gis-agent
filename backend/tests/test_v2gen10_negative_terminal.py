@@ -49,7 +49,9 @@ CHINESE_NEGATIVES = ["证据不足以支持完整路线。", "现有史料无法
 @pytest.mark.parametrize("text", NEGATIVES + CHINESE_NEGATIVES)
 def test_safe_negative_polarity_and_exact_terminal_prose(text):
     assert not BoundedAgentLoop._final_answer_asserts_unsupported_route(text)
-    reply, state = _loop()._finish(text, _route_state(), perf_counter())
+    # Historical negatives need documentary state, unlike epistemic refusals.
+    source = ev("negative-control", text)
+    reply, state = _loop()._finish(text, _route_state(historical_evidence=[source]), perf_counter())
     assert reply == text
     assert state.historical_route is None and state.historical_route_presentation is None
 
@@ -121,8 +123,12 @@ def test_invalid_negative_citation_fails_grounding(corruption):
 
 @pytest.mark.parametrize("answer", [POSITIVES[15], POSITIVES[16]])
 def test_insufficiency_language_does_not_bypass_positive_guard(answer):
-    reply, state = insufficient_path(answer, [negative_source()])
-    assert answer not in reply and state.supporting_evidence == []
+    source = negative_source()
+    reply, state = insufficient_path(answer, [source])
+    assert answer not in reply
+    assert "movement was prevented" in reply
+    assert state.supporting_evidence == [source]
+    assert not validate_evidence_citations(reply, [source], require_citation=True)
     assert state.historical_route is None
 
 

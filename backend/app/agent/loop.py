@@ -72,6 +72,104 @@ NO_ROUTE_TERMINAL_GUARDRAIL = (
 )
 
 
+# Historical non-completion, distinct from epistemic "cannot establish a route".
+_TERMINAL_NON_COMPLETION = re.compile(
+    r"(?P<PREVENTED>\b(?:prevented|blocked)\b|被阻止)"
+    r"|(?P<ABORTED>\b(?:aborted|abandoned)\b|\b(?:ended|stopped|failed)\b[^.!?;]{0,80}\bbefore\b|中止|放弃)"
+    r"|(?P<PLANNED>\b(?:planned|intended|unexecuted)\b|计划前往)"
+    r"|(?P<NEGATED>\b(?:did\s+not|never|failed\s+to)\s+(?:reach|arrive|enter|complete)\b"
+    r"|\bnot\s+(?:(?:a|to|have|been)\s+)*(?:completed|complete|executed|reached|arrived)\b"
+    r"|未(?:完成|执行|抵达|到达|进入))", re.IGNORECASE,
+)
+_TERMINAL_CLAUSES = re.compile(
+    r"[.;!?\n,。！？，；]+|\b(?:but|however|nevertheless|yet|and|so|therefore|although|though|because|while)\b|但是|然而|不过|但|因此",
+    re.IGNORECASE,
+)
+
+
+def _has_terminal_simulation(state: AgentState) -> bool:
+    presentation = state.historical_route_presentation or {}
+    return any(
+        isinstance(feature, dict)
+        and (feature.get("geometry") or {}).get("type") in {"LineString", "MultiLineString"}
+        and bool((feature.get("geometry") or {}).get("coordinates"))
+        and (feature.get("properties") or {}).get("segment_role") != "failed_gap"
+        for feature in (presentation.get("geojson") or {}).get("features") or []
+    )
+
+
+def _is_simulation_clause(clause: str) -> bool:
+    return bool(re.search(
+        r"^\s*(?:(?:the|a|separate|displayed)\s+)*"
+        r"(?:gis\s+simulation\b|simulated\s+(?:route|path|geometry)\b|GIS模拟|仿真路径|模拟路线)", clause, re.I,
+    )) and not re.search(r"\b(?:historical|attested|actually|documentary)\b|史实|历史路线", clause, re.I)
+
+
+def _historical_terminal_text(answer: str | None, state: AgentState) -> str | None:
+    if not answer or not _has_terminal_simulation(state):
+        return answer
+    return ". ".join(clause for clause in _TERMINAL_CLAUSES.split(answer) if not _is_simulation_clause(clause))
+
+
+def _non_completion_reply(state: AgentState) -> str | None:
+    """Quote existing documentary state; candidate prose supplies no facts."""
+    sources = {item.id: item for item in state.historical_evidence[:8]}
+    reports = [
+        (fact["source_statement"], tuple(ref for ref in fact["evidence_refs"] if ref in sources))
+        for fact in incomplete_movement_answer_context(state)
+    ]
+    if not reports:
+        reports = [
+            (sentence.strip(), (item.id,)) for item in sources.values()
+            for sentence in re.split(r"(?<=[.!?。！？])\s*", item.text)
+            if _TERMINAL_NON_COMPLETION.search(sentence)
+        ]
+    reports = list(dict.fromkeys((text, refs) for text, refs in reports if text and refs))[:2]
+    if not reports:
+        return None
+    quoted = " ".join(
+        f'Retrieved evidence reports: “{text}” {render_evidence_citations(refs, list(sources.values()))}'
+        for text, refs in reports
+    )
+    conclusion = (
+        " No completed historical route is established by this result." if state.historical_route is None else
+        " This non-completion does not establish an additional completed route."
+    )
+    return quoted + conclusion
+
+
+def _negative_prose_is_state_supported(answer: str, state: AgentState) -> bool:
+    # Preserve documentary clauses or generic paraphrases of known outcomes.
+    # Named claims must match documentary wording rather than shared keywords.
+    text = re.sub(r"\[Evidence:[^\]]*\]", "", answer, flags=re.IGNORECASE)
+    clauses = _TERMINAL_CLAUSES.split(text)
+    negative = [clause.strip().casefold() for clause in clauses if _TERMINAL_NON_COMPLETION.search(clause)]
+    cited = set(re.findall(r"\[Evidence:\s*(.*?)\s+—", answer, re.I))
+    selected = [item for item in state.historical_evidence if not cited or item.id in cited]
+    sources = [item.text.casefold() for item in selected]
+    documentary_clauses = {
+        clause.strip() for source in sources for clause in _TERMINAL_CLAUSES.split(source)
+    }
+    if negative and all(clause in documentary_clauses for clause in negative):
+        return True
+    # Generic non-completion paraphrases may retain their wording, but named
+    # actors/places require exact documentary clauses rather than keyword overlap.
+    assessment = assess_final_answer_provenance(text, state.user_query or "", state.historical_evidence)
+    if any(item.entity_like for item in assessment.candidate_entities):
+        return False
+    matches = list(_TERMINAL_NON_COMPLETION.finditer(text))
+    if any(re.search(r"\b(?:not|never)\s+(?:\w+ly\s+)*$", text[:match.start()], re.I) for match in matches):
+        return False
+    selected_ids = {item.id for item in selected}
+    supported = {fact["outcome"] for fact in incomplete_movement_answer_context(state)
+                 if set(fact["evidence_refs"]).issubset(selected_ids)}
+    requested = {key for match in _TERMINAL_NON_COMPLETION.finditer(text)
+                 for key, value in match.groupdict().items() if value}
+    if supported.intersection({"ABORTED", "PREVENTED", "FAILED_TO_REACH"}):
+        supported.add("NEGATED")
+    return bool(requested) and requested.issubset(supported)
+
+
 def _fingerprint(name: str, arguments: dict) -> str:
     return f"{name}:{json.dumps(arguments, sort_keys=True, separators=(',', ':'), ensure_ascii=False)}"
 
@@ -555,7 +653,7 @@ class BoundedAgentLoop:
                 if len(response.tool_calls) != 1 or not isinstance(answer, str) or not isinstance(ids, list) or not all(isinstance(item, str) for item in ids):
                     issues.append("malformed_grounded_answer_submission")
                 selected_ids = tuple(ids) if isinstance(ids, list) and all(isinstance(item, str) for item in ids) else ()
-                assessment = assess_final_answer_provenance(answer if isinstance(answer, str) else None, state.user_query or "", state.historical_evidence)
+                assessment = assess_final_answer_provenance(_historical_terminal_text(answer if isinstance(answer, str) else None, state), state.user_query or "", state.historical_evidence)
                 explicit_insufficient = bool(insufficient) and _explicitly_insufficient(answer if isinstance(answer, str) else None)
                 if bool(insufficient) and not explicit_insufficient and assessment.status in {"grounded", "grounded_with_unverified_suggestions"}:
                     insufficient = False
@@ -679,7 +777,7 @@ class BoundedAgentLoop:
                     return self._finish(response.content or "The agent completed without a final answer.", state, started)
                 if completion_action == "finish_insufficient":
                     try:
-                        claim_assessment = assess_final_answer_provenance(response.content, state.user_query or "", state.historical_evidence)
+                        claim_assessment = assess_final_answer_provenance(_historical_terminal_text(response.content, state), state.user_query or "", state.historical_evidence)
                     except Exception as exc:
                         state.status = "failed_grounding"
                         state.final_grounding_status = "validator_error"
@@ -902,11 +1000,21 @@ class BoundedAgentLoop:
     def _finish(self, answer: str, state: AgentState, started: float) -> tuple[str, AgentState]:
         state.status = "completed" if state.status == "running" else state.status
         route_status = derive_route_result_status(state)
-        if route_status is RouteResultStatus.NO_ROUTE and self._final_answer_asserts_unsupported_route(answer):
+        has_simulation = _has_terminal_simulation(state)
+        unsafe_route = self._final_answer_asserts_unsupported_route(answer, allow_simulation=has_simulation)
+        if state.historical_route is None and unsafe_route:
             state.warnings.append("Final answer mentioned a route without route state")
-            answer = self._no_route_terminal_guardrail_reply(state)
-        elif state.historical_route is None and self._final_answer_asserts_unsupported_route(answer):
-            state.warnings.append("Final answer mentioned a route without route state")
+            answer = _non_completion_reply(state) or self._no_route_terminal_guardrail_reply(state)
+            state.final_grounding_status = "guardrail_fallback"
+        elif route_status is RouteResultStatus.PARTIAL and unsafe_route:
+            # Preserve admitted fragments without letting prose complete a missing leg.
+            answer = admitted_route_summary(state) or self._no_route_terminal_guardrail_reply(state)
+            state.warnings.append("Final route prose limited to admitted partial route")
+        elif _TERMINAL_NON_COMPLETION.search(answer):
+            if not _negative_prose_is_state_supported(answer, state):
+                answer = (_non_completion_reply(state) or admitted_route_summary(state)
+                          or self._no_route_terminal_guardrail_reply(state))
+                state.warnings.append("Final non-completion prose replaced with documentary state")
         summary_refs = ()
         if state.historical_route is not None and answer == admitted_route_summary(state):
             summary_refs = tuple(ref for ref in state.historical_route.evidence_refs if ref)[:4]
@@ -919,7 +1027,7 @@ class BoundedAgentLoop:
         return answer, state
 
     @staticmethod
-    def _final_answer_asserts_unsupported_route(answer: str) -> bool:
+    def _final_answer_asserts_unsupported_route(answer: str, *, allow_simulation: bool = False) -> bool:
         if not (answer or "").strip():
             return False
         normalized = answer.casefold().strip()
@@ -927,11 +1035,11 @@ class BoundedAgentLoop:
             return False
         # Inspect asserted predicates, not mere route vocabulary. Infinitives
         # expressing a refused task are not assertions that a route occurred.
-        clauses = re.split(r"[.;!?\n,。！？，；]+|\b(?:but|however|yet|and|so|therefore|although|though|because|while)\b|但是|然而|但|因此", normalized)
-        route_language = r"\b(?:route\w*|movement|travel\w*|journey|waypoints?|geometry|origin|destination)\b"
-        movement_predicate = r"\b(?:went|travelled|traveled|sailed|marched|followed|passed|crossed|entered|arrived|reached)\b"
+        clauses = _TERMINAL_CLAUSES.split(normalized)
+        route_language = r"\b(?:route\w*|path|itinerary|movement|travel\w*|journey|expedition|waypoints?|geometry|origin|destination)\b"
+        movement_predicate = r"\b(?:went|gone|moved|proceeded|travelled|traveled|sailed|marched|followed|passed|crossed|entered|arrived|reached)\b"
         construction_predicate = r"\b(?:draw|draws|drew|build|builds|built|reconstruct(?:ed|s|ing)?|generat\w*|establish\w*|prove\w*|confirm\w*|mention\w*)\b"
-        nominal_predicate = rf"{route_language}[^.;!?]{{0,100}}?\b(?:is|are|was|were|includes?|shows?|follows?|consists?)\b"
+        nominal_predicate = rf"{route_language}[^.;!?]{{0,100}}?\b(?:is|are|was|were|would\s+be|could\s+be|may\s+be|might\s+be|includes?|shows?|follows?|consists?)\b"
         denial = (
             r"\b(?:no|never)\b(?:\W+\w+){0,5}\W*$"
             r"|\b(?:does|did|do)\s+not\s+(?:establish|support|show|prove|confirm|describe|document|mention)\b[^.!?;]*$"
@@ -945,12 +1053,22 @@ class BoundedAgentLoop:
             r"|(?:was|were|is|remains?)\s+(?:prevented|blocked|aborted|abandoned|incomplete|unexecuted|proposed|planned))\b"
         )
         for clause in clauses:
+            if allow_simulation and _is_simulation_clause(clause):
+                continue
+            if _TERMINAL_NON_COMPLETION.search(clause):
+                # Arrival inside "abandoned before ... reached" is not completed.
+                clause = re.sub(r"\bbefore\b.*$", "", clause)
             assertions = list(re.finditer(movement_predicate, clause))
             if re.search(route_language, clause):
                 assertions += list(re.finditer(construction_predicate, clause))
                 assertions += list(re.finditer(nominal_predicate, clause))
             if not assertions:
                 assertions += list(re.finditer(rf"{route_language}\s*(?::|\b(?:from|via|through)\b)", clause))
+            if re.search(route_language, normalized) or re.search(r"路线|行军|旅程", normalized):
+                assertions += list(re.finditer(
+                    r"\b(?:likely|probably|apparently|plausibly)\b[^.!?;]{0,60}\b(?:via|through|from|along)\b", clause,
+                ))
+                assertions += list(re.finditer(r"(?:可能|大概|也许).{0,40}(?:经|从|到|沿|途)", clause))
             assertions += list(re.finditer(r"→|->|—>", clause))
             if (assertions or re.search(route_language, clause)) and re.search(
                 r"\bnot\s+(?:impossible|unlikely)|\b(?:does|do|did)\s+not\s+(?:disprove|deny)"
@@ -961,7 +1079,9 @@ class BoundedAgentLoop:
                 prefix = clause[:assertion.start()]
                 if re.search(r"\bto\s*$|\bwhether\b", prefix):
                     continue
-                if re.search(denial, prefix):
+                if re.search(denial, prefix) or re.search(
+                    r"\b(?:cannot|can't|could not|unable to|does not|do not|did not)\s*$", prefix,
+                ):
                     continue
                 # Nominal predicates include their route subject; inspect the
                 # subject's remaining clause for non-completion scope.
@@ -980,7 +1100,7 @@ class BoundedAgentLoop:
                     if not re.search(rf"{movement_predicate}|\b(?:is|are|was|were)\b", before_denial):
                         continue
                 return True
-            if re.search(r"路线|移动|行军|旅程|几何|进入|到达", clause) and re.search(
+            if re.search(r"路线|移动|行军|旅程|几何|进入|到达|从.+(?:经|到)", clause) and re.search(
                 r"是|经过|途经|沿|包含|包括|从.+到|完成|建立|重建", clause,
             ):
                 if not re.search(r"没有|无法|不能|不足|未|不应|不宜|不曾|被阻止|中止|放弃", clause):
