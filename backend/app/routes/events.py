@@ -485,6 +485,42 @@ class EvidenceGroundedHistoricalEventExtractor:
         return name_match, actor_text
 
     @classmethod
+    def _coordinated_actor(cls, statement: str, predicate_start: int) -> HistoricalEventActorGrounding:
+        prefix = statement[:predicate_start]
+        # Only an elided subject immediately following a coordination marker.
+        # Pronouns and explicit later subjects stay with the local matcher.
+        if not re.search(r"\b(?:and|but)\b(?:\s+(?:then|later))?\s*$", prefix, re.I):
+            return cls._unknown_actor()
+        if re.search(r'[.;!?:"“”]', prefix):
+            return cls._unknown_actor()
+        subject = re.match(rf"\s*(?P<name>{cls._ACTOR_PROPER_NAME})\s+(?=[a-z])", prefix)
+        if subject is None or not cls._valid_explicit_actor_name(subject.group("name")):
+            return cls._unknown_actor()
+        body = prefix[subject.end():]
+        if re.match(r"(?:and|or|but)\b", body, re.I) or re.search(
+            r",\s*(?:a|an|the|another|some|his|her|their)\b", body, re.I,
+        ):
+            return cls._unknown_actor()
+        if re.search(r"\b(?:he|she|they|it|who|whom|whose|which|that|while|when|if|because|as|although|unless|until|since|after|before)\b", body, re.I):
+            return cls._unknown_actor()
+        if cls._ACTOR.search(body):
+            return cls._unknown_actor()
+        # Named objects can be competing actors. Only already recognized place
+        # mentions may occur between the initial subject and the elided subject.
+        aliases = HistoricalPlaceMentionExtractor().aliases_in(body)
+        for _position, _alias, surface in aliases:
+            body = re.sub(rf"(?<!\w){re.escape(surface)}(?!\w)", "", body, flags=re.I)
+        if re.search(cls._ACTOR_PROPER_NAME, body):
+            return cls._unknown_actor()
+        start, end = subject.span("name")
+        clause, clause_start = cls._local_clause(statement, predicate_start)
+        return HistoricalEventActorGrounding(
+            actor_text=subject.group("name"), actor_tokens=subject.group("name").split(),
+            actor_span=(start, end), actor_status=EventActorStatus.EXPLICIT,
+            actor_clause_span=(start, clause_start + len(clause)),
+        )
+
+    @classmethod
     def _ground_clause_actor(
         cls, statement: str, predicate_start: int, *, allow_appositive: bool = False,
     ) -> HistoricalEventActorGrounding:
@@ -493,8 +529,17 @@ class EvidenceGroundedHistoricalEventExtractor:
         tail = statement[predicate_start:]
         verb_match = cls._MOVEMENT_VERBS.match(tail)
         predicate = verb_match.group(0) if verb_match else tail.split()[0]
-        resolved = cls._explicit_actor_name_match(prefix, predicate=predicate)
+        actor_prefix = prefix
+        prior_segment = statement[:clause_start].rstrip(", ").split(",")[-1]
+        if re.match(rf"^\s*{cls._ACTOR_PROPER_NAME}\s+(?!(?:and|or)\b)[a-z]+\b", prior_segment):
+            # A new explicit subject after a predicate-bearing clause is not
+            # the final name in a comma-delimited coordinated subject list.
+            actor_prefix = re.sub(r"^\s*(?:and|but)\s+(?:(?:then|later)\s+)?(?=[A-Z])", "", prefix)
+        resolved = cls._explicit_actor_name_match(actor_prefix, predicate=predicate)
         if resolved is None:
+            coordinated = cls._coordinated_actor(statement, predicate_start)
+            if coordinated.actor_status is EventActorStatus.EXPLICIT:
+                return coordinated
             if not allow_appositive:
                 return cls._unknown_actor()
             # A comma-delimited noun appositive is part of the same subject:
@@ -1345,8 +1390,20 @@ class EvidenceGroundedHistoricalEventExtractor:
                 )
                 temporal_codes.update(codes)
                 temporal = self.temporal_resolver.primary(temporal_readings, item.id)
+                event_summary = statement
                 if event_type is HistoricalEventType.MOVEMENT:
                     actor = self._ground_movement_actor(statement)
+                    if actor.actor_status is EventActorStatus.UNKNOWN and incomplete is not None and incomplete.outcome == "NEGATED" and sentence != sentences[index]:
+                        # Polarity projection kept only the completed contrast
+                        # clause. Its elided subject may still be explicit in the
+                        # same sentence; preserve that documentary grounding.
+                        predicate = self._asserted_movement_predicate_span(sentence)
+                        offset = sentences[index].rfind(sentence)
+                        if predicate is not None and offset >= 0:
+                            coordinated = self._coordinated_actor(sentences[index], offset + predicate[0])
+                            if coordinated.actor_status is EventActorStatus.EXPLICIT:
+                                actor = coordinated
+                                statement = sentences[index]
                 elif event_type is HistoricalEventType.PRESENCE:
                     actor = self._ground_presence_actor(statement)
                 else:
@@ -1358,7 +1415,7 @@ class EvidenceGroundedHistoricalEventExtractor:
                         if mention.raw_text.casefold() != actor_key
                     ]
                 events.append(HistoricalEvent(
-                    id=f"event-{digest}", name=f"{event_type.value.title()} event", summary=statement,
+                    id=f"event-{digest}", name=f"{event_type.value.title()} event", summary=event_summary,
                     period=item.period, event_type=event_type, temporal_grounding=temporal,
                     place_mentions=places, evidence_refs=[item.id], grounding_status=EventGroundingStatus.EVIDENCE_GROUNDED,
                     limitations=["Extracted from one explicit evidence statement; no coordinates, chronology merge, or route inference was performed."],
