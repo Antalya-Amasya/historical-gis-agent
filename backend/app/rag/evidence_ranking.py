@@ -28,6 +28,7 @@ from backend.app.rag.query_roles import (
     _ROUTE_LOCATION_PREP,
     _GEOGRAPHIC_COMPOUND_HEADS,
     _GEOGRAPHIC_COMPOUND_TAILS,
+    _PRAENOMINA,
 )
 
 _STRONG_NAV_SOURCES = frozenset({"toc", "contents", "navigation", "index"})
@@ -166,6 +167,32 @@ def _passage_person_signals(query: str, roles, text: str, text_tokens: frozenset
     return primary, secondary
 
 
+def _local_person_support(roles, text: str, tokens: frozenset[str]) -> float:
+    """Ranking-only literal support; unrelated names cannot veto a local surname.
+
+    Caius/Gaius is an orthographic variant, not a registry membership test.
+    A conflicting given name must occur in the same surface name phrase.
+    This neither resolves same-full-name homonyms nor assigns actor authority.
+    """
+    canonical = lambda term: "gaius" if term == "caius" else term
+    sequence = tuple(canonical(term) for term in roles.person_sequence)
+    terms = frozenset(canonical(term) for term in roles.person_terms)
+    tokens = frozenset(canonical(term) for term in tokens)
+    local_roles = replace(roles, person_terms=terms, person_sequence=sequence)
+    support = role_person_support(local_roles, tokens)
+    if len(sequence) < 2 or not terms & tokens or terms <= tokens:
+        return support
+    surname = sequence[-1]
+    if surname not in tokens:
+        return support if roles.multiple_person_phrases_detected else 0.0
+    # Only an adjacent capitalized name span supplies a competing praenomen.
+    for match in re.finditer(r"\b(?:[A-Z][a-z]+\s+){0,2}[A-Z][a-z]+\b", text or ""):
+        name = frozenset(canonical(term) for term in normalized_tokens(match.group()))
+        if surname in name and (name & _PRAENOMINA) - terms:
+            return 0.0
+    return max(support, 0.04)
+
+
 def route_fragment_relevance(
     query: str,
     roles,
@@ -224,7 +251,7 @@ def diversify_route_evidence(query: str, ranked: list[Evidence]) -> list[Evidenc
     def useful(item: Evidence) -> bool:
         return not is_navigation_or_heading(item)
 
-    roles = analyze_query(query)
+    roles = _ranking_roles(query)
 
     def in_query_scope(item: Evidence) -> bool:
         """Require a pair candidate to retain an available actor/region scope.
@@ -238,6 +265,8 @@ def diversify_route_evidence(query: str, ranked: list[Evidence]) -> list[Evidenc
             scoped_support.append(float(ranking.get("person_support", 0.0)))
         if roles.location_terms:
             scoped_support.append(float(ranking.get("location_support", 0.0)))
+        if roles.person_terms and not roles.multiple_person_phrases_detected:
+            return float(ranking.get("person_support", 0.0)) > 0
         return not scoped_support or any(value > 0 for value in scoped_support)
 
     selected: list[Evidence] = []
@@ -264,7 +293,7 @@ def diversify_route_evidence(query: str, ranked: list[Evidence]) -> list[Evidenc
     # from crowding out independent movement-episode evidence.
     for item in ranked:
         key = family(item)
-        if key not in used and useful(item) and _MOVEMENT_STATEMENT.search(item.text or ""):
+        if key not in used and useful(item) and in_query_scope(item) and _MOVEMENT_STATEMENT.search(item.text or ""):
             selected.append(item)
             used.add(key)
     # Preserve source diversity even when a relevant passage has no explicit
@@ -354,7 +383,14 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
     semantic_items = [item for item in evidence if item.metadata.get("semantic_candidate")]
     lexical_items = [item for item in evidence if item.metadata.get("lexical_candidate")]
     semantic_order = {item.id: rank for rank, item in enumerate(sorted(semantic_items, key=lambda item: item.metadata.get("vector_rank", 0)), 1)}
-    lexical_order = {item.id: rank for rank, item in enumerate(sorted(lexical_items, key=lambda item: (-float(item.metadata.get("lexical_score", 0.0)), item.id)), 1)}
+    lexical_sorted = sorted(lexical_items, key=lambda item: (-float(item.metadata.get("lexical_score", 0.0)), item.id))
+    # Equal lexical evidence must not acquire different relevance from source IDs.
+    # Keep the best competition rank for ties; recall and score magnitude stay intact.
+    lexical_ranks = {}
+    lexical_order = {}
+    for rank, item in enumerate(lexical_sorted, 1):
+        lexical_score = float(item.metadata.get("lexical_score", 0.0))
+        lexical_order[item.id] = lexical_ranks.setdefault(lexical_score, rank)
 
     def percentile(rank: int | None, population: int) -> float:
         return 0.0 if rank is None or not population else (population - rank + 1) / population
@@ -364,7 +400,7 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
         text_tokens = tokens_by_id[item.id]
         parent_semantic_prior = percentile(semantic_order.get(item.id), len(semantic_items))
         passage_text = item.text or ""
-        person = role_person_support(roles, text_tokens)
+        person = _local_person_support(roles, passage_text, text_tokens)
         signals = _passage_person_signals(query, roles, passage_text, text_tokens)
         primary_subject = signals[0] if signals else 0.0
         secondary_context = signals[1] if signals else 0.0
@@ -440,10 +476,29 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
         ):
             query_coverage = 1.0
         vector_similarity, semantic_vector_bonus = _vector_signal(item)
+        source_vector_bonus = semantic_vector_bonus
+        # An incomplete multi-token name is a reference, not full local identity.
+        # Apply the existing .04/.08 support ratio to its inherited vector prior.
+        person_vector_scale = (person / 0.08 if len(roles.person_sequence) > 1
+                               and not roles.multiple_person_phrases_detected
+                               and 0 < person < 0.08 else 1.0)
+        semantic_vector_bonus *= person_vector_scale
         if navigation_penalty:
             semantic_vector_bonus = 0.0
         heuristic_score = passage_relevance + channel_confidence + location + action + generic + statement_bonus
-        final_score = heuristic_score * query_coverage + semantic_vector_bonus - navigation_penalty
+        # A source vector can be strong while this exact child names another actor.
+        # Bound the correction by the existing maximum inherited vector prior;
+        # candidates remain eligible and no historical identity is asserted.
+        competing_person = bool(roles.person_terms and person == 0 and
+                                _explicit_fragment_actor_conflict(roles, passage_text))
+        # Restore the existing .40 full / .20 reference distinction even for
+        # lexical-only evidence, whose local component is otherwise not used.
+        person_identity_bonus = (0.20 if len(roles.person_sequence) > 1
+                                 and not roles.multiple_person_phrases_detected
+                                 and person >= 0.08 and not navigation_penalty else 0.0)
+        supported_score = heuristic_score * query_coverage + semantic_vector_bonus + person_identity_bonus
+        person_mismatch_penalty = min(_VECTOR_BONUS_MAX, supported_score / 2) if competing_person else 0.0
+        final_score = supported_score - navigation_penalty - person_mismatch_penalty
         metadata = dict(item.metadata)
         metadata["retrieval_ranking"] = {
             "semantic_rank": item.metadata.get("vector_rank"),
@@ -451,6 +506,8 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
             "merged_rank": item.metadata.get("merged_rank"),
             "vector_similarity": round(vector_similarity, 6) if vector_similarity is not None else None,
             "semantic_vector_bonus": round(semantic_vector_bonus, 6),
+            "source_vector_bonus": round(source_vector_bonus, 6),
+            "person_vector_scale": round(person_vector_scale, 6),
             "query_scope_coverage": round(query_coverage, 6),
             "heuristic_score": round(heuristic_score, 6),
             "pre_rerank_score": item.metadata.get("pre_rerank_score", item.score),
@@ -465,6 +522,10 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
             "channel_confidence": round(channel_confidence, 6),
             "entity_support": round(entity_support, 6),
             "person_support": round(person, 6),
+            "person_local_support": round(person_local, 6),
+            "person_identity_bonus": round(person_identity_bonus, 6),
+            "person_mismatch_penalty": round(person_mismatch_penalty, 6),
+            "explicit_competing_person": competing_person,
             "primary_subject_support": round(primary_subject, 6),
             "secondary_person_context_support": round(secondary_context, 6),
             "location_support": round(location, 6),
