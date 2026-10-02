@@ -16,7 +16,7 @@ from backend.app.routes.evidence_relevance import (
     normalize_subject_name,
     normalized_terms,
 )
-from backend.app.routes.movement_semantics import analyze_sentence
+from backend.app.routes.movement_semantics import MovementEdgeCandidate, analyze_sentence
 from backend.app.routes.place_aliases import HISTORICAL_PLACE_ALIASES, HistoricalPlaceAlias
 
 
@@ -44,6 +44,8 @@ def _legacy_od_has_positive_authority(
     source_place: str,
     destination_place: str,
     *,
+    mention_extractor: HistoricalPlaceMentionExtractor | None = None,
+    semantic_edge: MovementEdgeCandidate | None = None,
     source_surface: str | None = None,
     destination_surface: str | None = None,
 ) -> bool:
@@ -52,35 +54,43 @@ def _legacy_od_has_positive_authority(
     if not EvidenceGroundedHistoricalEventExtractor._has_positive_movement_assertion(sentence):
         return False
 
-    def place_tokens(*names: str | None) -> set[str]:
+    mention_extractor = mention_extractor or HistoricalPlaceMentionExtractor()
+
+    def place_names(*names: str | None) -> set[str]:
         tokens: set[str] = set()
         for name in names:
             if name:
-                tokens |= normalized_terms(name)
+                tokens.add(" ".join(name.casefold().split()))
         return tokens
 
     def endpoint_tokens(endpoint) -> set[str]:
         if endpoint is None:
             return set()
-        return place_tokens(endpoint.canonical, endpoint.surface)
+        return place_names(endpoint.canonical, endpoint.surface)
 
-    source_tokens = place_tokens(source_place, source_surface)
-    dest_tokens = place_tokens(destination_place, destination_surface)
+    source_tokens = place_names(source_place, source_surface)
+    dest_tokens = place_names(destination_place, destination_surface)
+
+    def completed_clause(clause: str) -> bool:
+        return (
+            EvidenceGroundedHistoricalEventExtractor._clause_has_positive_movement(clause)
+            and not EvidenceGroundedHistoricalEventExtractor._non_completed_governs_clause(clause)
+            and not EvidenceGroundedHistoricalEventExtractor._non_assertive_governs_clause(clause)
+        )
+
     positive_clauses = [
         clause
         for clause in EvidenceGroundedHistoricalEventExtractor._movement_clauses(sentence)
-        if EvidenceGroundedHistoricalEventExtractor._clause_has_positive_movement(clause)
+        if completed_clause(clause)
     ]
     if not positive_clauses:
         return False
 
-    mention_extractor = HistoricalPlaceMentionExtractor()
-    aliases = mention_extractor.aliases_in(sentence)
     all_clauses = EvidenceGroundedHistoricalEventExtractor._movement_clauses(sentence)
     positive_indexes = [
         index
         for index, clause in enumerate(all_clauses)
-        if EvidenceGroundedHistoricalEventExtractor._clause_has_positive_movement(clause)
+        if completed_clause(clause)
     ]
 
     def directed_edge_in_clause(clause: str) -> bool:
@@ -136,8 +146,13 @@ def _legacy_od_has_positive_authority(
             return False
         return True
 
-    for edge in analyze_sentence(sentence, aliases).edges:
-        if edge.movement_relation not in {"crossing_arrival", "crossing_into"}:
+    # Validate the established bounded edge; do not reconstruct it with a
+    # different alias environment or lose its cross-clause relation.
+    edges = (semantic_edge,) if semantic_edge else analyze_sentence(
+        sentence, mention_extractor.aliases_in(sentence),
+    ).edges
+    for edge in edges:
+        if edge.movement_relation not in {"crossing_arrival", "crossing_into", "thence_passed_on_to", "departure_arrival"}:
             continue
         origin = edge.traversal or edge.origin
         destination = edge.destination
@@ -147,20 +162,24 @@ def _legacy_od_has_positive_authority(
         destination_tokens = endpoint_tokens(destination)
         if not (source_tokens & origin_tokens and dest_tokens & destination_tokens):
             continue
-        for left, right in zip(positive_indexes, positive_indexes[1:]):
-            if right != left + 1:
-                continue
-            left_clause = all_clauses[left]
-            right_clause = all_clauses[right]
-            if occurrence_boundary.search(right_clause):
-                continue
-            left_tokens = normalized_terms(left_clause)
-            right_tokens = normalized_terms(right_clause)
-            if not (origin_tokens & left_tokens and destination_tokens & right_tokens):
-                continue
-            if not subjects_allow_cross_clause_continuation(left_clause, right_clause):
-                continue
-            return True
+        for left in positive_indexes:
+            for right in positive_indexes:
+                if right <= left:
+                    continue
+                window = all_clauses[left:right + 1]
+                if not all(completed_clause(clause) for clause in window):
+                    continue
+                if any(occurrence_boundary.search(clause) for clause in window[1:]):
+                    continue
+                if not (
+                    re.search(rf"(?<!\w){re.escape(origin.surface)}(?!\w)", window[0], re.I)
+                    and re.search(rf"(?<!\w){re.escape(destination.surface)}(?!\w)", window[-1], re.I)
+                ):
+                    continue
+                if not all(subjects_allow_cross_clause_continuation(a, b)
+                           for a, b in zip(window, window[1:])):
+                    continue
+                return True
     return False
 
 
@@ -220,7 +239,10 @@ class HistoricalPlaceMentionExtractor:
 
         Traversal-only statements retain evidence provenance but cannot form a route edge.
         """
+        from backend.app.routes.events import EvidenceGroundedHistoricalEventExtractor
+
         claims: list[HistoricalClaim] = []
+        event_extractor = EvidenceGroundedHistoricalEventExtractor(self)
         claim_number = 0
         for item in evidence:
             document = str(item.metadata.get("document_id") or item.source_file or item.author)
@@ -229,13 +251,21 @@ class HistoricalPlaceMentionExtractor:
                 aliases = self.aliases_in(sentence)
                 semantics = analyze_sentence(sentence, aliases, prior_endpoints=prior_endpoints)
                 prior_endpoints = semantics.endpoints
-                claim_number += 1
+                incomplete = event_extractor._incomplete_movement_fact(sentence, item.id)
                 for edge in semantics.edges:
+                    if incomplete is not None:
+                        bounded_end = len(incomplete.source_statement)
+                        edge_endpoints = (edge.origin or edge.traversal, edge.destination)
+                        if any(endpoint and endpoint.position < bounded_end for endpoint in edge_endpoints):
+                            continue
+                    claim_number += 1
                     if edge.origin and edge.destination:
                         if not _legacy_od_has_positive_authority(
                             sentence,
                             edge.origin.place_name,
                             edge.destination.place_name,
+                            mention_extractor=self,
+                            semantic_edge=edge,
                             source_surface=edge.origin.surface,
                             destination_surface=edge.destination.surface,
                         ):
@@ -261,6 +291,8 @@ class HistoricalPlaceMentionExtractor:
                             sentence,
                             edge.traversal.place_name,
                             edge.destination.place_name,
+                            mention_extractor=self,
+                            semantic_edge=edge,
                             source_surface=edge.traversal.surface,
                             destination_surface=edge.destination.surface,
                         ):
