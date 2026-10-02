@@ -2,6 +2,7 @@ from __future__ import annotations
 import json, logging, re
 from time import perf_counter
 from backend.app.agent.prompts import SYSTEM_PROMPT
+from backend.app.agent.tools import incomplete_movement_answer_context
 from backend.app.agent.evidence_support import final_answer_support, assess_evidence_support, assess_final_answer_provenance, event_relation_supports_answer, has_unsupported_route_pattern, render_evidence_citations, validate_evidence_citations, validate_evidence_selection
 from backend.app.agent.route_orchestration import (
     PRE_ROUTE_SUPPRESSION_MESSAGE,
@@ -190,6 +191,7 @@ def _model_result(tool_name: str, payload: dict, state: AgentState, remaining_se
             "missing_subject_terms": state.missing_subject_terms,
             "evidence": [{"id": item.id, "author": item.author, "work": item.work, "locator": item.locator, "excerpt": item.excerpt[:360]} for item in visible_evidence],
             "historical_events": events,
+            "incomplete_movement_facts": incomplete_movement_answer_context(state),
             "route_ready": readiness,
             "movement_event_count": sum(1 for event in events if str(event.get("event_type", "")).upper() == "MOVEMENT"),
         }
@@ -496,7 +498,18 @@ class BoundedAgentLoop:
                     schemas = self.tools.schemas
                 else:
                     schemas = [tool for tool in self.tools.schemas if tool["name"] != "submit_grounded_answer"]
-                response = self.provider.complete(messages, schemas)
+                # Derived afresh for every call, including bootstrap retrieval.
+                # Keep this request-local context out of persisted conversation history.
+                incomplete_facts = incomplete_movement_answer_context(state)
+                answer_messages = messages
+                if incomplete_facts:
+                    answer_messages = [*messages, {"role": "system", "content":
+                        "The following incomplete_movement_facts are source-linked negative/non-completion "
+                        "documentary context for explanation only. They are not completed movements, arrivals, "
+                        "route nodes, edges, travel modes, or route completeness. Do not infer missing endpoints "
+                        "or actors. Cite their Evidence IDs when using them. "
+                        + json.dumps({"incomplete_movement_facts": incomplete_facts}, ensure_ascii=False)}]
+                response = self.provider.complete(answer_messages, schemas)
             except Exception as exc:
                 provider_finished = perf_counter()
                 self._record_provider_timing(

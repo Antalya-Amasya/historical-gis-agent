@@ -111,6 +111,40 @@ def _route_admission_query_contexts(state: AgentState) -> tuple[str, ...] | None
     return (normalized,) if normalized else None
 
 
+def incomplete_movement_answer_context(state: AgentState) -> list[dict]:
+    """Bounded documentary explanation context; never completed route authority."""
+    evidence_ids = {item.id for item in state.historical_evidence}
+    facts = ((state.historical_event_diagnostics or {}).get("extraction") or {}).get("incomplete_movement_facts") or []
+    visible, seen = [], set()
+    for fact in facts:
+        refs = list(dict.fromkeys(fact["evidence_refs"]))
+        if not refs or not set(refs).issubset(evidence_ids):
+            continue
+        actor = fact["actor"]
+        key = (fact["outcome"], actor.get("actor_text"), fact["source_statement"], tuple(refs))
+        if key in seen:
+            continue
+        seen.add(key)
+        mentions = {}
+        for field in ("destination_mentions", "context_place_mentions"):
+            mentions[field] = [
+                {"raw_text": item["raw_text"][:200], "role": item["role"],
+                 "evidence_refs": [ref for ref in item["evidence_refs"] if ref in evidence_ids][:8]}
+                for item in fact.get(field, [])[:8]
+            ]
+        visible.append({
+            "context_role": "NON_COMPLETION_EXPLANATION_ONLY",
+            "outcome": fact["outcome"],
+            "actor": {"actor_text": (actor.get("actor_text") or "")[:200] or None,
+                      "actor_status": actor["actor_status"]},
+            "source_statement": fact["source_statement"][:500],
+            "evidence_refs": refs[:8], **mentions,
+        })
+        if len(visible) == 8:
+            break
+    return visible
+
+
 class AgentToolRegistry:
     def __init__(self, retriever: HistoricalRetriever, geography_client, *, route_orchestrator=None, campaign_registry=None, roman_road_orchestrator=None):
         self.retriever, self.geography_client = retriever, geography_client
@@ -187,7 +221,8 @@ class AgentToolRegistry:
                 "place_resolution": place_diagnostics,
                 "statement_candidates": [item.model_dump(mode="json") for item in candidates],
             }
-            return {"evidence": [item.model_dump(mode="json") for item in evidence], "result_count": len(evidence)}, f"search_historical_evidence evidence_count={len(evidence)} accumulated_evidence_count={len(state.historical_evidence)}"
+            return {"evidence": [item.model_dump(mode="json") for item in evidence], "result_count": len(evidence),
+                    "incomplete_movement_facts": incomplete_movement_answer_context(state)}, f"search_historical_evidence evidence_count={len(evidence)} accumulated_evidence_count={len(state.historical_evidence)}"
         if name in {"resolve_ancient_place", "calculate_distance", "get_elevation", "get_elevation_profile"}:
             result = self.geography_client.call(name, arguments)
             if name == "resolve_ancient_place" and result.get("found"):
