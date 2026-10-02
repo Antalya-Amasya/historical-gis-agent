@@ -126,7 +126,7 @@ _DISCOURSE_THEN = re.compile(
     re.IGNORECASE,
 )
 _MOVEMENT_AFTER_DISCOURSE = re.compile(
-    r"\b(?:marched|advanced|proceeded|passed|went|moved|travelled|traveled|reached|arrived|entered)\b",
+    r"\b(?:marched|advanced|proceeded|passed|went|moved|travelled|traveled|reached|arrived|entered|sailed)\b",
     re.IGNORECASE,
 )
 _MOVEMENT_GOVERNED_FROM = re.compile(
@@ -293,6 +293,9 @@ def _origin_after_from(
     before: int | None = None,
 ) -> MovementEndpoint | None:
     """Resolve a movement source after ``from``, including mediated phrases."""
+    reference = _DISCOURSE_ANAPHORA.match(sentence)
+    if reference and from_end <= reference.end():
+        return None
     remainder = sentence[from_end:]
     stripped = remainder.lstrip()
     offset = from_end + (len(remainder) - len(stripped))
@@ -999,7 +1002,7 @@ def _parse_sentence_compound(
     if (
         initial_from
         and marched_to
-        and not _DISCOURSE_FROM_THERE.search(sentence)
+        and not _DISCOURSE_ANAPHORA.search(sentence)
         and not re.match(r"^\s*from\s+(?:there|thence)\b", sentence, re.IGNORECASE)
     ):
         from_end = initial_from.end()
@@ -1116,7 +1119,7 @@ def _discourse_continuation(
         return [], endpoints, False, None
     if not _MOVEMENT_AFTER_DISCOURSE.search(sentence):
         return [], endpoints, True, "discourse_without_movement_predicate"
-    antecedents = [item for item in prior_endpoints if item.role in {"origin", "destination"}]
+    antecedents = [item for item in prior_endpoints if item.role == "destination"]
     unique_antecedents = {item.place_name.casefold(): item for item in antecedents}
     if len(unique_antecedents) != 1:
         return [], endpoints, True, "ambiguous_discourse_antecedent"
@@ -1616,7 +1619,7 @@ def analyze_sentence(
             edges.append(thence_edge)
             endpoints.extend(thence_endpoints)
 
-    if not edges:
+    if not edges or (_DISCOURSE_ANAPHORA.search(sentence) and not any(edge.origin for edge in edges)):
         disc_edges, disc_endpoints, disc_abstain, disc_reason = _discourse_continuation(
             sentence, aliases, prior_endpoints, endpoints,
         )

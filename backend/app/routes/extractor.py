@@ -16,7 +16,7 @@ from backend.app.routes.evidence_relevance import (
     normalize_subject_name,
     normalized_terms,
 )
-from backend.app.routes.movement_semantics import MovementEdgeCandidate, analyze_sentence
+from backend.app.routes.movement_semantics import MovementEdgeCandidate, _DISCOURSE_ANAPHORA, analyze_sentence
 from backend.app.routes.place_aliases import HISTORICAL_PLACE_ALIASES, HistoricalPlaceAlias
 
 
@@ -234,6 +234,55 @@ class HistoricalPlaceMentionExtractor:
         candidates = [place for position, place, _ in aliases if position >= start and (before is None or position < before)]
         return candidates[0] if candidates else None
 
+    def continuation_endpoints(self, previous: str | None, sentence: str, semantics, *, evidence_id: str) -> tuple:
+        """Resume only a completed destination in the adjacent evidence statement.
+
+        This supplies location bindings, never a pronoun's actor authority.
+        """
+        from backend.app.routes.events import EvidenceGroundedHistoricalEventExtractor
+        from backend.app.models import EventActorStatus
+
+        if not previous or semantics is None or semantics.should_abstain or not _DISCOURSE_ANAPHORA.search(sentence):
+            return ()
+        extractor = EvidenceGroundedHistoricalEventExtractor(self)
+        for text in (previous, sentence):
+            if (not extractor._has_completed_movement_assertion(text)
+                    or extractor._incomplete_movement_fact(text, evidence_id) is not None
+                    or extractor._REPORTED_SPEECH.search(text)
+                    or re.search(r"\b(?:years?\s+later|decades?\s+later|long\s+after|"
+                                 r"(?:new|different|another|later|separate|subsequent)\s+(?:campaign|war|episode|expedition))\b", text, re.I)):
+                return ()
+        # A named place omitted by the semantic parse is a competing endpoint,
+        # not permission to pick the parser's first destination in a list.
+        current_semantics = analyze_sentence(sentence, self.aliases_in(sentence))
+        for text, parsed in ((previous, semantics), (sentence, current_semantics)):
+            if parsed.should_abstain:
+                return ()
+            identities = {endpoint.place_name.casefold() for endpoint in parsed.endpoints}
+            if any(place.canonical_name.casefold() not in identities
+                   for _start, place, _surface in self.aliases_in(text)):
+                return ()
+        previous_actor = extractor._ground_movement_actor(previous)
+        current_actor = extractor._ground_movement_actor(sentence)
+        if current_actor.actor_status is EventActorStatus.EXPLICIT:
+            if (previous_actor.actor_status is not EventActorStatus.EXPLICIT
+                    or normalize_subject_name(current_actor.actor_text or "") != normalize_subject_name(previous_actor.actor_text or "")):
+                return ()
+        # Other named people are competing referents, not a reason to guess.
+        for text, actor in ((previous, previous_actor), (sentence, current_actor)):
+            masked = text
+            if actor.actor_span:
+                start, end = actor.actor_span
+                masked = masked[:start] + " " * (end - start) + masked[end:]
+            for start, _place, surface in reversed(self.aliases_in(masked)):
+                masked = masked[:start] + " " * len(surface) + masked[start + len(surface):]
+            masked = _DISCOURSE_ANAPHORA.sub("", masked)
+            if _named_proper_nouns(masked) - _spatial_role_proper_nouns(masked):
+                return ()
+        destinations = {endpoint.place_name.casefold(): endpoint
+                        for endpoint in semantics.endpoints if endpoint.role == "destination"}
+        return tuple(destinations.values()) if len(destinations) == 1 else ()
+
     def movement_claims(self, evidence: list[Evidence], *, event_id: str) -> list[HistoricalClaim]:
         """Extract explicit movement claims from evidence-local movement semantics.
 
@@ -246,11 +295,16 @@ class HistoricalPlaceMentionExtractor:
         claim_number = 0
         for item in evidence:
             document = str(item.metadata.get("document_id") or item.source_file or item.author)
-            prior_endpoints = ()
-            for sentence in self._sentences(self._text(item)):
-                aliases = self.aliases_in(sentence)
-                semantics = analyze_sentence(sentence, aliases, prior_endpoints=prior_endpoints)
-                prior_endpoints = semantics.endpoints
+            text = self._text(item)
+            previous, previous_semantics, previous_end = None, None, 0
+            for sentence in self._sentences(text):
+                start = text.find(sentence, previous_end)
+                if "\n" in text[previous_end:start]:
+                    previous = None
+                prior_endpoints = self.continuation_endpoints(previous, sentence, previous_semantics, evidence_id=item.id)
+                semantics = analyze_sentence(sentence, self.aliases_in(sentence), prior_endpoints=prior_endpoints)
+                basis = f"{previous} {sentence}" if any(edge.cross_sentence_link for edge in semantics.edges) else sentence
+                previous, previous_semantics, previous_end = sentence, semantics, start + len(sentence)
                 incomplete = event_extractor._incomplete_movement_fact(sentence, item.id)
                 for edge in semantics.edges:
                     if incomplete is not None:
@@ -260,7 +314,7 @@ class HistoricalPlaceMentionExtractor:
                             continue
                     claim_number += 1
                     if edge.origin and edge.destination:
-                        if not _legacy_od_has_positive_authority(
+                        if not edge.cross_sentence_link and not _legacy_od_has_positive_authority(
                             sentence,
                             edge.origin.place_name,
                             edge.destination.place_name,
@@ -273,8 +327,8 @@ class HistoricalPlaceMentionExtractor:
                         claims.append(HistoricalClaim(
                             id=f"{event_id}-movement-{claim_number}",
                             claim_type="MOVEMENT",
-                            text=sentence,
-                            textual_basis=sentence,
+                            text=basis,
+                            textual_basis=basis,
                             source_place=edge.origin.place_name,
                             destination_place=edge.destination.place_name,
                             movement_relation=edge.movement_relation,

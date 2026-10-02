@@ -31,6 +31,7 @@ from backend.app.routes.movement_semantics import (
     EndpointRole,
     MovementEndpoint,
     _SET_SAIL,
+    _DISCOURSE_ANAPHORA,
     _STEER_MOVEMENT,
     analyze_sentence,
     _has_movement_cue,
@@ -529,7 +530,7 @@ class EvidenceGroundedHistoricalEventExtractor:
         tail = statement[predicate_start:]
         verb_match = cls._MOVEMENT_VERBS.match(tail)
         predicate = verb_match.group(0) if verb_match else tail.split()[0]
-        actor_prefix = prefix
+        actor_prefix = _DISCOURSE_ANAPHORA.sub("", prefix)
         prior_segment = statement[:clause_start].rstrip(", ").split(",")[-1]
         if re.match(rf"^\s*{cls._ACTOR_PROPER_NAME}\s+(?!(?:and|or)\b)[a-z]+\b", prior_segment):
             # A new explicit subject after a predicate-bearing clause is not
@@ -773,11 +774,10 @@ class EvidenceGroundedHistoricalEventExtractor:
                     marker = markers[-1]
                     return marker.start(), place_end, "from"
             elif mention.role is EventPlaceRole.DESTINATION:
-                for pattern in (r"\binto\b", r"\bto\b"):
-                    markers = list(re.finditer(pattern, sentence[:match.start()], re.IGNORECASE))
-                    if markers:
-                        marker = markers[-1]
-                        return marker.start(), place_end, marker.group(0).lower()
+                markers = list(re.finditer(r"\b(?:into|to)\b", sentence[:match.start()], re.IGNORECASE))
+                if markers:
+                    marker = markers[-1]
+                    return marker.start(), place_end, marker.group(0).lower()
         return None
 
     @classmethod
@@ -792,9 +792,10 @@ class EvidenceGroundedHistoricalEventExtractor:
         return governing is not None and cls._negation_governs_movement_predicate(clause, governing)
 
     def _enforce_movement_endpoint_polarity(
-        self, sentence: str, places: list[HistoricalEventPlaceMention],
+        self, sentence: str, places: list[HistoricalEventPlaceMention], *, semantics=None,
     ) -> list[HistoricalEventPlaceMention]:
-        semantics = analyze_sentence(sentence, self.mention_extractor.aliases_in(sentence))
+        if semantics is None:
+            semantics = analyze_sentence(sentence, self.mention_extractor.aliases_in(sentence))
         role_map = {"origin": EventPlaceRole.ORIGIN, "destination": EventPlaceRole.DESTINATION}
         semantic_directional = {
             (endpoint.surface.casefold(), role_map[endpoint.role])
@@ -1003,6 +1004,7 @@ class EvidenceGroundedHistoricalEventExtractor:
             endpoint.surface,
             sentence,
             re.search(re.escape(endpoint.surface), sentence, re.IGNORECASE),
+            canonical_hint=endpoint.canonical,
         )
         if validation.validation_class is PlaceMentionValidationClass.NON_PLACE_HIGH_CONFIDENCE:
             return
@@ -1081,6 +1083,7 @@ class EvidenceGroundedHistoricalEventExtractor:
         evidence_id: str,
         *,
         prior_endpoints: tuple = (),
+        previous_statement: str | None = None,
     ) -> tuple[list[HistoricalEventPlaceMention], list[EventRouteOrdering]]:
         semantics = analyze_sentence(
             sentence,
@@ -1109,7 +1112,9 @@ class EvidenceGroundedHistoricalEventExtractor:
                 if traversal_as_origin and edge.origin.role == "traversal" and edge.destination is not None:
                     role = EventPlaceRole.ORIGIN
                 self._assign_movement_endpoint_role(
-                    places, edge.origin, role, sentence, evidence_id,
+                    places, edge.origin, role,
+                    previous_statement if edge.cross_sentence_link and previous_statement else sentence,
+                    evidence_id,
                 )
             if edge.destination is not None:
                 self._assign_movement_endpoint_role(
@@ -1309,9 +1314,18 @@ class EvidenceGroundedHistoricalEventExtractor:
         for item in evidence:
             item_text = self._text(item)
             sentences = self._sentences(item_text)
-            prior_endpoints: tuple = ()
+            previous, previous_semantics, previous_end = None, None, 0
             temporal_context = TemporalResolutionContext()
             for index, sentence in enumerate(sentences):
+                start = item_text.find(sentence, previous_end)
+                if "\n" in item_text[previous_end:start]:
+                    previous = None
+                previous_statement = previous
+                prior_endpoints = self.mention_extractor.continuation_endpoints(
+                    previous, sentence, previous_semantics, evidence_id=item.id,
+                )
+                previous_semantics = analyze_sentence(sentence, self.mention_extractor.aliases_in(sentence), prior_endpoints=prior_endpoints)
+                previous, previous_end = sentence, start + len(sentence)
                 incomplete = self._incomplete_movement_fact(sentence, item.id)
                 if incomplete is not None:
                     incomplete_facts.append(incomplete)
@@ -1357,6 +1371,7 @@ class EvidenceGroundedHistoricalEventExtractor:
                 if event_type is HistoricalEventType.MOVEMENT:
                     places, route_orderings = self._apply_movement_semantics(
                         movement_context, places, item.id, prior_endpoints=prior_endpoints,
+                        previous_statement=previous_statement,
                     )
                 elif event_type is HistoricalEventType.PRESENCE:
                     places = [mention for mention in places if mention.role is EventPlaceRole.EVENT_SITE]
@@ -1376,13 +1391,8 @@ class EvidenceGroundedHistoricalEventExtractor:
                     else:
                         places.insert(0, origin)
                 if event_type is HistoricalEventType.MOVEMENT:
-                    places = self._enforce_movement_endpoint_polarity(movement_context, places)
-                if event_type is HistoricalEventType.MOVEMENT:
-                    prior_endpoints = analyze_sentence(
-                        movement_context,
-                        self.mention_extractor.aliases_in(movement_context),
-                        prior_endpoints=prior_endpoints,
-                    ).endpoints
+                    bounded_semantics = analyze_sentence(movement_context, self.mention_extractor.aliases_in(movement_context), prior_endpoints=prior_endpoints)
+                    places = self._enforce_movement_endpoint_polarity(movement_context, places, semantics=bounded_semantics)
                 statement = f"{sentences[index - 1]} {sentence}" if origin is not None else sentence
                 digest = hashlib.sha256(f"{item.id}:{index}:{statement}".encode("utf-8")).hexdigest()[:12]
                 temporal_readings, codes = self.temporal_resolver.resolve(
@@ -1419,7 +1429,9 @@ class EvidenceGroundedHistoricalEventExtractor:
                     period=item.period, event_type=event_type, temporal_grounding=temporal,
                     place_mentions=places, evidence_refs=[item.id], grounding_status=EventGroundingStatus.EVIDENCE_GROUNDED,
                     limitations=["Extracted from one explicit evidence statement; no coordinates, chronology merge, or route inference was performed."],
-                    candidate_ids=[f"event-{digest}"], source_statements=[statement], temporal_groundings=temporal_readings or [temporal],
+                    candidate_ids=[f"event-{digest}"], source_statements=([statement, previous_statement]
+                        if event_type is HistoricalEventType.MOVEMENT and prior_endpoints and previous_statement
+                        else [statement]), temporal_groundings=temporal_readings or [temporal],
                     actor=actor,
                     route_orderings=route_orderings,
                 ))
