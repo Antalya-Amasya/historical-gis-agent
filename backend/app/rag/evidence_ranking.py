@@ -249,7 +249,10 @@ def diversify_route_evidence(query: str, ranked: list[Evidence]) -> list[Evidenc
         return str(item.metadata.get("source_chunk_id") or item.id.split(":", 1)[0])
 
     def useful(item: Evidence) -> bool:
-        return not is_navigation_or_heading(item)
+        # Shadow entity conflicts stay inspectable in fallback, but an explicit
+        # incompatible local role must not win a movement-promotion slot.
+        return (not is_navigation_or_heading(item)
+                and (item.metadata.get("retrieval_ranking") or {}).get("entity_compatibility") != "CONFLICT")
 
     roles = _ranking_roles(query)
 
@@ -367,7 +370,7 @@ def _vector_signal(item: Evidence) -> tuple[float | None, float]:
     return similarity, _VECTOR_BONUS_MAX * strength * strength * (3 - 2 * strength)
 
 
-def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool = True) -> list[Evidence]:
+def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool = True, entity_metadata: bool = False) -> list[Evidence]:
     """Return the same evidence with transparent, deterministic ordering data.
 
     Source-vector similarity contributes a bounded retrieval prior alongside
@@ -376,6 +379,10 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
     Coverage comparison must pass pool_relative=False so channel-local
     percentile/median calibration is not treated as a global score.
     """
+    # Shadow-only switch: production callers retain the accepted RAG-R2 scores.
+    if entity_metadata:
+        from backend.app.rag.entity_metadata import resolve_query_person, entity_compatibility
+        query_entity = resolve_query_person(query)
     roles = _ranking_roles(query)
     tokens_by_id = {item.id: normalized_tokens(item.text or "") for item in evidence}
     scope_weights = _query_scope_weights(roles, list(tokens_by_id.values()), pool_relative=pool_relative)
@@ -499,6 +506,16 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
         supported_score = heuristic_score * query_coverage + semantic_vector_bonus + person_identity_bonus
         person_mismatch_penalty = min(_VECTOR_BONUS_MAX, supported_score / 2) if competing_person else 0.0
         final_score = supported_score - navigation_penalty - person_mismatch_penalty
+        entity_signal = {}
+        if entity_metadata:
+            entity_signal = entity_compatibility(query, passage_text, query_entity=query_entity)
+            contribution = entity_signal["entity_bonus"]
+            if navigation_penalty:
+                contribution = 0.0
+            elif contribution < 0:
+                contribution = -min(-contribution, max(0.0, final_score) / 2)
+            final_score += contribution
+            entity_signal["entity_bonus"] = round(contribution, 6)
         metadata = dict(item.metadata)
         metadata["retrieval_ranking"] = {
             "semantic_rank": item.metadata.get("vector_rank"),
@@ -536,6 +553,7 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
             "route_fragment_relevance": round(fragment, 6),
             "navigation_penalty": round(navigation_penalty, 6),
             "final_score": round(final_score, 6),
+            **entity_signal,
         }
         ranked.append(item.model_copy(update={"score": round(final_score, 4), "metadata": metadata}))
     ranked.sort(key=lambda item: (-item.metadata["retrieval_ranking"]["final_score"], item.metadata.get("vector_rank", 999999), item.id))

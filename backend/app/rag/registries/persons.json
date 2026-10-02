@@ -1,0 +1,580 @@
+{
+  "schema_version": 1,
+  "scope": "PERSON_ONLY",
+  "semantics": "Retrieval identity candidates only. Registry absence never invalidates a literal person. Source-context profiles do not prove distinct historical individuals, movements or routes.",
+  "selection": "All nine PERSON labels in subject_aliases (two place labels excluded), all eight unique corpus authors (merged where aliases overlap), plus two source-attested same-name role candidates. No benchmark-based exclusion or inclusion for the base labels.",
+  "entities": [
+    {
+      "entity_id": "person.label.caesar",
+      "canonical_name": "Caesar",
+      "entity_type": "PERSON",
+      "aliases": [
+        "caesar",
+        "凯撒",
+        "julius caesar"
+      ],
+      "language": [
+        "en",
+        "zh"
+      ],
+      "time_range": null,
+      "roles_titles": [
+        "source author"
+      ],
+      "context_places": [],
+      "external_ids": {},
+      "identity_basis": "EXISTING_IDENTITY_LABEL",
+      "provenance": [
+        {
+          "resource": "backend/app/rag/registries/subject_aliases.json",
+          "key": "caesar"
+        },
+        {
+          "resource": "data/historical_sources/corpus.json",
+          "author": "Julius Caesar",
+          "document_ids": [
+            "caesar_gallic_civil_wars"
+          ]
+        }
+      ],
+      "normalized_tokens": [
+        "caesar",
+        "julius"
+      ]
+    },
+    {
+      "entity_id": "person.label.hannibal",
+      "canonical_name": "Hannibal",
+      "entity_type": "PERSON",
+      "aliases": [
+        "hannibal",
+        "汉尼拔"
+      ],
+      "language": [
+        "en",
+        "zh"
+      ],
+      "time_range": null,
+      "roles_titles": [],
+      "context_places": [],
+      "external_ids": {},
+      "identity_basis": "EXISTING_IDENTITY_LABEL",
+      "provenance": [
+        {
+          "resource": "backend/app/rag/registries/subject_aliases.json",
+          "key": "hannibal"
+        }
+      ],
+      "normalized_tokens": [
+        "hannibal"
+      ]
+    },
+    {
+      "entity_id": "person.label.polybius",
+      "canonical_name": "Polybius",
+      "entity_type": "PERSON",
+      "aliases": [
+        "polybius",
+        "波利比乌斯"
+      ],
+      "language": [
+        "en",
+        "zh"
+      ],
+      "time_range": null,
+      "roles_titles": [
+        "source author"
+      ],
+      "context_places": [],
+      "external_ids": {},
+      "identity_basis": "EXISTING_IDENTITY_LABEL",
+      "provenance": [
+        {
+          "resource": "backend/app/rag/registries/subject_aliases.json",
+          "key": "polybius"
+        },
+        {
+          "resource": "data/historical_sources/corpus.json",
+          "author": "Polybius",
+          "document_ids": [
+            "polybius_histories_v1",
+            "polybius_histories_v2"
+          ]
+        }
+      ],
+      "normalized_tokens": [
+        "polybius"
+      ]
+    },
+    {
+      "entity_id": "person.label.livy",
+      "canonical_name": "Livy",
+      "entity_type": "PERSON",
+      "aliases": [
+        "livy",
+        "李维"
+      ],
+      "language": [
+        "en",
+        "zh"
+      ],
+      "time_range": null,
+      "roles_titles": [
+        "source author"
+      ],
+      "context_places": [],
+      "external_ids": {},
+      "identity_basis": "EXISTING_IDENTITY_LABEL",
+      "provenance": [
+        {
+          "resource": "backend/app/rag/registries/subject_aliases.json",
+          "key": "livy"
+        },
+        {
+          "resource": "data/historical_sources/corpus.json",
+          "author": "Livy",
+          "document_ids": [
+            "livy_history_of_rome_books_9_26",
+            "livy_history_of_rome_books_27_36",
+            "livy_history_of_rome_books_37_end"
+          ]
+        }
+      ],
+      "normalized_tokens": [
+        "livy"
+      ]
+    },
+    {
+      "entity_id": "person.label.pompey",
+      "canonical_name": "Pompey",
+      "entity_type": "PERSON",
+      "aliases": [
+        "pompey",
+        "庞培"
+      ],
+      "language": [
+        "en",
+        "zh"
+      ],
+      "time_range": null,
+      "roles_titles": [],
+      "context_places": [],
+      "external_ids": {},
+      "identity_basis": "EXISTING_IDENTITY_LABEL",
+      "provenance": [
+        {
+          "resource": "backend/app/rag/registries/subject_aliases.json",
+          "key": "pompey"
+        }
+      ],
+      "normalized_tokens": [
+        "pompey"
+      ]
+    },
+    {
+      "entity_id": "person.label.marius",
+      "canonical_name": "Marius",
+      "entity_type": "PERSON",
+      "aliases": [
+        "marius",
+        "马略"
+      ],
+      "language": [
+        "en",
+        "zh"
+      ],
+      "time_range": null,
+      "roles_titles": [],
+      "context_places": [],
+      "external_ids": {},
+      "identity_basis": "EXISTING_IDENTITY_LABEL",
+      "provenance": [
+        {
+          "resource": "backend/app/rag/registries/subject_aliases.json",
+          "key": "marius"
+        }
+      ],
+      "normalized_tokens": [
+        "marius"
+      ]
+    },
+    {
+      "entity_id": "person.label.sulla",
+      "canonical_name": "Sulla",
+      "entity_type": "PERSON",
+      "aliases": [
+        "sulla",
+        "苏拉"
+      ],
+      "language": [
+        "en",
+        "zh"
+      ],
+      "time_range": null,
+      "roles_titles": [],
+      "context_places": [],
+      "external_ids": {},
+      "identity_basis": "EXISTING_IDENTITY_LABEL",
+      "provenance": [
+        {
+          "resource": "backend/app/rag/registries/subject_aliases.json",
+          "key": "sulla"
+        }
+      ],
+      "normalized_tokens": [
+        "sulla"
+      ]
+    },
+    {
+      "entity_id": "person.label.catiline",
+      "canonical_name": "Catiline",
+      "entity_type": "PERSON",
+      "aliases": [
+        "catiline",
+        "喀提林"
+      ],
+      "language": [
+        "en",
+        "zh"
+      ],
+      "time_range": null,
+      "roles_titles": [],
+      "context_places": [],
+      "external_ids": {},
+      "identity_basis": "EXISTING_IDENTITY_LABEL",
+      "provenance": [
+        {
+          "resource": "backend/app/rag/registries/subject_aliases.json",
+          "key": "catiline"
+        }
+      ],
+      "normalized_tokens": [
+        "catiline"
+      ]
+    },
+    {
+      "entity_id": "person.label.jugurtha",
+      "canonical_name": "Jugurtha",
+      "entity_type": "PERSON",
+      "aliases": [
+        "jugurtha",
+        "朱古达"
+      ],
+      "language": [
+        "en",
+        "zh"
+      ],
+      "time_range": null,
+      "roles_titles": [],
+      "context_places": [],
+      "external_ids": {},
+      "identity_basis": "EXISTING_IDENTITY_LABEL",
+      "provenance": [
+        {
+          "resource": "backend/app/rag/registries/subject_aliases.json",
+          "key": "jugurtha"
+        }
+      ],
+      "normalized_tokens": [
+        "jugurtha"
+      ]
+    },
+    {
+      "entity_id": "person.author.appian",
+      "canonical_name": "Appian",
+      "entity_type": "PERSON",
+      "aliases": [
+        "Appian"
+      ],
+      "language": [
+        "en"
+      ],
+      "time_range": null,
+      "roles_titles": [
+        "source author"
+      ],
+      "context_places": [],
+      "external_ids": {},
+      "identity_basis": "SOURCE_AUTHOR_LABEL",
+      "provenance": [
+        {
+          "resource": "data/historical_sources/corpus.json",
+          "author": "Appian",
+          "document_ids": [
+            "appian_roman_history_civil_wars"
+          ]
+        }
+      ],
+      "normalized_tokens": [
+        "appian"
+      ]
+    },
+    {
+      "entity_id": "person.author.cassius_dio",
+      "canonical_name": "Cassius Dio",
+      "entity_type": "PERSON",
+      "aliases": [
+        "Cassius Dio"
+      ],
+      "language": [
+        "en"
+      ],
+      "time_range": null,
+      "roles_titles": [
+        "source author"
+      ],
+      "context_places": [],
+      "external_ids": {},
+      "identity_basis": "SOURCE_AUTHOR_LABEL",
+      "provenance": [
+        {
+          "resource": "data/historical_sources/corpus.json",
+          "author": "Cassius Dio",
+          "document_ids": [
+            "cassius_dio_roman_history_v1",
+            "cassius_dio_roman_history_v2",
+            "cassius_dio_roman_history_v3",
+            "cassius_dio_roman_history_v4",
+            "cassius_dio_roman_history_v5",
+            "cassius_dio_roman_history_v6"
+          ]
+        }
+      ],
+      "normalized_tokens": [
+        "cassius",
+        "dio"
+      ]
+    },
+    {
+      "entity_id": "person.author.plutarch",
+      "canonical_name": "Plutarch",
+      "entity_type": "PERSON",
+      "aliases": [
+        "Plutarch"
+      ],
+      "language": [
+        "en"
+      ],
+      "time_range": null,
+      "roles_titles": [
+        "source author"
+      ],
+      "context_places": [],
+      "external_ids": {},
+      "identity_basis": "SOURCE_AUTHOR_LABEL",
+      "provenance": [
+        {
+          "resource": "data/historical_sources/corpus.json",
+          "author": "Plutarch",
+          "document_ids": [
+            "plutarch_parallel_lives"
+          ]
+        }
+      ],
+      "normalized_tokens": [
+        "plutarch"
+      ]
+    },
+    {
+      "entity_id": "person.author.sallust",
+      "canonical_name": "Sallust",
+      "entity_type": "PERSON",
+      "aliases": [
+        "Sallust"
+      ],
+      "language": [
+        "en"
+      ],
+      "time_range": null,
+      "roles_titles": [
+        "source author"
+      ],
+      "context_places": [],
+      "external_ids": {},
+      "identity_basis": "SOURCE_AUTHOR_LABEL",
+      "provenance": [
+        {
+          "resource": "data/historical_sources/corpus.json",
+          "author": "Sallust",
+          "document_ids": [
+            "sallust_catiline_jugurthine_war"
+          ]
+        }
+      ],
+      "normalized_tokens": [
+        "sallust"
+      ]
+    },
+    {
+      "entity_id": "person.author.suetonius",
+      "canonical_name": "Suetonius",
+      "entity_type": "PERSON",
+      "aliases": [
+        "Suetonius"
+      ],
+      "language": [
+        "en"
+      ],
+      "time_range": null,
+      "roles_titles": [
+        "source author"
+      ],
+      "context_places": [],
+      "external_ids": {},
+      "identity_basis": "SOURCE_AUTHOR_LABEL",
+      "provenance": [
+        {
+          "resource": "data/historical_sources/corpus.json",
+          "author": "Suetonius",
+          "document_ids": [
+            "suetonius_julius_caesar"
+          ]
+        }
+      ],
+      "normalized_tokens": [
+        "suetonius"
+      ]
+    },
+    {
+      "entity_id": "person.source_context.q_fabius_pictor.delphi_embassy",
+      "canonical_name": "Quintus Fabius Pictor",
+      "entity_type": "PERSON",
+      "aliases": [
+        "Quintus Fabius Pictor",
+        "Fabius Pictor",
+        "Pictor"
+      ],
+      "language": [
+        "en"
+      ],
+      "time_range": null,
+      "roles_titles": [
+        "ambassador"
+      ],
+      "context_places": [
+        "Delphi",
+        "Rome"
+      ],
+      "external_ids": {},
+      "identity_basis": "SOURCE_CONTEXT_CANDIDATE_NOT_AUTHORITY",
+      "provenance": [
+        {
+          "document_id": "livy_history_of_rome_books_9_26",
+          "source_file": "Livy《History of Rome》Books 9-26.epub",
+          "work": "History of Rome",
+          "volume": "Books 9–26",
+          "spine_item": "OEBPS/1174265425867081109_10907-h-5.htm.xhtml",
+          "source_chunk_id": "662d96e79e85368db545cbaa7b8ac264",
+          "passage_start": 147,
+          "passage_end": 312,
+          "passage_id": "662d96e79e85368db545cbaa7b8ac264:147:312",
+          "text_sha256": "c1a2dc8396c126479a5145f33423aa4c1558bf60e84e9825cce930589723559d",
+          "excerpt": "11\nWhile these things were carrying on, Quintus Fabius Pictor, the ambassador, returned from Delphi to Rome, and read the response of the oracle from a written copy."
+        },
+        {
+          "document_id": "livy_history_of_rome_books_9_26",
+          "source_file": "Livy《History of Rome》Books 9-26.epub",
+          "work": "History of Rome",
+          "volume": "Books 9–26",
+          "spine_item": "OEBPS/1174265425867081109_10907-h-5.htm.xhtml",
+          "source_chunk_id": "b6203bb8c4a7094884a50c128284ad09",
+          "passage_start": 3625,
+          "passage_end": 3993,
+          "passage_id": "b6203bb8c4a7094884a50c128284ad09:3625:3993",
+          "text_sha256": "047305989d8076e4ab34ffa0d62f659374c1a6af97bafc74e89bc5d8a6a7e529",
+          "excerpt": " This impiety being converted into a prodigy, as is usually the case when happening in the midst of so many calamities, the decemviri were desired to consult the sacred books. Quintus Fabius Pictor was also sent to Delphi, to inquire of the oracle by what prayers and offerings they might appease the gods, and what termination there would be to such great distresses."
+        }
+      ],
+      "normalized_tokens": [
+        "fabius",
+        "pictor",
+        "quintus"
+      ]
+    },
+    {
+      "entity_id": "person.source_context.q_fabius_pictor.quirinal_priest",
+      "canonical_name": "Quintus Fabius Pictor",
+      "entity_type": "PERSON",
+      "aliases": [
+        "Quintus Fabius Pictor",
+        "Fabius Pictor",
+        "Pictor"
+      ],
+      "language": [
+        "en"
+      ],
+      "time_range": null,
+      "roles_titles": [
+        "priest",
+        "flamen",
+        "quirinalis",
+        "praetor"
+      ],
+      "context_places": [
+        "Romulus",
+        "Sardinia"
+      ],
+      "external_ids": {},
+      "identity_basis": "SOURCE_CONTEXT_CANDIDATE_NOT_AUTHORITY",
+      "provenance": [
+        {
+          "document_id": "livy_history_of_rome_books_37_end",
+          "source_file": "Livy《History of Rome》Books 37-End  EpitomesFragments.epub",
+          "work": "History of Rome",
+          "volume": "Books 37–End / Epitomes / Fragments",
+          "spine_item": "OEBPS/8174617913879418825_44318-h-0.htm.xhtml",
+          "source_chunk_id": "cf906719ddd46cc98e9ee9ba1a2d2cd0",
+          "passage_start": 112,
+          "passage_end": 571,
+          "passage_id": "cf906719ddd46cc98e9ee9ba1a2d2cd0:112:571",
+          "text_sha256": "519260de4549f6abb47e1b59fbc27e87e46158ceb53e996fc39a4c579c7d49a6",
+          "excerpt": " Fulvius alone was elected consul, since the rest could not make up the number of centuries; and the next day, rejecting Lepidus, (for Messala had declined,) he declared Cneius Manlius his colleague. Then were chosen prætors, two of the name of Quintus Fabius, Labeo and Pictor, (the latter of whom had in that year been inaugurated flamen quirinalis,) Marcus Sempronius Tuditanus, Spurius Posthumius Albinus, Lucius Plautius Hypsæus, and Lucius Bæbius Dives."
+        },
+        {
+          "document_id": "livy_history_of_rome_books_37_end",
+          "source_file": "Livy《History of Rome》Books 37-End  EpitomesFragments.epub",
+          "work": "History of Rome",
+          "volume": "Books 37–End / Epitomes / Fragments",
+          "spine_item": "OEBPS/8174617913879418825_44318-h-0.htm.xhtml",
+          "source_chunk_id": "293c5a717e9fa84936c02d9d7954c971",
+          "passage_start": 1210,
+          "passage_end": 1576,
+          "passage_id": "293c5a717e9fa84936c02d9d7954c971:1210:1576",
+          "text_sha256": "e44b161a927bc92cb980fa2830e3bc471bba13b3e76f4dc3479f2b54753ba3e2",
+          "excerpt": " Ætolia fell by lot to Marcus Fulvius; Asia, to Cneius Manlius. The prætors then cast lots, and Spurius Postumius Albinus obtained the city and foreign jurisdiction; Marcus Sempronius Tuditanus, Sicily; Quintus Fabius Pictor, the priest of Romulus, Sardinia; Quintus Fabius Labeo, the fleet; Lucius Plautius Hypsæus, Hither Spain; Lucius Bæbius Dives, Farther Spain."
+        },
+        {
+          "document_id": "livy_history_of_rome_books_37_end",
+          "source_file": "Livy《History of Rome》Books 37-End  EpitomesFragments.epub",
+          "work": "History of Rome",
+          "volume": "Books 37–End / Epitomes / Fragments",
+          "spine_item": "OEBPS/8174617913879418825_44318-h-0.htm.xhtml",
+          "source_chunk_id": "293c5a717e9fa84936c02d9d7954c971",
+          "passage_start": 2300,
+          "passage_end": 2843,
+          "passage_id": "293c5a717e9fa84936c02d9d7954c971:2300:2843",
+          "text_sha256": "879e959aad7ade69435ffa8ad2b543455f84700ae8647bdd2fc2f75a8f682bc1",
+          "excerpt": " In the case of the magistrates of the preceding year, the command was prolonged to Caius Lælius for a year, with his present army, and to Publius Junius, the proprætor in Etruria, with the army which, was then in the province, and Marcus Tuccius, the proprætor in Bruttium and Apulia.\n51 Before the prætors went into their provinces, a dispute arose between Publius Licinius, chief pontiff, and Quintus Fabius Pictor, priest of Romulus; such as had happened in the recollection of their fathers, between Lucius Metellus and Postumius Albinus."
+        },
+        {
+          "document_id": "livy_history_of_rome_books_37_end",
+          "source_file": "Livy《History of Rome》Books 37-End  EpitomesFragments.epub",
+          "work": "History of Rome",
+          "volume": "Books 37–End / Epitomes / Fragments",
+          "spine_item": "OEBPS/8174617913879418825_44318-h-5.htm.xhtml",
+          "source_chunk_id": "753861a398bb123f36ea880608201780",
+          "passage_start": 3291,
+          "passage_end": 3468,
+          "passage_id": "753861a398bb123f36ea880608201780:3291:3468",
+          "text_sha256": "ff34ef1a1de2688fdef8d4f57ffac5ab711fce0d9ba756ed200f30a26720e69b",
+          "excerpt": " One of the augurs, Caius Claudius, died this year, and Titus Quintus Flamininus was chosen in his place by the college. The flamen quirinalis, Quintus Fabius Pictor, died also."
+        }
+      ],
+      "normalized_tokens": [
+        "fabius",
+        "pictor",
+        "quintus"
+      ]
+    }
+  ]
+}
