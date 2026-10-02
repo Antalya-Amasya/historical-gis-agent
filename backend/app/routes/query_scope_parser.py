@@ -7,14 +7,16 @@ from enum import Enum
 
 from backend.app.models import TemporalPrecision
 
+_POSSESSIVE_MOVEMENT_NOUN = r"(?:routes?|movements?|march(?:es)?|returns?|advances?|journeys?|travel|voyages?)"
+
 _BROAD_POSSESSIVE_ROUTE_SUBJECT = re.compile(
     r"\b(?:show|trace|reconstruct|follow)\s+(.+?)['\u2019]s\s+(?:historical\s+)?"
-    r"(?:routes?|movements?)\b",
+    rf"{_POSSESSIVE_MOVEMENT_NOUN}\b",
     re.IGNORECASE,
 )
 _POSSESSIVE_ROUTE_SUBJECT = re.compile(
     r"\b([A-Z][A-Za-z'\u2019-]+(?:\s+[A-Z][A-Za-z'\u2019-]+){0,3})['\u2019]s\s+"
-    r"(?:historical\s+)?(?:routes?|movements?)\b",
+    rf"(?:historical\s+)?{_POSSESSIVE_MOVEMENT_NOUN}\b",
     re.IGNORECASE,
 )
 _TRACE_PERSON_SUBJECT = re.compile(
@@ -35,7 +37,8 @@ _ROUTE_CONTINUATION = re.compile(
 )
 _PARTIAL_ROUTE_CONTINUATION = re.compile(
     r"(?:,\s*)?\bthen\s+(?:to|toward|towards|into)\b|\bonward\b|"
-    r"\bbefore\s+proceeding\b|\blater\s+moving\b",
+    rf"\bbefore\s+proceeding\b|\blater\s+moving\b|"
+    rf"\bthen\s+(?:his|her|their)\s+(?:later\s+)?{_POSSESSIVE_MOVEMENT_NOUN}\s+(?:to|towards?|into)\b",
     re.IGNORECASE,
 )
 _COMPETING_CONTEXT_ROUTE = re.compile(
@@ -62,6 +65,15 @@ _CLAUSE_BOUNDARY = re.compile(
     r"during|in|throughout|for)\b|(?:,\s*(?:trace|show|reconstruct|follow)\b)|[,;:\u2014]|[.;]|$",
     re.IGNORECASE,
 )
+# Presentation instructions terminate route syntax, including coordinated clauses.
+_PRESENTATION_INSTRUCTION = re.compile(
+    r"(?:[,;.!?]\s*(?:(?:and|but)\s+)?|\b(?:and|but)\s+)"
+    r"(?:separat(?:e|ing)|divid(?:e|ing)|group(?:ing)?|turn(?:ing)?|convert(?:ing)?|split(?:ting)?)\b"
+    r"[^.;!?]{0,80}?\b(?:result|answer|evidence|output|response|coordinates)\b",
+    re.IGNORECASE,
+)
+
+
 _EPISODE_MARKER = re.compile(r"\b(?:during|in|throughout|for)\b", re.IGNORECASE)
 _EPISODE_NAMED_CAMPAIGN = re.compile(
     r"\b(?:during|in|throughout|for)\s+(?:the\s+)?Campaign\s+([A-Z][A-Za-z'\u2019-]*)\b",
@@ -275,6 +287,9 @@ def _next_additional_dest_marker(text: str, dest_start: int, end: int) -> re.Mat
 
 def _destination_span_end(text: str, dest_start: int, limit: int | None = None) -> int:
     end = _clause_boundary(text, dest_start)
+    instruction = _PRESENTATION_INSTRUCTION.search(text, dest_start)
+    if instruction:
+        end = min(end, instruction.start())
     later_frame = _later_movement_frame_start(text, dest_start, end)
     if later_frame is not None and dest_start < later_frame < end:
         end = later_frame
@@ -446,6 +461,9 @@ def _build_route_frame_candidate(
         return None
     if not in_context and registry.overlaps(origin_start, origin_start + 1, blocking=_ROUTE_BLOCKING | _CONTEXT_BLOCKING):
         return None
+    instruction = _PRESENTATION_INSTRUCTION.search(text, origin_start)
+    if instruction:
+        next_from_start = min(next_from_start, instruction.start())
     via_match = _VIA_MARKER.search(text, origin_start, next_from_start)
     dest_match = _DEST_MARKER.search(text, origin_start, next_from_start)
     if dest_match is None:
@@ -541,6 +559,9 @@ def _discover_route_frame_candidates(registry: _SpanRegistry) -> list[_RouteFram
 
 def _has_partial_route_continuation(text: str, candidate: _RouteFrameCandidate) -> bool:
     dest_end = candidate.dest_span[1]
+    instruction = _PRESENTATION_INSTRUCTION.search(text, dest_end)
+    if instruction:
+        text = text[:instruction.start()]
     tail = text[dest_end:]
     if _PARTIAL_ROUTE_CONTINUATION.search(tail):
         return True
