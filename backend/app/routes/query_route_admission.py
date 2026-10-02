@@ -766,6 +766,11 @@ def _observation_place_identities(
         for binding in event.place_bindings:
             if binding.role is not observation.place_role:
                 continue
+            binding_names = [binding.mention.raw_text]
+            if binding.place is not None:
+                binding_names.append(binding.place.canonical_name)
+            if not any(_place_identity_matches(name, observation.label) for name in binding_names):
+                continue
             if binding.mention.raw_text:
                 names.append(binding.mention.raw_text)
             if binding.place is not None and binding.place.canonical_name:
@@ -845,37 +850,14 @@ def _classify_route_phase_match(
             return AuthorityState.MATCH
         if earlier_matches_destination and later_matches_origin:
             return AuthorityState.WRONG
-        if earlier_matches_destination and not later_matches_destination and not later_matches_origin:
-            if _scope_proven_chain_member(
-                earlier_label, later_label, statement, scope,
-            ):
-                return AuthorityState.MATCH
-            if _same_event_origin_destination_leg(relation, observations_by_id, events_by_id):
-                return AuthorityState.MATCH
+        # Same-event movement proves occurrence, not membership in this query.
+        # Intermediate legs need a complete, authority-eligible observation chain.
+        if relation is not None and _trusted_soft_phase_membership_proof(
+            soft_phase_membership_index, relation, scope,
+        ) is not None:
+            return AuthorityState.MATCH
+        if earlier_matches_destination or later_matches_origin:
             return AuthorityState.WRONG
-        if later_matches_origin and not earlier_matches_origin:
-            if _same_event_origin_destination_leg(relation, observations_by_id, events_by_id):
-                return AuthorityState.MATCH
-            return AuthorityState.WRONG
-        if earlier_matches_origin and not later_matches_destination:
-            if _scope_proven_chain_member(
-                earlier_label, later_label, statement, scope,
-            ):
-                return AuthorityState.MATCH
-            return AuthorityState.UNKNOWN
-        if later_matches_destination and not earlier_matches_origin:
-            if _scope_proven_chain_member(
-                earlier_label, later_label, statement, scope,
-            ):
-                return AuthorityState.MATCH
-            return AuthorityState.UNKNOWN
-        if not (
-            earlier_matches_origin
-            or earlier_matches_destination
-            or later_matches_origin
-            or later_matches_destination
-        ):
-            return AuthorityState.UNKNOWN
         return AuthorityState.UNKNOWN
     if earlier_matches_destination and later_matches_origin:
         return AuthorityState.WRONG
