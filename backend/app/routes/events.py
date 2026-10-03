@@ -195,7 +195,7 @@ class EvidenceGroundedHistoricalEventExtractor:
     )
     _ACTOR_PRONOUN = re.compile(r"^(?:he|she|they|it|him|her|them)\b", re.IGNORECASE)
     _ACTOR_POSSESSIVE = re.compile(r"^(?:his|her|their)\s+\w", re.IGNORECASE)
-    _ACTOR_COORDINATION = re.compile(r"\band\b", re.IGNORECASE)
+    _ACTOR_COORDINATION = re.compile(r"\b(?:and|or)\b", re.IGNORECASE)
     _ACTOR_PROPER_NAME = (
         r"(?:[A-Z][A-Za-z'À-ÖØ-öø-ÿÆæŒœ']{2,})(?:\s+(?:[A-Z][A-Za-z'À-ÖØ-öø-ÿÆæŒœ']{2,}))*"
     )
@@ -1209,6 +1209,49 @@ class EvidenceGroundedHistoricalEventExtractor:
             for context in contexts
         )
 
+    @classmethod
+    def _ground_event_actor(cls, sentence: str, event_type: HistoricalEventType) -> HistoricalEventActorGrounding:
+        if event_type is HistoricalEventType.MOVEMENT:
+            return cls._ground_movement_actor(sentence)
+        if event_type is HistoricalEventType.PRESENCE:
+            return cls._ground_presence_actor(sentence)
+        for kind, pattern in cls._TYPE_PATTERNS:
+            if kind is not event_type:
+                continue
+            for predicate in re.finditer(pattern, sentence, re.I):
+                actor = cls._ground_clause_actor(sentence, predicate.start())
+                if actor.actor_status is EventActorStatus.EXPLICIT:
+                    from backend.app.routes.query_route_admission import _is_known_event_place
+                    if _is_known_event_place(actor.actor_text or ""):
+                        return cls._unknown_actor()
+                    return actor
+        return cls._unknown_actor()
+
+    @staticmethod
+    def _query_actor_compatibility(actor: HistoricalEventActorGrounding, contexts: tuple[str, ...] | None):
+        # The first context is canonical; retrieval hints may widen relevance,
+        # never the requested actor. Import locally to avoid the event/admission cycle.
+        from backend.app.routes.query_route_admission import (
+            AuthorityState, _normalized_person_identity, parse_query_route_scope,
+        )
+        scope = parse_query_route_scope(contexts)
+        if scope.subject_ambiguous or scope.subject_unresolved:
+            return AuthorityState.UNKNOWN
+        if scope.subject is None:
+            return AuthorityState.MATCH
+        if actor.actor_status is not EventActorStatus.EXPLICIT or not actor.actor_text:
+            return AuthorityState.UNKNOWN
+        requested = _normalized_person_identity(scope.subject)
+        actual = _normalized_person_identity(actor.actor_text)
+        if requested == actual:
+            return AuthorityState.MATCH
+        # A possible abbreviated identity is not proven wrong or proven equal.
+        # Leave that existing debt unresolved rather than adding surname matching.
+        requested_tokens, actual_tokens = set(requested.split()), set(actual.split())
+        if requested_tokens <= actual_tokens or actual_tokens <= requested_tokens:
+            return AuthorityState.UNKNOWN
+        return AuthorityState.WRONG
+
     def _eligible(
         self,
         sentence: str,
@@ -1237,6 +1280,10 @@ class EvidenceGroundedHistoricalEventExtractor:
         # without requiring a place or a normalized date.
         if not self._proper_tokens(sentence) and not self._ACTOR.search(sentence):
             return False
+        if query_contexts:
+            from backend.app.routes.query_route_admission import AuthorityState
+            if self._query_actor_compatibility(self._ground_event_actor(sentence, event_type), query_contexts) is AuthorityState.WRONG:
+                return False
         if self._is_relevant_to_query_contexts(sentence, query_contexts):
             return True
         if not query_contexts:
@@ -1439,7 +1486,13 @@ class EvidenceGroundedHistoricalEventExtractor:
                 elif event_type is HistoricalEventType.PRESENCE:
                     actor = self._ground_presence_actor(statement)
                 else:
-                    actor = self._unknown_actor()
+                    actor = self._ground_event_actor(statement, event_type)
+                if contexts:
+                    from backend.app.routes.query_route_admission import AuthorityState
+                    # Evidence-local continuation can make an initially unknown
+                    # actor explicit. Check the projected actor before publishing it.
+                    if self._query_actor_compatibility(actor, contexts) is AuthorityState.WRONG:
+                        continue
                 if actor.actor_status is EventActorStatus.EXPLICIT and actor.actor_text:
                     actor_key = actor.actor_text.casefold()
                     places = [

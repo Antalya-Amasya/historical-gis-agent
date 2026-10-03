@@ -66,9 +66,15 @@ _SOURCE_ROLE_PREFIX = re.compile(
     r"\b(?:(?:described|reported|recorded|written|documented|narrated)\s+by|according\s+to)\s*$",
     re.IGNORECASE,
 )
+_EVENT_QUERY_SUBJECT = re.compile(
+    rf"\b(?P<names>{_LITERAL_NAME}(?:\s+(?:and|or)\s+{_LITERAL_NAME})*)(?:['\u2019]s)?\s+"
+    r"(?i:(?:(?:military|historical|political)\s+(?:actions?|events?)|"
+    r"captured|besieged|fought|elected|assassinated|reformed)\b)"
+)
 # Names are eligible only in an explicit requested-subject position.
 # Place, event, and collective exclusions apply to single- and multi-token names.
 _LITERAL_SUBJECT_PATTERNS = (
+    _EVENT_QUERY_SUBJECT,
     re.compile(
         rf"(?i:\b(?:show|display|explain|describe|trace|reconstruct|follow)\s+)"
         rf"(?P<names>{_LITERAL_NAME}(?:\s+(?:and|or)\s+{_LITERAL_NAME})*)\s+"
@@ -212,6 +218,17 @@ def _known_place_names() -> set[str]:
     return names
 
 
+def _is_known_event_place(name: str) -> bool:
+    # Curated place names and indexed areas are geographic, not named actors.
+    # Do not blacklist every gazetteer settlement label: person names can collide
+    # with that much broader vocabulary. No coordinates participate here.
+    from backend.app.geography.place_registry import resolve_with_status
+    if name.casefold() in _known_place_names():
+        return True
+    return any(place.spatial_semantics.value in {"island", "region", "area"}
+               for place in resolve_with_status(name).places)
+
+
 def _inside_non_subject_span(parsed, start: int, end: int) -> bool:
     return any(
         span.role.value != "SUBJECT" and span.start <= start and end <= span.end
@@ -267,10 +284,14 @@ def _literal_route_subjects(query: str, parsed) -> dict[str, str]:
                     # A lone bare word without a complete route frame is not
                     # enough to infer an unseen person. Explicit name lists still
                     # participate in ambiguity; known aliases retain their fallback.
-                    if (len(piece.group(0).split()) == 1 and len(pieces) == 1
+                    if (pattern is not _EVENT_QUERY_SUBJECT
+                            and len(piece.group(0).split()) == 1 and len(pieces) == 1
                             and not (parsed.origin and parsed.destination)):
                         continue
-                    label = _accept_literal_person(piece.group(0), places)
+                    name = piece.group(0)
+                    if pattern is _EVENT_QUERY_SUBJECT:
+                        name = re.sub(r"['’]s$", "", name)
+                    label = _accept_literal_person(name, places)
                     if label:
                         found.setdefault(_normalized_person_identity(label), label)
     return found
@@ -317,6 +338,7 @@ def parse_query_route_scope(contexts: tuple[str, ...] | None) -> QueryRouteScope
     from backend.app.agent.loop import infer_requested_output
 
     query = next((item for item in (contexts or ()) if (item or "").strip()), "")
+    route_requested = infer_requested_output(query) == "historical_route"
     question_subjects, question_expected, question_present = _question_route_subjects(query, parsed)
     if question_present:
         # The explicit question slot also removes possessive-parser prefix noise
@@ -324,7 +346,13 @@ def parse_query_route_scope(contexts: tuple[str, ...] | None) -> QueryRouteScope
         subject = next(iter(question_subjects.values())) if len(question_subjects) == 1 else None
         ambiguous = len(question_subjects) > 1
         subject_expected = question_expected
-    elif infer_requested_output(query) == "historical_route":
+    elif _EVENT_QUERY_SUBJECT.search(query):
+        # Event subject slots use the same literal person and place safeguards.
+        literals = {key: label for key, label in _literal_route_subjects(query, parsed).items()
+                    if not _is_known_event_place(label)}
+        subject = next(iter(literals.values())) if len(literals) == 1 else None
+        ambiguous = len(literals) > 1
+    elif route_requested:
         # Explicit lists constrain even a subject already found by the narrow parser.
         literals = _literal_route_subjects(query, parsed)
         candidates = dict(literals)

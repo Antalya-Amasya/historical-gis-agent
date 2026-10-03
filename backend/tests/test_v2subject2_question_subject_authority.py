@@ -144,7 +144,9 @@ def test_query_does_not_change_occurrence_completion_or_mode():
     extractor = EvidenceGroundedHistoricalEventExtractor()
     evidence = [ev("p", text)]
     before, _ = extractor.extract(evidence)
-    after, _ = extractor.extract(evidence, query="How did Marcus move from Rome to Capua")
+    rejected, _ = extractor.extract(evidence, query="How did Marcus move from Rome to Capua")
+    assert rejected == []
+    after, _ = extractor.extract(evidence, query="How did Lucius move from Rome to Capua")
     assert [e.actor.model_dump() for e in before] == [e.actor.model_dump() for e in after]
     assert [e.source_statements for e in before] == [e.source_statements for e in after]
 
