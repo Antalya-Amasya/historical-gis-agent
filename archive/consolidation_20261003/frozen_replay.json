@@ -1,0 +1,478 @@
+{
+  "module": "C:\\D\\python\\historical-gis-cursor\\backend\\app\\rag\\retriever.py",
+  "checks": [
+    {
+      "case": "A",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "A",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "A",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "A",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "B",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "B",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "B",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "B",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "C",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "C",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "C",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "C",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "D",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "D",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "D",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "D",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "E",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "E",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "E",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "E",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "F",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "F",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "F",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "F",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "G",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "G",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "G",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "G",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "H",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "H",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "H",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "H",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "I",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "I",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "I",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "I",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "J",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "J",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "J",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "J",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "ZH",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "ZH",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "ZH",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "ZH",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "EN",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "EN",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "EN",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "EN",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "UNSEEN",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "UNSEEN",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "UNSEEN",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "UNSEEN",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "RARE_PERSON",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "RARE_PERSON",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "RARE_PERSON",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "RARE_PERSON",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "RARE_PLACE",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "RARE_PLACE",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "RARE_PLACE",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "RARE_PLACE",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "NOUN",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "NOUN",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "NOUN",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "NOUN",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "LIBO",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "LIBO",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "LIBO",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "LIBO",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "PICTOR_CONTEXT",
+      "version": "v2",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "PICTOR_CONTEXT",
+      "version": "v2",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "PICTOR_CONTEXT",
+      "version": "v3",
+      "phase": "default",
+      "complete_evidence_identical": true
+    },
+    {
+      "case": "PICTOR_CONTEXT",
+      "version": "v3",
+      "phase": "shadow",
+      "complete_evidence_identical": true
+    }
+  ],
+  "original17_comparisons": 68,
+  "contextual_comparisons": 4,
+  "unchanged_input_hashes": {
+    "entity2/eval_after.json": "5e532b07974d6c80a25450f0e362f3ed7e3012d1a4e6fb2dcda6d227916966b8",
+    "entity1/eval_final.json": "26fa6f071f2fddd3c5a567c6ed87f55a30d484f64269cb2754daaf84d704cf8f",
+    "entity4/regression.json": "1bfb891b35e0d1c7b2362f8acd34e42c489a9423214aae16a22af86de4eea9fc",
+    "entity2/metrics.json": "d5aef91d95984446c577964db4d88e6b8f1ea943cdd68a8bc582b28ce82d9bc7",
+    "entity3/frozen_manifest.json": "ef60238b9cba4cf0d4870d10272d08c49cab5f7ea33f8d8f201ada0a9f26f414",
+    "entity3/cross_sentence_manifest.json": "31d7f645293312df27ffca47e96eaf254965d00bebc6226e235e14edaba96183"
+  },
+  "accepted_metrics": {
+    "v2": {
+      "default": {
+        "relevant_top5": 31,
+        "denominator": 85,
+        "precision_percent": 36.470588235294116,
+        "wrong_actor_top5": 15
+      },
+      "shadow": {
+        "relevant_top5": 31,
+        "denominator": 85,
+        "precision_percent": 36.470588235294116,
+        "wrong_actor_top5": 15
+      }
+    },
+    "v3": {
+      "default": {
+        "relevant_top5": 29,
+        "denominator": 85,
+        "precision_percent": 34.11764705882353,
+        "wrong_actor_top5": 19
+      },
+      "shadow": {
+        "relevant_top5": 29,
+        "denominator": 85,
+        "precision_percent": 34.11764705882353,
+        "wrong_actor_top5": 19
+      }
+    }
+  },
+  "provider_calls": 0
+}

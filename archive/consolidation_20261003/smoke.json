@@ -1,0 +1,44 @@
+{
+  "cases": [
+    {
+      "case": "supported",
+      "points": [
+        "Veloria",
+        "Neralon"
+      ],
+      "rag_calls": 6,
+      "route_result_status": "FULL_ROUTE",
+      "response_roundtrip": true,
+      "entity_metadata_disabled": true
+    },
+    {
+      "case": "direct_trace",
+      "points": [
+        "Veloria",
+        "Neralon"
+      ],
+      "rag_calls": 2,
+      "route_result_status": "FULL_ROUTE",
+      "response_roundtrip": true,
+      "entity_metadata_disabled": true
+    },
+    {
+      "case": "wrong_actor",
+      "points": [],
+      "rag_calls": 2,
+      "route_result_status": "NO_ROUTE",
+      "response_roundtrip": true,
+      "entity_metadata_disabled": true
+    },
+    {
+      "case": "ambiguous_endpoint",
+      "points": [],
+      "rag_calls": 2,
+      "route_result_status": "NO_ROUTE",
+      "response_roundtrip": true,
+      "entity_metadata_disabled": true
+    }
+  ],
+  "provider_calls": 0,
+  "scope": "Production retriever and authority orchestration with injected read-only fixture store, scripted provider and canonical-place fixture; no live DB or model"
+}

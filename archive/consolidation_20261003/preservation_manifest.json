@@ -1,0 +1,206 @@
+{
+  "files": [
+    {
+      "source": "C:\\D\\python\\historical-gis-codex\\outputs\\phase33ig_caesar_acceptance.json",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\codex_outputs\\phase33ig_caesar_acceptance.json",
+      "bytes": 5125,
+      "sha256": "f7619e5c0287a18d217bf0888672430c4e3e4dabe55cb0b397213ad6d8136b30"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-codex\\outputs\\phase33i_final_caesar.json",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\codex_outputs\\phase33i_final_caesar.json",
+      "bytes": 321434,
+      "sha256": "089d7013772fdcac23cfcfb48d776308f66bb14cf3cb4b5933e8c3986e2b0d94"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-codex\\outputs\\phase33j_caesar.json",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\codex_outputs\\phase33j_caesar.json",
+      "bytes": 118026,
+      "sha256": "fb0ebaada122d5c78cc432c7cda6d113e0739efdb637339607e40247ca040611"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-codex\\outputs\\phase33k_cursor_caesar.json",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\codex_outputs\\phase33k_cursor_caesar.json",
+      "bytes": 330783,
+      "sha256": "229fdae43d6a7e99194e60aee0b9be98f0f956c06424e54d7973ff5b2a542054"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-codex\\outputs\\phase33m_cursor_caesar.json",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\codex_outputs\\phase33m_cursor_caesar.json",
+      "bytes": 431315,
+      "sha256": "49b4e2667c77369f0ff339ff6383dc158e92ac2fcb48e78ee4725825f9384548"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-codex\\outputs\\v1_acceptance\\case01_battle.json",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\codex_outputs\\v1_acceptance\\case01_battle.json",
+      "bytes": 169316,
+      "sha256": "82121e5bdee935d4b6f913321f725c0ffe3da7cc6580f130c66b4d02be05fbde"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-codex\\outputs\\v1_acceptance\\case02_political.json",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\codex_outputs\\v1_acceptance\\case02_political.json",
+      "bytes": 83395,
+      "sha256": "db2c8a5a138736de5c5ecaf890cf639c636fab81c9a7e1c1d6751a404b29f213"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-codex\\outputs\\v1_acceptance\\case03_person.json",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\codex_outputs\\v1_acceptance\\case03_person.json",
+      "bytes": 73396,
+      "sha256": "860926b269f50898ae76c8b141d604dde2f3543e935f1609445e936bf151aac0"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-codex\\outputs\\v1_acceptance\\case04_civil_war.json",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\codex_outputs\\v1_acceptance\\case04_civil_war.json",
+      "bytes": 136683,
+      "sha256": "b9a1f05f113dbbf39ad2d80f506a11d760275502bea36be1cbe332ee3abe0201"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-codex\\outputs\\v1_acceptance\\case05_known_movement.json",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\codex_outputs\\v1_acceptance\\case05_known_movement.json",
+      "bytes": 218431,
+      "sha256": "f68614d0b119cf1035cd87f69bd5115c154d4a9b992f6ad39cdf336b77238fec"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-codex\\outputs\\v1_acceptance\\case06_phase33s.json",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\codex_outputs\\v1_acceptance\\case06_phase33s.json",
+      "bytes": 104056,
+      "sha256": "b3ca811b1dcfa4db7f4d5daf195431237259f0da7c3a10ea25ad1babbc63dfb0"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-codex\\outputs\\v1_acceptance\\case07_roman_road_probe.json",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\codex_outputs\\v1_acceptance\\case07_roman_road_probe.json",
+      "bytes": 1675,
+      "sha256": "93c4618b40c7bd0e883cdb9120c0475e9e774899bd94e00934d38e45bdff9526"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-codex\\outputs\\v1_acceptance\\case08_naval.json",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\codex_outputs\\v1_acceptance\\case08_naval.json",
+      "bytes": 60699,
+      "sha256": "2181e74c34c3aad192a53dd21df32e120626216063e49a5787944a9735e8c9e7"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-codex\\outputs\\v1_acceptance\\case09_insufficient.json",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\codex_outputs\\v1_acceptance\\case09_insufficient.json",
+      "bytes": 76735,
+      "sha256": "57b5cb2ea4355d6e067f9cbfa9cf4951b7fcf229760fdd891fd9f0d7f2a46c5e"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-codex\\outputs\\v1_acceptance\\case10_geography.json",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\codex_outputs\\v1_acceptance\\case10_geography.json",
+      "bytes": 48285,
+      "sha256": "3f8c09c7d51043d4283c7970ca24cbc48f00d63e45c5535b0722a0739789019e"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-DeepSeekHarness\\chunk_audit_1.py",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\deepseek_harness\\chunk_audit_1.py",
+      "bytes": 6614,
+      "sha256": "5bf59b00a4b9af0a8e4abe55232a3b3bc4edec61c05195a501fc9efa9c8a57d5"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-DeepSeekHarness\\chunk_audit_context.py",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\deepseek_harness\\chunk_audit_context.py",
+      "bytes": 7404,
+      "sha256": "d7aca60ccb0ac1ea40fd85ce161bf43e10dcd48c14bd1849921387eec9e9f13c"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-DeepSeekHarness\\chunk_audit_sim.py",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\deepseek_harness\\chunk_audit_sim.py",
+      "bytes": 11825,
+      "sha256": "a59d0ef369ba5dd248febb9f84d6a6b8b7c5a9b2d752bbdc64b60e52d335057f"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-DeepSeekHarness\\gis_audit_envelope.py",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\deepseek_harness\\gis_audit_envelope.py",
+      "bytes": 5017,
+      "sha256": "914b92c572fd85eb3b5b1b71b814c4edf10283b69e23766d3dce1283d1c8eb44"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-DeepSeekHarness\\gis_audit_roads.py",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\deepseek_harness\\gis_audit_roads.py",
+      "bytes": 3290,
+      "sha256": "cb58bdd192082609b9f0f98ae4ae90b78f59f96001c6aff51ce19313f14165c9"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-DeepSeekHarness\\gis_audit_water.py",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\deepseek_harness\\gis_audit_water.py",
+      "bytes": 4306,
+      "sha256": "709d24ddc67aa5ec8a42c1e1fa5ddf7e8c65cddaf1226e57d1a7e11feea1e8b0"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-DeepSeekHarness\\rag_audit_coherence.py",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\deepseek_harness\\rag_audit_coherence.py",
+      "bytes": 7381,
+      "sha256": "2802d1b61297a880e155226dae979d8cf5729201166bd05b99cc8c3ad928d2d3"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-DeepSeekHarness\\rag_audit_corpus.py",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\deepseek_harness\\rag_audit_corpus.py",
+      "bytes": 7815,
+      "sha256": "90de3548f7e33ba1d3d5315f4f711d9da6346a008a33b5486f488a9853da8130"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-DeepSeekHarness\\rag_audit_deep.py",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\deepseek_harness\\rag_audit_deep.py",
+      "bytes": 6325,
+      "sha256": "746f41bce6215e84ba417f71f991d2ee584dcc36d1ff417eefc6be8e6b4b36a6"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-DeepSeekHarness\\rag_audit_retrieval.py",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\deepseek_harness\\rag_audit_retrieval.py",
+      "bytes": 4717,
+      "sha256": "e7847c01e4b4da63971b3652363f10b4789bb169a8f46429710d72601f35b979"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-DeepSeekHarness\\rag_audit_retrieval2.py",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\deepseek_harness\\rag_audit_retrieval2.py",
+      "bytes": 5575,
+      "sha256": "61b5629f8010955463cbadd77bcb3ccde277617af9631604d96734eb29eaaf54"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-DeepSeekHarness\\_rag_ids.json",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\deepseek_harness\\_rag_ids.json",
+      "bytes": 260304,
+      "sha256": "421955945e96277d695f8401255545e11cb43d88717f6517cbde864dbecd2aae"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-DeepSeekHarness\\.audit-tmp\\pytest-failures.txt",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\deepseek_harness\\pytest-failures.txt",
+      "bytes": 78398,
+      "sha256": "6f222abd1f337338e53ab357a7c8fcfa806be39de60183fa5d34678cf3b8e6a5"
+    },
+    {
+      "source": "C:\\D\\python\\historical-gis-codex\\data\\pleiades_g1\\g1-index-summary.json",
+      "destination": "C:\\D\\python\\historical-gis-cursor\\archive\\codex_outputs\\ignored_data\\g1-index-summary.json",
+      "bytes": 3577,
+      "sha256": "691c64ce664a80b48d71176a5ebd0c931641d9606c0070e1aa433c3b920e58d8"
+    }
+  ],
+  "counts": {
+    "codex_outputs": 16,
+    "deepseek_harness": 13
+  },
+  "runtime_dataset_duplicates": [
+    {
+      "path": "C:\\D\\python\\historical-gis-codex\\data\\pleiades_v4_1\\pleiades.datasets-v4.1.zip",
+      "retained_at": "C:\\D\\python\\historical-gis-cursor\\data\\pleiades\\_v4\\_1\\pleiades.datasets-v4.1.zip",
+      "sha256": "94c5c337d27a07f1a5fa231b6513e40e6d3cf7d5ad7b8c010f8e8bfd9159cd85"
+    },
+    {
+      "path": "data\\raw\\itiner_e\\itinere_roads_zenodo_17122148.geojson",
+      "sha256": "4f8f5cf99f387bab2c509b1bf50143e9a3117691e316f2f46a9bb1d3d4b1cc34"
+    }
+  ],
+  "skipped": {
+    "codex": [
+      "outputs/v1_acceptance/backend8012.stderr.log",
+      "outputs/v1_acceptance/backend8012.stdout.log",
+      "bytecode, pytest cache, IDE settings, build/dependency outputs, empty pre_sync_dirty.patch",
+      "source ZIP verified identical in active checkout; road dataset identical in owner runtime",
+      "22 MB obsolete Pleiades SQLite derived cache, superseded by active 181 MB richer-schema index; raw source ZIP retained"
+    ],
+    "deepseek": [
+      "_probe.txt (6-byte probe)",
+      "temporary pytest fixtures in .audit-tmp and .audit-tmp2, except preserved pytest-failures.txt"
+    ]
+  }
+}

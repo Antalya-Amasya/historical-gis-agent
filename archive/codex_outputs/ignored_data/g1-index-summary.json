@@ -1,0 +1,261 @@
+{
+  "raw_bytes": 1863609744,
+  "db_bytes": 160780288,
+  "place_count": 42314,
+  "name_form_count": 101518,
+  "location_count": 45280,
+  "connection_count": 14961,
+  "parse_build_seconds": 223.3419163999788,
+  "index_creation_seconds": 0.12640979999559931,
+  "max_names_per_place": 105,
+  "max_locations_per_place": 27,
+  "top_place_types": [
+    [
+      "settlement",
+      13217
+    ],
+    [
+      "unlocated",
+      6496
+    ],
+    [
+      "villa",
+      2402
+    ],
+    [
+      "label",
+      1772
+    ],
+    [
+      "river",
+      1600
+    ],
+    [
+      "fort",
+      1541
+    ],
+    [
+      "people",
+      1471
+    ],
+    [
+      "archaeological-site",
+      1470
+    ],
+    [
+      "station",
+      1412
+    ],
+    [
+      "road",
+      1030
+    ],
+    [
+      "unlabeled",
+      981
+    ],
+    [
+      "settlement-modern",
+      965
+    ],
+    [
+      "cemetery",
+      909
+    ],
+    [
+      "temple-2",
+      813
+    ],
+    [
+      "island",
+      784
+    ],
+    [
+      "sanctuary",
+      726
+    ],
+    [
+      "bridge",
+      705
+    ],
+    [
+      "fort-2",
+      690
+    ],
+    [
+      "mountain",
+      646
+    ],
+    [
+      "region",
+      529
+    ],
+    [
+      "tomb",
+      463
+    ],
+    [
+      "feature",
+      447
+    ],
+    [
+      "cape",
+      411
+    ],
+    [
+      "unknown",
+      406
+    ],
+    [
+      "aqueduct",
+      385
+    ],
+    [
+      "findspot",
+      363
+    ],
+    [
+      "monument",
+      348
+    ],
+    [
+      "church",
+      342
+    ],
+    [
+      "mine-2",
+      311
+    ],
+    [
+      "bath",
+      309
+    ],
+    [
+      "church-2",
+      302
+    ],
+    [
+      "tumulus",
+      292
+    ],
+    [
+      "quarry",
+      284
+    ],
+    [
+      "theatre",
+      283
+    ],
+    [
+      "port",
+      275
+    ],
+    [
+      "numbered feature",
+      262
+    ],
+    [
+      "architecturalcomplex",
+      252
+    ],
+    [
+      "temple",
+      251
+    ],
+    [
+      "mine",
+      237
+    ],
+    [
+      "amphitheatre",
+      222
+    ],
+    [
+      "water-open",
+      201
+    ],
+    [
+      "tower-defensive",
+      187
+    ],
+    [
+      "townhouse",
+      185
+    ],
+    [
+      "lake",
+      168
+    ],
+    [
+      "city-gate",
+      164
+    ],
+    [
+      "province",
+      151
+    ],
+    [
+      "fortified-settlement",
+      149
+    ],
+    [
+      "centuriation",
+      144
+    ],
+    [
+      "city-block",
+      135
+    ],
+    [
+      "fortlet",
+      135
+    ]
+  ],
+  "lookup_latency": {
+    "rome": {
+      "mean_ms": 0.02988,
+      "max_ms": 0.1047,
+      "candidates": 1
+    },
+    "alexandria": {
+      "mean_ms": 0.041372,
+      "max_ms": 0.1523,
+      "candidates": 13
+    },
+    "samothrace": {
+      "mean_ms": 0.028865,
+      "max_ms": 0.0984,
+      "candidates": 2
+    },
+    "orchomenus": {
+      "mean_ms": 0.031754,
+      "max_ms": 0.104,
+      "candidates": 1
+    },
+    "chios": {
+      "mean_ms": 0.030326,
+      "max_ms": 0.086,
+      "candidates": 3
+    },
+    "pontus": {
+      "mean_ms": 0.035252,
+      "max_ms": 0.328,
+      "candidates": 1
+    },
+    "greece": {
+      "mean_ms": 0.034276,
+      "max_ms": 0.1903,
+      "candidates": 0
+    },
+    "athenae": {
+      "mean_ms": 0.033961,
+      "max_ms": 0.1238,
+      "candidates": 3
+    },
+    "cannae": {
+      "mean_ms": 0.030459,
+      "max_ms": 0.0703,
+      "candidates": 1
+    }
+  }
+}

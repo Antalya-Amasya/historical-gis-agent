@@ -1,0 +1,46 @@
+{
+  "dataset_path": "C:\\D\\python\\historical-gis-codex\\data\\raw\\itiner_e\\itinere_roads_zenodo_17122148.geojson",
+  "dataset_sha256": "4f8f5cf99f387bab2c509b1bf50143e9a3117691e316f2f46a9bb1d3d4b1cc34",
+  "expected_sha256": "4f8f5cf99f387bab2c509b1bf50143e9a3117691e316f2f46a9bb1d3d4b1cc34",
+  "hash_match": true,
+  "graph_nodes": 10049,
+  "graph_edges": 14769,
+  "graph_components": 13,
+  "largest_component_nodes": 9005,
+  "input_coordinates": {
+    "source": [
+      -5.810233499999879,
+      35.78754600000022
+    ],
+    "destination": [
+      -5.411771147063738,
+      35.56209023729393
+    ]
+  },
+  "edge_id": "itiner-e:0:part:0",
+  "itiner_e_record_id": "0",
+  "source_snap_node": "road-node-1",
+  "destination_snap_node": "road-node-2",
+  "candidate_status": "COMPLETE",
+  "leg_count": 1,
+  "geometry_segment_types": [
+    "roman_road"
+  ],
+  "limitations": [
+    "HistoricalRoute anchors and order come from supplied evidence-backed route data; Roman-road paths are infrastructure candidates only.",
+    "Failed legs remain explicit gaps. Terrain fallback, when configured, is attempted only for the same supplied adjacent anchors; no OSM, straight-line, or cross-leg fallback is used.",
+    "Road chronology and certainty are preserved as source metadata and are not converted into historical movement claims."
+  ],
+  "has_roman_road_geometry": true,
+  "first_leg": {
+    "status": "ROMAN_ROAD_CANDIDATE_AVAILABLE",
+    "reconstruction_method": "ROMAN_ROAD_NETWORK",
+    "ordered_road_edge_ids": [
+      "itiner-e:0:part:0"
+    ],
+    "itiner_e_record_ids": [
+      "0"
+    ],
+    "network_geometry_points": 74
+  }
+}
