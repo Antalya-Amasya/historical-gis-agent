@@ -7,7 +7,8 @@ import unicodedata
 from functools import lru_cache
 from pathlib import Path
 
-from backend.app.rag.query_roles import analyze_query, normalized_tokens
+from backend.app.rag.query_roles import analyze_query
+from backend.app.rag.lexical_index import _SENTENCE
 
 
 def _surface(text: str) -> str:
@@ -42,8 +43,7 @@ def _matches(text: str, records) -> list[tuple[int, int, str, dict]]:
             continue
         for form in (record["canonical_name"], *record["aliases"]):
             alias = _surface(form)
-            match = re.search(r"(?<!\w)" + re.escape(alias) + r"(?!\w)", value)
-            if match:
+            for match in re.finditer(r"(?<!\w)" + re.escape(alias) + r"(?!\w)", value):
                 # A citation/author mention is not the requested route subject.
                 prefix = value[max(0, match.start() - 35):match.start()].rstrip()
                 if re.search(r"(?:according to|written by|writings of)\s*$", prefix):
@@ -66,6 +66,82 @@ def _context(text: str, record: dict) -> list[str]:
     return sorted(set(hits))
 
 
+
+def _owned_contexts(text: str, candidates: list[dict]) -> dict[str, list[str]]:
+    """Explicit mention-local observations; no pronoun or citation inheritance.
+
+    Context starts at the mention, stops at a clause/other capitalized name,
+    and may include an immediately adjacent pre-nominal role. Place labels
+    are candidate context strings, not a new geographic identity resource.
+    """
+    contexts = {r["entity_id"]: set() for r in candidates}
+    allowed = {_surface(form) for r in candidates
+               for form in (*r.get("roles_titles", ()), *r.get("context_places", ()))}
+    role_words = set(" ".join(_surface(role) for r in candidates
+                             for role in r.get("roles_titles", ())).split())
+    sentences = [m.group() for m in _SENTENCE.finditer(text)]
+    for index, sentence in enumerate(sentences):
+        # A two-sentence pronoun continuation is deliberately unresolved.
+        # Do not combine the named role with a later pronoun's place context.
+        if index + 1 < len(sentences) and re.match(r"\s*(?:he|she|they)\b", sentences[index + 1], re.I):
+            if any(_context(sentences[index + 1], r) for r in candidates):
+                continue
+        for clause in re.split(r"[;:]|\b(?:while|whereas|but|although|because)\b", sentence, flags=re.I):
+            words = [(m, _surface(m.group())) for m in re.finditer(r"[^\W_]+", clause) if _surface(m.group())]
+            offsets = {}; offset = 0
+            for i, (_, word) in enumerate(words):
+                offsets[offset] = i; offset += len(word) + 1
+            for start, _, alias, record in _matches(clause, candidates):
+                if start not in offsets:
+                    continue
+                first = offsets[start]; last = first + len(alias.split())
+                if last > len(words) or " ".join(w for _, w in words[first:last]) != alias:
+                    continue
+                citation = re.match(r"\s*(?:according to|written by|writings of)\b", clause, re.I)
+                if citation and ("," not in clause or words[first][0].start() < clause.index(",")):
+                    continue
+                end = len(clause)
+                suffix = clause[words[last - 1][0].end():]
+                # A coordinated clause cannot lend its subject's context.
+                # Keep coordinated role/place labels so contradictions survive.
+                for conjunction in re.finditer(r"\band\s+([^\W_]+)", suffix, re.I):
+                    if _surface(conjunction.group(1)) not in role_words | allowed:
+                        end = words[last - 1][0].end() + conjunction.start()
+                        break
+                for name in re.finditer(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", suffix):
+                    if _surface(name.group()) not in allowed:
+                        lead = suffix[:name.start()]
+                        lead_words = list(re.finditer(r"[^\W_]+", lead))
+                        cut = name.start()
+                        for token in reversed(lead_words):
+                            if _surface(token.group()) not in role_words | allowed | {"the", "a", "an", "from", "in", "to", "of"}:
+                                break
+                            cut = token.start()
+                        end = min(end, words[last - 1][0].end() + cut); break
+                # Relational verbs introduce somebody else's role/object even
+                # when that name is lowercase; they cannot supply context here.
+                relation = re.search(r"\b(?:met|meet|saw|called|appointed|asked|told|heard|reported|says|said)\b", suffix, re.I)
+                if relation and not re.match(r"\s+(?:was|is|had been|has been)\s+", suffix, re.I):
+                    end = min(end, words[last - 1][0].end() + relation.start())
+                before = first
+                while before and words[before - 1][1] in role_words | {"the", "a", "an"}:
+                    before -= 1
+                span = clause[words[before][0].start():end]
+                contexts[record["entity_id"]].update(_context(span, record))
+    return {key: sorted(values) for key, values in contexts.items()}
+
+
+def _context_winners(contexts: dict[str, list[str]], candidates: list[dict]) -> list[str]:
+    # Contradictory explicit roles cannot be outvoted by extra place hits.
+    common_roles = set.intersection(*(set(r.get("roles_titles", ())) for r in candidates)) if candidates else set()
+    role_owners = [r["entity_id"] for r in candidates if
+                   (set(r.get("roles_titles", ())) - common_roles) & set(contexts.get(r["entity_id"], ()))]
+    if len(role_owners) > 1:
+        return role_owners
+    best = max((len(values) for values in contexts.values()), default=0)
+    return [key for key, values in contexts.items() if len(values) == best]
+
+
 def resolve_query_person(query: str, *, records=None) -> dict:
     records = person_records() if records is None else records
     matches = _matches(query, records)
@@ -83,12 +159,10 @@ def resolve_query_person(query: str, *, records=None) -> dict:
                 "basis": "literal_query_roles_no_registry_requirement"}
     first = matches[0]
     candidates = {r[3]["entity_id"]: r[3] for r in matches if r[:2] == first[:2]}
-    contexts = {key: _context(query, r) for key, r in candidates.items()}
+    contexts = _owned_contexts(query, list(candidates.values()))
     # Common context cannot distinguish homonyms. Require independent, unique
     # support; keep ties ambiguous instead of silently picking a registry row.
-    scores = {key: len(values) for key, values in contexts.items()}
-    best = max(scores.values())
-    winners = [key for key in candidates if scores[key] == best]
+    winners = _context_winners(contexts, list(candidates.values()))
     entity_id = winners[0] if len(winners) == 1 else None
     selected = candidates[entity_id] if entity_id else first[3]
     canonical = _surface(selected["canonical_name"])
@@ -108,9 +182,9 @@ def entity_compatibility(query: str, text: str, *, records=None, query_entity=No
     candidates = [r for r in records if r["entity_id"] in q["candidate_ids"]]
     matches = _matches(text, candidates)
     local_ids = sorted({m[3]["entity_id"] for m in matches})
-    contexts = {key: _context(text, next(r for r in candidates if r["entity_id"] == key)) for key in local_ids}
+    contexts = {key: values for key, values in _owned_contexts(text, candidates).items() if key in local_ids}
     local_best = max((len(values) for values in contexts.values()), default=0)
-    local_winners = [key for key in local_ids if len(contexts[key]) == local_best]
+    local_winners = _context_winners(contexts, [r for r in candidates if r["entity_id"] in local_ids])
     classification, bonus, reason = "NO_LOCAL_ENTITY", 0.0, None
     if local_ids and q["entity_id"] is None:
         classification = "AMBIGUOUS"
