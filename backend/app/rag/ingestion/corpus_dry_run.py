@@ -4,6 +4,8 @@ from __future__ import annotations
 import hashlib
 import json
 import statistics
+import re
+from bisect import bisect_right
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -16,16 +18,82 @@ from .models import TextChunk
 
 PARSER_VERSION = "generic-epub-navigation-v2"
 CHUNKER_VERSION = "section-window-v1"
+SENTENCE_CHUNKER_VERSION = "section-window-v2"
 DEFAULT_CHUNK_CHARS = 4000
 DEFAULT_OVERLAP_CHARS = 600
 
 
-def document_chunks(sections: list[DocumentSection], document: CorpusDocument, *, size: int = DEFAULT_CHUNK_CHARS, overlap: int = DEFAULT_OVERLAP_CHARS) -> list[TextChunk]:
+# A deliberately small punctuation/abbreviation guard, not an NLP segmenter.
+_SENTENCE_BREAK = re.compile(r"[.!?][\"'’”»)]*\s+")
+_ABBREVIATION = re.compile(r"(?:\b(?:Mr|Mrs|Ms|Dr|cons|cos|ch|chap)\.|(?:\b[A-Z]\.)+|\b[IVXLCDM]+\.)$", re.I)
+
+
+def sentence_boundaries(text: str) -> list[int]:
+    """Return section-relative starts after punctuation and boundary whitespace."""
+    boundaries = []
+    for match in _SENTENCE_BREAK.finditer(text):
+        preceding = text[max(0, match.start() - 64):match.start() + 1]
+        if text[match.start()] == "." and _ABBREVIATION.search(preceding):
+            continue
+        boundaries.append(match.end())
+    if not boundaries or boundaries[-1] != len(text):
+        boundaries.append(len(text))
+    return boundaries
+
+
+def sentence_windows(text: str, size: int = DEFAULT_CHUNK_CHARS):
+    """Disjoint raw spans cover the section; only emitted edge whitespace is trimmed.
+
+    Prefer the last sentence boundary within target and at least 65% of it.
+    A next sentence boundary up to 125% of target is allowed. Shorter sentence
+    cuts are used before an oversized unit; only that unit falls back to safe
+    internal punctuation or a bounded whitespace/raw cut. Never cross sections.
+    """
+    if size < 1:
+        raise ValueError("chunk_size_must_be_positive")
+    boundaries = sentence_boundaries(text)
+    start = 0
+    while start < len(text):
+        fallback = None
+        if len(text) - start <= size:
+            end = len(text)
+        else:
+            index = bisect_right(boundaries, start + size)
+            prior = boundaries[index - 1] if index else start
+            following = boundaries[index] if index < len(boundaries) else len(text)
+            if prior > start and prior - start >= .65 * size:
+                end = prior
+            elif following - start <= 1.25 * size:
+                end = following
+            elif prior > start:
+                end = prior
+            else:
+                safe = [start + m.end() for m in re.finditer(r"[;:,]\s+", text[start:start + size])
+                        if m.end() >= .65 * size]
+                if safe:
+                    end = safe[-1]
+                    fallback = "secondary_punctuation"
+                else:
+                    cut = text.rfind(" ", start + max(1, int(.65 * size)), start + size + 1)
+                    end = cut + 1 if cut >= 0 else start + size
+                    fallback = "raw"
+        yield start, end, fallback
+        start = end
+
+
+def document_chunks(sections: list[DocumentSection], document: CorpusDocument, *, size: int = DEFAULT_CHUNK_CHARS, overlap: int = DEFAULT_OVERLAP_CHARS, chunker_version: str = CHUNKER_VERSION) -> list[TextChunk]:
+    if chunker_version not in {CHUNKER_VERSION, SENTENCE_CHUNKER_VERSION}:
+        raise ValueError("unsupported_chunker_version")
     chunks: list[TextChunk] = []
     step = max(1, size - min(overlap, size // 4))
     for section_index, section in enumerate(sections):
-        for start in range(0, len(section.text), step):
-            text = section.text[start:start + size].strip()
+        windows = (sentence_windows(section.text, size) if chunker_version == SENTENCE_CHUNKER_VERSION
+                   else ((start, start + size, None) for start in range(0, len(section.text), step)))
+        for start, end, fallback in windows:
+            raw = section.text[start:end]
+            text = raw.strip()
+            if chunker_version == SENTENCE_CHUNKER_VERSION:
+                start += len(raw) - len(raw.lstrip())
             if not text:
                 continue
             end = start + len(text)
@@ -40,9 +108,11 @@ def document_chunks(sections: list[DocumentSection], document: CorpusDocument, *
                 "source_url": document.source_url, "source_type": document.source_type, "license": document.license,
                 "spine_item": section.spine_item, "spine_index": section.spine_index,
                 "section_index": section.section_index, "href": section.href, "fragment": section.fragment,
-                "start_offset": start, "end_offset": end, "chunker_version": CHUNKER_VERSION,
+                "start_offset": start, "end_offset": end, "chunker_version": chunker_version,
                 "parser_version": PARSER_VERSION,
             }
+            if fallback:
+                metadata["boundary_fallback"] = fallback
             chunks.append(TextChunk(chunk_id, text, metadata))
     return chunks
 
