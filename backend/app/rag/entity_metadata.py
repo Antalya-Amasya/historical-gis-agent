@@ -7,7 +7,7 @@ import unicodedata
 from functools import lru_cache
 from pathlib import Path
 
-from backend.app.rag.query_roles import analyze_query
+from backend.app.rag.query_roles import analyze_query, _PRAENOMINA, _ACTION_UNION
 from backend.app.rag.lexical_index import _SENTENCE
 
 
@@ -67,68 +67,108 @@ def _context(text: str, record: dict) -> list[str]:
 
 
 
-def _owned_contexts(text: str, candidates: list[dict]) -> dict[str, list[str]]:
-    """Explicit mention-local observations; no pronoun or citation inheritance.
+def _ownership_end(suffix: str, role_words: set[str], places: frozenset[str]) -> int:
+    """Stop at explicit argument/subject changes, independent of name case."""
+    end = len(suffix)
+    # Unknown subordinate subjects do not require registry membership or NER.
+    boundary = re.search(r"\b(?:that|whether)\b", suffix, re.I)
+    if boundary:
+        end = boundary.start()
+    for conjunction in re.finditer(r"\band\s+([^\W_]+)", suffix, re.I):
+        if _surface(conjunction.group(1)) not in role_words | places:
+            end = min(end, conjunction.start())
+            break
+    # Existing Roman name normalization is a rejection resource, not identity.
+    words = list(re.finditer(r"[^\W_]+", suffix))
+    actor_end = None
+    for token in words:
+        if _surface(token.group()) in _PRAENOMINA:
+            end = min(end, token.start())
+            actor_end = token.start()
+            break
+    offsets = {}
+    offset = 0
+    for token in words:
+        offsets[offset] = token.start()
+        offset += len(_surface(token.group())) + 1
+    for start, _, _, _ in _matches(suffix, person_records()):
+        if start in offsets:
+            actor_end = offsets[start]
+            end = min(end, actor_end)
+            break
+    # Name + apposition / role + name are structural person cues, in any case.
+    if role_words:
+        roles = "|".join(re.escape(w) for w in sorted(role_words))
+        name = r"[^\W\d_]+"
+        for match in re.finditer(rf"\b(?P<name>{name}),\s*(?:the\s+)?(?:{roles})\b", suffix, re.I):
+            if _surface(match.group('name')) not in places | role_words | {'the', 'a', 'an'}:
+                end = min(end, match.start())
+        for match in re.finditer(rf"\b(?:{roles})\s+(?P<name>{name})\b", suffix, re.I):
+            token = _surface(match.group('name'))
+            if token not in places | role_words | _ACTION_UNION | {'from', 'to', 'in', 'at', 'of', 'for', 'with', 'among', 'between', 'as', 'by', 'and', 'was', 'is', 'served', 'waited', 'spoke', 'died'}:
+                end = min(end, match.start())
+    # A location object is not a person boundary. Unknown typed objects are
+    # conservative; infinitives remain part of the named subject's proposition.
+    for match in re.finditer(r"\b(?:to|from|in|at|near|into|for)\s+([^\W_]+)", suffix, re.I):
+        token = _surface(match.group(1))
+        if token not in places | role_words | _ACTION_UNION | {'the', 'a', 'an', 'be', 'consult', 'inquire', 'return', 'returning'} and not token.isdigit():
+            end = min(end, match.start())
+    relation = re.search(r"\b(?:met|meet|saw|called|appointed|asked|told|heard|reported|says|said)\b", suffix, re.I)
+    if relation:
+        prefix = suffix[:relation.start()]
+        after = suffix[relation.end():]
+        passive = re.search(r"\b(?:was|is|had been|has been)\s*$", prefix, re.I)
+        infinitive = re.match(r"\s+to\b", after, re.I)
+        if not passive and not infinitive:
+            end = min(end, relation.start())
+    # Remove a pre-nominal role that attaches to the next actor at the boundary.
+    if actor_end == end:
+        lead_words = list(re.finditer(r"[^\W_]+", suffix[:end]))
+        for token in reversed(lead_words):
+            if _surface(token.group()) not in role_words | {'the', 'a', 'an'}:
+                break
+            end = token.start()
+    return end
 
-    Context starts at the mention, stops at a clause/other capitalized name,
-    and may include an immediately adjacent pre-nominal role. Place labels
-    are candidate context strings, not a new geographic identity resource.
-    """
-    contexts = {r["entity_id"]: set() for r in candidates}
-    allowed = {_surface(form) for r in candidates
-               for form in (*r.get("roles_titles", ()), *r.get("context_places", ()))}
-    role_words = set(" ".join(_surface(role) for r in candidates
-                             for role in r.get("roles_titles", ())).split())
+
+def _owned_contexts(text: str, candidates: list[dict]) -> dict[str, list[str]]:
+    """Mention-local observations, without citation or pronoun inheritance."""
+    contexts = {r['entity_id']: set() for r in candidates}
+    role_words = set(' '.join(_surface(role) for r in candidates
+                             for role in r.get('roles_titles', ())).split())
+    places = _place_surfaces() | frozenset(_surface(place) for r in candidates
+                                         for place in r.get('context_places', ()))
     sentences = [m.group() for m in _SENTENCE.finditer(text)]
     for index, sentence in enumerate(sentences):
-        # A two-sentence pronoun continuation is deliberately unresolved.
-        # Do not combine the named role with a later pronoun's place context.
         if index + 1 < len(sentences) and re.match(r"\s*(?:he|she|they)\b", sentences[index + 1], re.I):
             if any(_context(sentences[index + 1], r) for r in candidates):
                 continue
         for clause in re.split(r"[;:]|\b(?:while|whereas|but|although|because)\b", sentence, flags=re.I):
             words = [(m, _surface(m.group())) for m in re.finditer(r"[^\W_]+", clause) if _surface(m.group())]
-            offsets = {}; offset = 0
+            offsets = {}
+            offset = 0
             for i, (_, word) in enumerate(words):
-                offsets[offset] = i; offset += len(word) + 1
+                offsets[offset] = i
+                offset += len(word) + 1
             for start, _, alias, record in _matches(clause, candidates):
                 if start not in offsets:
                     continue
-                first = offsets[start]; last = first + len(alias.split())
-                if last > len(words) or " ".join(w for _, w in words[first:last]) != alias:
+                first = offsets[start]
+                last = first + len(alias.split())
+                if last > len(words) or ' '.join(w for _, w in words[first:last]) != alias:
                     continue
                 citation = re.match(r"\s*(?:according to|written by|writings of)\b", clause, re.I)
-                if citation and ("," not in clause or words[first][0].start() < clause.index(",")):
+                if citation and (',' not in clause or words[first][0].start() < clause.index(',')):
                     continue
-                end = len(clause)
-                suffix = clause[words[last - 1][0].end():]
-                # A coordinated clause cannot lend its subject's context.
-                # Keep coordinated role/place labels so contradictions survive.
-                for conjunction in re.finditer(r"\band\s+([^\W_]+)", suffix, re.I):
-                    if _surface(conjunction.group(1)) not in role_words | allowed:
-                        end = words[last - 1][0].end() + conjunction.start()
-                        break
-                for name in re.finditer(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", suffix):
-                    if _surface(name.group()) not in allowed:
-                        lead = suffix[:name.start()]
-                        lead_words = list(re.finditer(r"[^\W_]+", lead))
-                        cut = name.start()
-                        for token in reversed(lead_words):
-                            if _surface(token.group()) not in role_words | allowed | {"the", "a", "an", "from", "in", "to", "of"}:
-                                break
-                            cut = token.start()
-                        end = min(end, words[last - 1][0].end() + cut); break
-                # Relational verbs introduce somebody else's role/object even
-                # when that name is lowercase; they cannot supply context here.
-                relation = re.search(r"\b(?:met|meet|saw|called|appointed|asked|told|heard|reported|says|said)\b", suffix, re.I)
-                if relation and not re.match(r"\s+(?:was|is|had been|has been)\s+", suffix, re.I):
-                    end = min(end, words[last - 1][0].end() + relation.start())
+                mention_end = words[last - 1][0].end()
+                suffix = clause[mention_end:]
+                end = mention_end + _ownership_end(suffix, role_words, places)
                 before = first
-                while before and words[before - 1][1] in role_words | {"the", "a", "an"}:
+                while before and words[before - 1][1] in role_words | {'the', 'a', 'an'}:
                     before -= 1
-                span = clause[words[before][0].start():end]
-                contexts[record["entity_id"]].update(_context(span, record))
+                contexts[record['entity_id']].update(_context(clause[words[before][0].start():end], record))
     return {key: sorted(values) for key, values in contexts.items()}
+
 
 
 def _context_winners(contexts: dict[str, list[str]], candidates: list[dict]) -> list[str]:
