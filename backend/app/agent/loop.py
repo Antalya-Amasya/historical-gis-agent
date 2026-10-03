@@ -100,9 +100,49 @@ def _has_terminal_simulation(state: AgentState) -> bool:
 
 def _is_simulation_clause(clause: str) -> bool:
     return bool(re.search(
-        r"^\s*(?:(?:the|a|separate|displayed)\s+)*"
+        r"^\s*(?:(?:the|a|separate|displayed|plausible)\s+)*"
         r"(?:gis\s+simulation\b|simulated\s+(?:route|path|geometry)\b|GIS模拟|仿真路径|模拟路线)", clause, re.I,
     )) and not re.search(r"\b(?:historical|attested|actually|documentary)\b|史实|历史路线", clause, re.I)
+
+
+def _terminal_route_proposition_supported(clause: str, state: AgentState) -> bool:
+    """Match permitted renderings of upstream facts; never extract new facts."""
+    text = clause.strip().casefold()
+    route = state.historical_route
+    if route is None:
+        # Ordinary QA already passed provenance validation. Preserve documentary
+        # quotations without requiring a route artifact; route requests cannot
+        # use this exception to bypass admission.
+        return (state.requested_output == "answer"
+                and state.final_grounding_status in {"grounded", "provenance_corrected"}
+                and any(text == source.strip().casefold()
+                        for item in state.historical_evidence
+                        for source in _TERMINAL_CLAUSES.split(item.text)))
+    if any(claim.status == "accepted" and claim.text.strip(" .!?;。！？；\n").casefold() == text for claim in route.claims):
+        return True
+    if text in {part.strip().casefold() for part in _TERMINAL_CLAUSES.split(admitted_route_summary(state) or "") if part.strip()}:
+        return True
+    sequences = ([component.ordered_points for component in route.route_components]
+                 if route.route_components else [route.ordered_points])
+    for points in sequences:
+        names = [re.escape(point.historical_place.canonical_name.casefold()) for point in points]
+        # Only upstream-ordered components supply direction and intermediate
+        # membership. These patterns render those facts, not a candidate route.
+        for i, origin in enumerate(names):
+            for j in range(i + 1, len(names)):
+                via = "".join(rf"(?: (?:through|via) {name})?" for name in names[i + 1:j])
+                if re.fullmatch(
+                    rf"(?:the evidence supports movement|sources support movement|the route (?:then )?(?:continued|went)) from {origin}{via} to {names[j]}", text,
+                ):
+                    return True
+        for name in names[1:-1]:
+            if re.fullmatch(
+                rf"(?:the evidence supports movement (?:through|via) {name}|"
+                rf"{name} was (?:(?!(?:not|never)\b)\w+ )*(?:a |the )?waypoint|"
+                rf"one (?:may|can) (?:(?!(?:not|never)\b)\w+ )*infer {name} as (?:(?!(?:not|never)\b)\w+ )*intermediate stop)", text,
+            ):
+                return True
+    return False
 
 
 def _historical_terminal_text(answer: str | None, state: AgentState) -> str | None:
@@ -1012,15 +1052,15 @@ class BoundedAgentLoop:
         state.status = "completed" if state.status == "running" else state.status
         route_status = derive_route_result_status(state)
         has_simulation = _has_terminal_simulation(state)
-        unsafe_route = self._final_answer_asserts_unsupported_route(answer, allow_simulation=has_simulation)
+        unsafe_route = self._final_answer_asserts_unsupported_route(answer, allow_simulation=has_simulation, state=state)
         if state.historical_route is None and unsafe_route:
             state.warnings.append("Final answer mentioned a route without route state")
             answer = _non_completion_reply(state) or self._no_route_terminal_guardrail_reply(state)
             state.final_grounding_status = "guardrail_fallback"
-        elif route_status is RouteResultStatus.PARTIAL and unsafe_route:
+        elif unsafe_route:
             # Preserve admitted fragments without letting prose complete a missing leg.
             answer = admitted_route_summary(state) or self._no_route_terminal_guardrail_reply(state)
-            state.warnings.append("Final route prose limited to admitted partial route")
+            state.warnings.append("Final route prose limited to admitted partial route" if route_status is RouteResultStatus.PARTIAL else "Final route prose limited to admitted route")
         elif _TERMINAL_NON_COMPLETION.search(answer):
             if not _negative_prose_is_state_supported(answer, state):
                 answer = (_non_completion_reply(state) or admitted_route_summary(state)
@@ -1038,19 +1078,31 @@ class BoundedAgentLoop:
         return answer, state
 
     @staticmethod
-    def _final_answer_asserts_unsupported_route(answer: str, *, allow_simulation: bool = False) -> bool:
+    def _final_answer_asserts_unsupported_route(
+        answer: str, *, allow_simulation: bool = False, state: AgentState | None = None,
+    ) -> bool:
+        text = re.sub(r"\[Evidence:[^\]]*\]", "", answer or "", flags=re.I)
+        if text.strip().casefold() in {GENERIC_GROUNDING_GUARDRAIL.casefold(), NO_ROUTE_TERMINAL_GUARDRAIL.casefold()}:
+            return False
+        route_context = bool(re.search(r"\b(?:route|path|itinerary|road)\b|路线|行军|旅程", text, re.I))
+        return any(
+            BoundedAgentLoop._clause_asserts_positive_route(clause, allow_simulation=allow_simulation, route_context=route_context)
+            and (state is None or not _terminal_route_proposition_supported(clause, state))
+            for clause in _TERMINAL_CLAUSES.split(text)
+        )
+
+    @staticmethod
+    def _clause_asserts_positive_route(answer: str, *, allow_simulation: bool = False, route_context: bool = False) -> bool:
         if not (answer or "").strip():
             return False
         normalized = answer.casefold().strip()
-        if normalized in {GENERIC_GROUNDING_GUARDRAIL.casefold(), NO_ROUTE_TERMINAL_GUARDRAIL.casefold()}:
-            return False
+        clause = normalized
         # Inspect asserted predicates, not mere route vocabulary. Infinitives
         # expressing a refused task are not assertions that a route occurred.
-        clauses = _TERMINAL_CLAUSES.split(normalized)
         route_language = r"\b(?:route\w*|path|itinerary|movement|travel\w*|journey|expedition|waypoints?|geometry|origin|destination)\b"
-        movement_predicate = r"\b(?:went|gone|moved|proceeded|travelled|traveled|sailed|marched|followed|passed|crossed|entered|arrived|reached)\b"
+        movement_predicate = r"\b(?:went|gone|moved|proceeded|travelled|traveled|sailed|marched|followed|passed|crossed|entered|arrived|reached|continued|embarked|disembarked)\b"
         construction_predicate = r"\b(?:draw|draws|drew|build|builds|built|reconstruct(?:ed|s|ing)?|generat\w*|establish\w*|prove\w*|confirm\w*|mention\w*)\b"
-        nominal_predicate = rf"{route_language}[^.;!?]{{0,100}}?\b(?:is|are|was|were|would\s+be|could\s+be|may\s+be|might\s+be|includes?|shows?|follows?|consists?)\b"
+        nominal_predicate = rf"{route_language}[^.;!?]{{0,100}}?\b(?:is|are|was|were|would\s+be|could\s+be|may\s+be|might\s+be|includes?|shows?|follows?|consists?|uses?|used|passes?)\b"
         denial = (
             r"\b(?:no|never)\b(?:\W+\w+){0,5}\W*$"
             r"|\b(?:does|did|do)\s+not\s+(?:establish|support|show|prove|confirm|describe|document|mention)\b[^.!?;]*$"
@@ -1061,61 +1113,73 @@ class BoundedAgentLoop:
             r"^.{0,80}?\b(?P<negative>"
             r"(?:cannot|can't|could not|should not|must not)\s+(?:be\s+)?(?:reconstruct\w*|draw\w*|build|built|generat\w*|establish\w*|support\w*|confirm\w*|prove\w*)"
             r"|(?:was|were|is|are)\s+not\s+(?:completed|executed|established|supported|documented|reconstructed|drawn|built|generated|available|proven|confirmed|shown|attested)"
-            r"|(?:was|were|is|remains?)\s+(?:prevented|blocked|aborted|abandoned|incomplete|unexecuted|proposed|planned))\b"
+            r"|(?:was|were|is|remains?)\s+(?:prevented|blocked|aborted|abandoned|incomplete|unexecuted|proposed|planned|unknown|uncertain))\b"
         )
-        for clause in clauses:
-            if allow_simulation and _is_simulation_clause(clause):
+        if _is_simulation_clause(clause):
+            if allow_simulation:
+                return False
+            return True
+        if _TERMINAL_NON_COMPLETION.search(clause):
+            # Arrival inside "abandoned before ... reached" is not completed.
+            clause = re.sub(r"\bbefore\b.*$", "", clause)
+            clause = re.sub(r"(?:在)?(?:抵达|到达).{0,30}前.{0,15}(?:中止|放弃)", "", clause)
+        assertions = list(re.finditer(movement_predicate, clause))
+        if re.search(route_language, clause):
+            assertions += list(re.finditer(construction_predicate, clause))
+            assertions += list(re.finditer(nominal_predicate, clause))
+        if not assertions:
+            assertions += list(re.finditer(rf"{route_language}\s*(?::|\b(?:from|via|through)\b)", clause))
+        if route_context or re.search(route_language, normalized) or re.search(r"路线|行军|旅程", normalized):
+            assertions += list(re.finditer(
+                r"\b(?:likely|probably|apparently|plausibly)\b[^.!?;]{0,60}\b(?:via|through|from|along)\b", clause,
+            ))
+            assertions += list(re.finditer(r"(?:可能|大概|也许).{0,40}(?:经|从|到|沿|途)", clause))
+        # Predicate complements assert route roles even without a route noun
+        # as grammatical subject ("Darsena as an intermediate stop").
+        assertions += list(re.finditer(
+            r"\b(?:embarkation|disembarkation)\s+(?:occurred|took\s+place)\b|"
+            r"\b(?:as|is|are|was|were|been)\s+(?:(?:an?|the)\s+)?(?:\w+\s+){0,3}"
+            r"(?:waypoint|intermediate\s+stop|embarkation\s+point|disembarkation\s+point)\b"
+            r"|\b(?:is|are|was|were|been)\s+(?:\w+\s+){0,3}used\b", clause,
+        ))
+        assertions += list(re.finditer(r"→|->|—>", clause))
+        if (assertions or re.search(route_language, clause)) and re.search(
+            r"\bnot\s+(?:impossible|unlikely)|\b(?:does|do|did)\s+not\s+(?:disprove|deny)"
+            r"|\b(?:cannot|can't)\s+(?:exclude|rule out|deny|say)", clause,
+        ):
+            return True
+        for assertion in assertions:
+            prefix = clause[:assertion.start()]
+            if re.search(r"\bto\s*$|\bwhether\b", prefix):
                 continue
-            if _TERMINAL_NON_COMPLETION.search(clause):
-                # Arrival inside "abandoned before ... reached" is not completed.
-                clause = re.sub(r"\bbefore\b.*$", "", clause)
-            assertions = list(re.finditer(movement_predicate, clause))
-            if re.search(route_language, clause):
-                assertions += list(re.finditer(construction_predicate, clause))
-                assertions += list(re.finditer(nominal_predicate, clause))
-            if not assertions:
-                assertions += list(re.finditer(rf"{route_language}\s*(?::|\b(?:from|via|through)\b)", clause))
-            if re.search(route_language, normalized) or re.search(r"路线|行军|旅程", normalized):
-                assertions += list(re.finditer(
-                    r"\b(?:likely|probably|apparently|plausibly)\b[^.!?;]{0,60}\b(?:via|through|from|along)\b", clause,
-                ))
-                assertions += list(re.finditer(r"(?:可能|大概|也许).{0,40}(?:经|从|到|沿|途)", clause))
-            assertions += list(re.finditer(r"→|->|—>", clause))
-            if (assertions or re.search(route_language, clause)) and re.search(
-                r"\bnot\s+(?:impossible|unlikely)|\b(?:does|do|did)\s+not\s+(?:disprove|deny)"
-                r"|\b(?:cannot|can't)\s+(?:exclude|rule out|deny|say)", clause,
+            if re.search(denial, prefix) or re.search(
+                r"\b(?:cannot|can't|could not|unable to|does not|do not|did not)\s*$", prefix,
             ):
-                return True
-            for assertion in assertions:
-                prefix = clause[:assertion.start()]
-                if re.search(r"\bto\s*$|\bwhether\b", prefix):
+                continue
+            # Nominal predicates include their route subject; inspect the
+            # subject's remaining clause for non-completion scope.
+            nominal = re.match(route_language, assertion.group())
+            mentions = list(re.finditer(route_language, prefix))
+            tail = (
+                clause[assertion.start() + nominal.end():] if nominal else
+                clause[mentions[-1].end():] if mentions else clause[assertion.end():]
+            )
+            negative = re.search(non_completion, tail)
+            if negative:
+                # A later denied action cannot cancel an earlier assertion.
+                # Locate its governing auxiliary rather than treating the
+                # entire remaining clause as negative.
+                before_denial = tail[:negative.start("negative")]
+                if not re.search(rf"{movement_predicate}|\b(?:is|are|was|were)\b", before_denial):
                     continue
-                if re.search(denial, prefix) or re.search(
-                    r"\b(?:cannot|can't|could not|unable to|does not|do not|did not)\s*$", prefix,
-                ):
-                    continue
-                # Nominal predicates include their route subject; inspect the
-                # subject's remaining clause for non-completion scope.
-                nominal = re.match(route_language, assertion.group())
-                mentions = list(re.finditer(route_language, prefix))
-                tail = (
-                    clause[assertion.start() + nominal.end():] if nominal else
-                    clause[mentions[-1].end():] if mentions else clause[assertion.end():]
-                )
-                negative = re.search(non_completion, tail)
-                if negative:
-                    # A later denied action cannot cancel an earlier assertion.
-                    # Locate its governing auxiliary rather than treating the
-                    # entire remaining clause as negative.
-                    before_denial = tail[:negative.start("negative")]
-                    if not re.search(rf"{movement_predicate}|\b(?:is|are|was|were)\b", before_denial):
-                        continue
+            return True
+        cjk_positive = re.search(r"(?:经过|途经|经由|抵达|到达).+|(?:是|作为).{0,15}(?:途中地点|中途节点|中途站|登船点|下船点)", clause) or (
+            re.search(r"路线|移动|行军|旅程|几何|进入|到达|从.+(?:经|到)", clause)
+            and re.search(r"是|经过|途经|沿|包含|包括|从.+到|完成|建立|重建", clause)
+        )
+        if cjk_positive:
+            if not re.search(r"没有|无法|不能|不足|未|不应|不宜|不曾|被阻止|中止|放弃", clause):
                 return True
-            if re.search(r"路线|移动|行军|旅程|几何|进入|到达|从.+(?:经|到)", clause) and re.search(
-                r"是|经过|途经|沿|包含|包括|从.+到|完成|建立|重建", clause,
-            ):
-                if not re.search(r"没有|无法|不能|不足|未|不应|不宜|不曾|被阻止|中止|放弃", clause):
-                    return True
         return False
 
     @staticmethod
