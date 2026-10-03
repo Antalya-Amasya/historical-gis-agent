@@ -263,6 +263,17 @@ def infer_requested_output(user_message: str) -> str:
         user_message,
     ):
         return "historical_route"
+    # Direct named-subject commands express route intent through their from/to
+    # frame. This classifies requested output only; evidence still owns authority.
+    if re.match(
+        r"^\s*(?i:trace|reconstruct|follow)\s+(?:[A-Z][A-Za-z'\u2019-]+\s+){1,4}(?i:from\b)",
+        user_message,
+    ):
+        from ..routes.query_scope_parser import parse_query_scope
+
+        scope = parse_query_scope(user_message)
+        if scope.origin and scope.destination:
+            return "historical_route"
     if _has_movement_intent(normalized):
         return "historical_route"
     if any(term in normalized for term in _GEOGRAPHY_TERMS):
