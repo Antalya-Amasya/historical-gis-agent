@@ -86,6 +86,33 @@ _LITERAL_SUBJECT_PATTERNS = (
 )
 
 
+# Interrogative slots constrain the requested mover independently of whether
+# the literal name parser understands the occupant of that slot.
+_QUESTION_SUBJECT_PATTERNS = (
+    re.compile(
+        r"\b(?:how|where|when|why)\s+(?:(?:did|does|do|will|would|can|could)\s+)?"
+        r"(?P<names>[^;!?\n]+?)\s+"
+        r"(?:move[ds]?|travel(?:led|ed|s)?|get|got|proceed(?:ed|s)?|march(?:ed|es)?|"
+        r"depart(?:ed|s)?|return(?:ed|s)?|sail(?:ed|s)?)\b", re.I,
+    ),
+    re.compile(
+        r"\b(?:which|what)\s+route\s+(?:did|does|do|will|would|can|could)\s+"
+        r"(?P<names>[^;!?\n]+?)\s+(?:take|took|use|used|follow|followed)\b", re.I,
+    ),
+    re.compile(
+        rf"\bhow\s+(?:was|is|will\s+be)\s+(?P<names>[^;!?\n]+?)[\u2019']s\s+"
+        rf"{_LITERAL_MOVEMENT_OBJECT}\b", re.I,
+    ),
+    # A from-frame retains a subject constraint even when its predicate or
+    # intervening modifiers are outside the supported movement vocabulary.
+    re.compile(
+        r"\b(?:how|where|when|why|(?:which|what)\s+route)\s+"
+        r"(?:did|does|do|will|would|can|could)\s+(?P<names>[^;!?\n]+?)\s+"
+        r"[a-z][a-z-]+\s+(?=from\b)", re.I,
+    ),
+)
+
+
 class AuthorityState(str, Enum):
     MATCH = "MATCH"
     WRONG = "WRONG"
@@ -106,6 +133,7 @@ class QueryRouteScope:
     temporal_precision: TemporalPrecision | None = None
     has_temporal_constraint: bool = False
     subject_ambiguous: bool = False
+    subject_unresolved: bool = False
 
 
 @dataclass(frozen=True)
@@ -248,14 +276,55 @@ def _literal_route_subjects(query: str, parsed) -> dict[str, str]:
     return found
 
 
+def _question_route_subjects(query: str, parsed) -> tuple[dict[str, str], bool, bool]:
+    places = _known_place_names()
+    found: dict[str, str] = {}
+    expected = False
+    present = False
+    for pattern in _QUESTION_SUBJECT_PATTERNS:
+        for match in pattern.finditer(query):
+            if _inside_non_subject_span(parsed, match.start("names"), match.end("names")):
+                continue
+            present = True
+            raw = match.group("names").strip()
+            pieces = re.split(r"\s+(?:and|or)\s+", raw, flags=re.I)
+            # A geographic/event slot is not a person. Unidentified roles and
+            # malformed person phrases stay constrained rather than matching anyone.
+            if all(piece.casefold() in places or any(
+                token.casefold() in _EVENT_SUBJECT_TOKENS for token in piece.split()
+            ) for piece in pieces):
+                continue
+            expected = True
+            unresolved = False
+            for piece in pieces:
+                label = (_accept_literal_person(piece, places)
+                         if re.fullmatch(_LITERAL_NAME, piece) else None)
+                if label:
+                    found.setdefault(_normalized_person_identity(label), label)
+                else:
+                    unresolved = True
+            # Partial parsing is not permission to select a known member of a list.
+            if unresolved:
+                return {}, True, True
+    return found, expected, present
+
+
 def parse_query_route_scope(contexts: tuple[str, ...] | None) -> QueryRouteScope:
     parsed = build_query_route_scope(contexts)
     subject = _sanitize_requested_subject(parsed.subject)
     ambiguous = False
+    subject_expected = subject is not None
     from backend.app.agent.loop import infer_requested_output
 
     query = next((item for item in (contexts or ()) if (item or "").strip()), "")
-    if infer_requested_output(query) == "historical_route":
+    question_subjects, question_expected, question_present = _question_route_subjects(query, parsed)
+    if question_present:
+        # The explicit question slot also removes possessive-parser prefix noise
+        # such as "How Was Marcus"; it never writes an evidence actor.
+        subject = next(iter(question_subjects.values())) if len(question_subjects) == 1 else None
+        ambiguous = len(question_subjects) > 1
+        subject_expected = question_expected
+    elif infer_requested_output(query) == "historical_route":
         # Explicit lists constrain even a subject already found by the narrow parser.
         literals = _literal_route_subjects(query, parsed)
         candidates = dict(literals)
@@ -282,6 +351,7 @@ def parse_query_route_scope(contexts: tuple[str, ...] | None) -> QueryRouteScope
         temporal_precision=parsed.temporal_precision,
         has_temporal_constraint=parsed.has_temporal_constraint,
         subject_ambiguous=ambiguous,
+        subject_unresolved=subject_expected and subject is None,
     )
 
 
@@ -446,7 +516,7 @@ def _classify_subject_match(
         return AuthorityState.UNKNOWN
     if earlier.actor_text.casefold() != later.actor_text.casefold():
         return AuthorityState.UNKNOWN
-    if scope.subject_ambiguous:
+    if scope.subject_ambiguous or (scope.subject_unresolved and scope.subject is None):
         return AuthorityState.UNKNOWN
     if scope.subject is None:
         return AuthorityState.MATCH
@@ -458,7 +528,7 @@ def _classify_subject_match(
 
 
 def _statement_supports_scope_subject(statement: str, scope: QueryRouteScope) -> bool:
-    if scope.subject_ambiguous:
+    if scope.subject_ambiguous or (scope.subject_unresolved and scope.subject is None):
         return False
     if scope.subject is None:
         return True
@@ -924,7 +994,7 @@ def relation_non_phase_eligible(
     if not query_contexts:
         return movement_assertion is AuthorityState.MATCH and event_episode_compatibility is AuthorityState.MATCH
     required: list[AuthorityState] = [event_episode_compatibility, movement_assertion]
-    if scope.subject is not None or scope.subject_ambiguous:
+    if scope.subject is not None or scope.subject_ambiguous or scope.subject_unresolved:
         required.append(subject_match)
     if scope.has_episode_constraint:
         required.append(episode_match)
@@ -1102,7 +1172,7 @@ def _compose_admitted(
         return False
     if query_active:
         required.append(movement_assertion)
-        if scope.subject is not None or scope.subject_ambiguous:
+        if scope.subject is not None or scope.subject_ambiguous or scope.subject_unresolved:
             required.append(subject_match)
         if scope.has_episode_constraint:
             required.append(episode_match)
@@ -1128,7 +1198,7 @@ def _reason_codes_for_admission(
     query_active: bool,
 ) -> tuple[str, ...]:
     codes: list[str] = []
-    if query_active and (scope.subject is not None or scope.subject_ambiguous):
+    if query_active and (scope.subject is not None or scope.subject_ambiguous or scope.subject_unresolved):
         if subject_match is AuthorityState.WRONG:
             codes.append("QUERY_SUBJECT_REJECTED")
         elif subject_match is AuthorityState.UNKNOWN:
