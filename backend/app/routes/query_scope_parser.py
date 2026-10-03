@@ -233,7 +233,18 @@ class _SpanRegistry:
 
 
 def _clean(value: str) -> str:
-    return value.strip(" ,.;:\u2014")
+    """Normalize syntax at entity boundaries without rewriting internal names."""
+    quote_pairs = {"\"": "\"", "'": "'", "\u201c": "\u201d", "\u2018": "\u2019"}
+    while True:
+        value = value.strip().strip(" ,.;:\u2014?!\uff1f\u3002\uff01\uff0c\uff1b\uff1a").strip()
+        if len(value) >= 2 and quote_pairs.get(value[0]) == value[-1]:
+            value = value[1:-1]
+        elif re.fullmatch(r"\([^()]*\)", value):
+            value = value[1:-1]
+        elif value.endswith(")") and "(" not in value:
+            value = value[:-1]
+        else:
+            return value
 
 
 def _clause_boundary(text: str, start: int) -> int:
@@ -604,6 +615,17 @@ def _claim_route_frame(
     candidates = _discover_route_frame_candidates(registry)
     frame_subjects = _frame_subjects_from_candidates(candidates)
     if not candidates:
+        # Empty extracted endpoints still represent a requested constraint;
+        # dropping it would turn malformed syntax into an unconstrained route.
+        for source in _FROM_MARKER.finditer(registry.text):
+            target = _DEST_MARKER.search(registry.text, source.end())
+            if target is None:
+                continue
+            if (not _clean(registry.text[source.end():target.start()])
+                    or not _trim_destination_text(registry.text[
+                        target.end():_destination_span_end(registry.text, target.end())
+                    ])):
+                return None, None, None, True, frame_subjects, True
         return None, None, None, True, frame_subjects, False
     group = _classify_route_frame_group(candidates, registry.text)
     if group is not _FrameGroup.SINGLE_PRIMARY:
