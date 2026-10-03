@@ -536,9 +536,6 @@ class BoundedAgentLoop:
             reason_warning="route_terminal_submission_missing",
         )
 
-    def _grounding_guardrail_reply(self, state: AgentState) -> str:
-        return self._route_preserving_guardrail_reply(state)
-
     def _finish_grounding_guardrail(self, state: AgentState, started: float) -> tuple[str, AgentState]:
         return self._finish_route_preserving_guardrail(
             state,

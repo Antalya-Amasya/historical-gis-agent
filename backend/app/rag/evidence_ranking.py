@@ -441,7 +441,6 @@ def rerank_evidence(query: str, evidence: list[Evidence], *, pool_relative: bool
                 person_local = (0.04 / 0.08) * 0.40
         generic = role_generic_support(roles, text_tokens)
         statement_bonus = 0.04 if action >= 0.12 and len(text_tokens) >= 20 else 0.0
-        route_local_evidence = action > 0 or statement_bonus > 0
         frag_person = primary_subject if signals and primary_subject >= 0.08 else (0.0 if signals else person)
         frag_action = (
             role_action_support(roles, text_tokens, person=person, location=location)

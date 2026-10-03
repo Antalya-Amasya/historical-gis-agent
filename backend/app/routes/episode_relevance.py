@@ -222,25 +222,6 @@ def _split_sentences(text: str) -> list[str]:
     return [part.strip() for part in re.split(r"(?<=[.!?;])\s+|\n+", text) if part.strip()]
 
 
-def _claim_statement_window(claim: HistoricalClaim, evidence_by_id: dict[str, Evidence]) -> str | None:
-    statement = (claim.textual_basis or claim.text or "").strip()
-    if not statement:
-        return None
-    for ref in claim.supporting_evidence_ids:
-        item = evidence_by_id.get(ref)
-        if item is None:
-            continue
-        sentences = _split_sentences(_evidence_text(item))
-        for index, sentence in enumerate(sentences):
-            if statement in sentence or sentence in statement:
-                return bounded_window_text(sentences, index)
-    return None
-
-
-def _claim_place_tokens(claim: HistoricalClaim) -> set[str]:
-    return _movement_place_tokens(claim.source_place, claim.destination_place, claim.traversed_place)
-
-
 def _movement_place_tokens(
     source_place: str | None,
     destination_place: str | None,
@@ -281,10 +262,6 @@ def _episode_anchor_overlap_places(
     contexts: tuple[str, ...] | None,
 ) -> bool:
     return bool(_episode_place_anchor_terms(statement, place_tokens, contexts))
-
-
-def _episode_anchor_overlap(claim: HistoricalClaim, statement: str, contexts: tuple[str, ...] | None) -> bool:
-    return _episode_anchor_overlap_places(statement, _claim_place_tokens(claim), contexts)
 
 
 def _normalized_subject_overlap(statement: str, contexts: tuple[str, ...] | None) -> bool:
@@ -682,10 +659,6 @@ def _episode_place_anchor_terms(
     return place_local | statement_place
 
 
-def _explicit_origin_destination_claim(claim: HistoricalClaim) -> bool:
-    return bool(claim.source_place and claim.destination_place)
-
-
 def _explicit_od_episode_compatible_places(
     source_place: str | None,
     destination_place: str | None,
@@ -732,16 +705,6 @@ def _explicit_od_episode_compatible_places(
     if len(place_anchor_terms) >= 2:
         return True
     return False
-
-
-def _explicit_od_episode_compatible(
-    claim: HistoricalClaim,
-    statement: str,
-    contexts: tuple[str, ...] | None,
-) -> bool:
-    return _explicit_od_episode_compatible_places(
-        claim.source_place, claim.destination_place, statement, contexts,
-    )
 
 
 def _positive_same_subject_other_episode_evidence(
@@ -803,22 +766,6 @@ def _same_subject_other_episode_places(
         statement,
         contexts,
         require_anchor_overlap=False,
-    )
-
-
-def _same_subject_other_episode(
-    claim: HistoricalClaim,
-    statement: str,
-    contexts: tuple[str, ...] | None,
-    *,
-    relevance: EvidenceRelevance,
-) -> bool:
-    return _same_subject_other_episode_places(
-        claim.source_place,
-        claim.destination_place,
-        statement,
-        contexts,
-        relevance=relevance,
     )
 
 

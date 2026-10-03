@@ -201,10 +201,6 @@ def classify_historical_travel_mode(statements: tuple[str, ...]) -> HistoricalTr
     return next(iter(modes)) if len(modes) == 1 else HistoricalTravelMode.UNKNOWN
 
 
-def _alias_map(aliases: list[tuple[int, HistoricalPlaceAlias, str]]) -> dict[int, tuple[HistoricalPlaceAlias, str]]:
-    return {position: (place, alias) for position, place, alias in aliases}
-
-
 def _validated_span(sentence: str, start: int, *, before: int | None = None) -> tuple[str, int] | None:
     window = sentence[start:before]
     match = _PLACE_SPAN.search(window)

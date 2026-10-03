@@ -626,21 +626,6 @@ def _statement_signals_explicit_other_episode(
     return False
 
 
-def _event_movement_statement(
-    event: HistoricalEvent,
-    evidence_by_id: dict[str, Evidence],
-) -> str:
-    if event.source_statements:
-        for item in event.source_statements:
-            if item.strip():
-                return item.strip()
-    for ref in event.evidence_refs:
-        item = evidence_by_id.get(ref)
-        if item is not None and item.text:
-            return item.text.strip()
-    return (event.summary or "").strip()
-
-
 def _explicit_campaign_phrase_term_sets(text: str) -> list[frozenset[str]]:
     if not text.strip():
         return []
@@ -890,29 +875,6 @@ def _observation_place_identities(
 
 def _identities_match_scope(identities: tuple[str, ...], scope_value: str) -> bool:
     return any(_place_identity_matches(item, scope_value) for item in identities)
-
-
-def _same_event_origin_destination_leg(
-    relation: ObservationOrderingRelation | None,
-    observations_by_id: dict[str, RouteObservation] | None,
-    events_by_id: dict[str, HistoricalEvent] | None,
-) -> bool:
-    if relation is None or observations_by_id is None or events_by_id is None:
-        return False
-    if len(relation.event_ids) != 1:
-        return False
-    event = events_by_id.get(relation.event_ids[0])
-    if event is None or event.event_type is not HistoricalEventType.MOVEMENT:
-        return False
-    earlier = observations_by_id.get(relation.earlier_observation_id)
-    later = observations_by_id.get(relation.later_observation_id)
-    if earlier is None or later is None:
-        return False
-    return (
-        earlier.place_role is EventPlaceRole.ORIGIN
-        and later.place_role is EventPlaceRole.DESTINATION
-        and relation.authority == "SAME_MOVEMENT_EVENT"
-    )
 
 
 def _trusted_soft_phase_membership_proof(

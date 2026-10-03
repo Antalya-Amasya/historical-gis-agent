@@ -65,27 +65,6 @@ class HistoricalRouteCorridorRegion:
         return self.min_longitude <= longitude <= self.max_longitude and self.min_latitude <= latitude <= self.max_latitude
 
 
-@dataclass(frozen=True)
-class HistoricalRouteCorridor:
-    campaign_id: str
-    regions: tuple[HistoricalRouteCorridorRegion, ...]
-
-    def allows(self, longitude: float, latitude: float) -> bool:
-        return any(region.contains(longitude, latitude) for region in self.regions)
-
-
-_HANNIBAL_CORRIDOR = HistoricalRouteCorridor(
-    campaign_id="hannibal_italy_campaign",
-    regions=(
-        HistoricalRouteCorridorRegion("Iberian east-coast approach", -1.5, 37.0, 3.5, 43.0),
-        HistoricalRouteCorridorRegion("Pyrenees corridor", 0.0, 40.5, 4.0, 44.0),
-        HistoricalRouteCorridorRegion("Rhone valley", 3.5, 42.0, 6.0, 45.5),
-        HistoricalRouteCorridorRegion("Alpine foothills", 5.0, 42.5, 10.0, 46.0),
-        HistoricalRouteCorridorRegion("Po plain approach", 8.0, 43.5, 13.0, 46.5),
-    ),
-)
-
-
 class HistoricalCampaignIntentRegistry:
     """Ontology-backed deterministic matcher; it never supplies facts or coordinates."""
 

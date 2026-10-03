@@ -229,11 +229,6 @@ class HistoricalPlaceMentionExtractor:
     def _sentences(text: str) -> list[str]:
         return [part.strip() for part in re.split(r"(?<=[.!?;])\s+|\n+", text) if part.strip()]
 
-    @staticmethod
-    def _place_after(start: int, aliases: list[tuple[int, HistoricalPlaceAlias, str]], *, before: int | None = None) -> HistoricalPlaceAlias | None:
-        candidates = [place for position, place, _ in aliases if position >= start and (before is None or position < before)]
-        return candidates[0] if candidates else None
-
     def continuation_endpoints(self, previous: str | None, sentence: str, semantics, *, evidence_id: str) -> tuple:
         """Resume only a completed destination in the adjacent evidence statement.
 
