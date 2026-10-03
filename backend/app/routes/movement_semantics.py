@@ -250,7 +250,7 @@ def _backward_steer_destination(
     return next(iter(antecedents.values())) if len(antecedents) == 1 else None
 
 
-def _endpoint_after(
+def _first_endpoint_after(
     sentence: str,
     start: int,
     aliases: list[tuple[int, HistoricalPlaceAlias, str]],
@@ -283,6 +283,55 @@ def _endpoint_after(
         return None
     surface, position = validated
     return MovementEndpoint(surface=surface, canonical=None, role=role, position=position)
+
+
+_ENDPOINT_JOIN = re.compile(r"\s*(?:/|\b(?:or(?:\s+perhaps)?|and)\b)\s*(?:either\s+)?", re.I)
+
+
+def _endpoint_candidates_after(
+    sentence: str, start: int, aliases: list[tuple[int, HistoricalPlaceAlias, str]],
+    *, before: int | None = None, role: EndpointRole,
+) -> list[MovementEndpoint]:
+    """Keep adjacent endpoint alternatives; contextual places are not alternatives."""
+    first = _first_endpoint_after(sentence, start, aliases, before=before, role=role)
+    validated = _validated_span(sentence, start, before=before)
+    # An unregistered first alternative must not be skipped for a later alias.
+    if validated and (first is None or validated[1] < first.position):
+        surface, position = validated
+        if _ENDPOINT_JOIN.match(sentence, position + len(surface)):
+            first = MovementEndpoint(surface, None, role, position)
+    if first is None:
+        return []
+    candidates = [first]
+    cursor = first.position + len(first.surface)
+    limit = len(sentence) if before is None else before
+    while cursor < limit:
+        join = _ENDPOINT_JOIN.match(sentence, cursor, limit)
+        if join is None:
+            break
+        next_start = join.end()
+        validated = _validated_span(sentence, next_start, before=before)
+        alias = _first_endpoint_after(sentence, next_start, aliases, before=before, role=role)
+        choices = [alias] if alias is not None else []
+        if validated:
+            surface, position = validated
+            if alias is None or position < alias.position:
+                choices.append(MovementEndpoint(surface, None, role, position))
+        following = min(choices, key=lambda item: item.position) if choices else None
+        if following is None or sentence[next_start:following.position].strip().lower() not in {"", "the"}:
+            break
+        candidates.append(following)
+        cursor = following.position + len(following.surface)
+    return candidates
+
+
+def _endpoint_after(
+    sentence: str, start: int, aliases: list[tuple[int, HistoricalPlaceAlias, str]],
+    *, before: int | None = None, role: EndpointRole,
+) -> MovementEndpoint | None:
+    candidates = _endpoint_candidates_after(sentence, start, aliases, before=before, role=role)
+    unique = {item.place_name.casefold(): item for item in candidates}
+    return next(iter(unique.values())) if len(unique) == 1 else None
 
 
 def _origin_after_from(
@@ -1590,6 +1639,30 @@ def analyze_sentence(
 
     if not _has_movement_cue(sentence):
         return SentenceMovementSemantics(is_movement=False, edges=(), endpoints=(), route_orderings=())
+
+    # Check candidate sets before compound/ordering parsers can pick a member.
+    markers = sorted(
+        [(match, role) for pattern, role in (
+            (_SOURCE_MARKER, "origin"), (_TARGET_MARKER, "destination"),
+            (_ARRIVAL_PREDICATE, "destination"), (_DEPARTURE_PREDICATE, "origin"),
+        ) for match in pattern.finditer(sentence)],
+        key=lambda item: item[0].start(),
+    )
+    candidate_endpoints: list[MovementEndpoint] = []
+    ambiguity_reason = None
+    for index, (marker, role) in enumerate(markers):
+        before = markers[index + 1][0].start() if index + 1 < len(markers) else len(sentence)
+        candidates = _endpoint_candidates_after(sentence, marker.end(), aliases, before=before, role=role)
+        candidate_endpoints.extend(candidates)
+        if len({item.place_name.casefold() for item in candidates}) > 1:
+            span = sentence[candidates[0].position:candidates[-1].position]
+            ambiguity_reason = ("ambiguous_endpoint_conjunction" if re.search(r"\band\b", span, re.I)
+                                else "ambiguous_endpoint_alternatives")
+    if ambiguity_reason is not None:
+        return SentenceMovementSemantics(
+            is_movement=True, edges=(), endpoints=tuple(candidate_endpoints),
+            route_orderings=(), should_abstain=True, abstain_reason=ambiguity_reason,
+        )
 
     gen_edges, gen_endpoints, should_abstain, abstain_reason = _generalized_parse(sentence, aliases)
     if should_abstain:

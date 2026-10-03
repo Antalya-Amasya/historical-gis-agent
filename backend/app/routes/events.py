@@ -797,6 +797,18 @@ class EvidenceGroundedHistoricalEventExtractor:
         if semantics is None:
             semantics = analyze_sentence(sentence, self.mention_extractor.aliases_in(sentence))
         role_map = {"origin": EventPlaceRole.ORIGIN, "destination": EventPlaceRole.DESTINATION}
+        if semantics.abstain_reason in {"ambiguous_endpoint_alternatives", "ambiguous_endpoint_conjunction"}:
+            ambiguous_roles = {
+                role_map[role] for role in role_map
+                if len({endpoint.place_name.casefold() for endpoint in semantics.endpoints
+                        if endpoint.role == role}) > 1
+            }
+            # Preserve mentions and the unique opposite role, without selecting
+            # one candidate as an authoritative endpoint.
+            for mention in places:
+                if mention.role in ambiguous_roles:
+                    mention.role = EventPlaceRole.RELATED_PLACE
+            return places
         semantic_directional = {
             (endpoint.surface.casefold(), role_map[endpoint.role])
             for endpoint in semantics.endpoints
@@ -1092,6 +1104,16 @@ class EvidenceGroundedHistoricalEventExtractor:
         )
         route_orderings = self._route_orderings_from_semantics(sentence, semantics, evidence_id)
         if semantics.should_abstain:
+            if semantics.abstain_reason in {"ambiguous_endpoint_alternatives", "ambiguous_endpoint_conjunction"}:
+                for endpoint in semantics.endpoints:
+                    unique_role = len({item.place_name.casefold() for item in semantics.endpoints
+                                       if item.role == endpoint.role}) == 1
+                    role = (EventPlaceRole.ORIGIN if endpoint.role == "origin" else EventPlaceRole.DESTINATION)
+                    self._assign_movement_endpoint_role(
+                        places, endpoint,
+                        role if unique_role and endpoint.role != "traversal" else EventPlaceRole.RELATED_PLACE,
+                        sentence, evidence_id,
+                    )
             return places, route_orderings
         role_map = {
             "origin": EventPlaceRole.ORIGIN,

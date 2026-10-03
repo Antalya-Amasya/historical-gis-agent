@@ -237,15 +237,16 @@ def _typed_same_event_relations(
         ))
     if found:
         return found
-    origin_obs = None
-    destination_obs = None
+    role_candidates = {EventPlaceRole.ORIGIN: {}, EventPlaceRole.DESTINATION: {}}
     for item in observations:
         if item.event_id != event.id or item.kind is not RouteObservationKind.PLACE:
             continue
-        if item.place_role is EventPlaceRole.ORIGIN:
-            origin_obs = item
-        elif item.place_role is EventPlaceRole.DESTINATION:
-            destination_obs = item
+        if item.place_role in role_candidates:
+            role_candidates[item.place_role][item.label.casefold()] = item
+    if any(len(candidates) != 1 for candidates in role_candidates.values()):
+        return found
+    origin_obs = next(iter(role_candidates[EventPlaceRole.ORIGIN].values()))
+    destination_obs = next(iter(role_candidates[EventPlaceRole.DESTINATION].values()))
     if (
         origin_obs is not None
         and destination_obs is not None
